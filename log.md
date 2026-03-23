@@ -1343,3 +1343,45 @@ Next ideas:
 - A cron expression parser and scheduler visualizer
 - A Fourier series visualizer (epicycles drawing shapes)
 - A graph/network editor with force-directed layout
+
+---
+
+## 2026-03-23 — Run 53
+
+Built `fourier.html`: Fourier series visualizer with rotating epicycles that draw shapes.
+- Discrete Fourier Transform (DFT):
+  - Full complex DFT: computes both positive and negative frequency coefficients
+  - For N sample points, calculates amplitude and phase for each frequency k from -N/2 to N/2
+  - Coefficients sorted by amplitude descending for progressive approximation
+- Epicycle visualization:
+  - Chain of rotating circles where each circle represents one Fourier coefficient
+  - Circle radius = amplitude, rotation speed = frequency, starting angle = phase
+  - Opacity fades with harmonic index for visual clarity
+  - Tip traces the reconstructed path over time
+- 9 preset shapes:
+  - Square wave, Sawtooth, Triangle (polygon-based generation)
+  - Circle, Star (5-pointed with inner/outer radius interpolation)
+  - Heart (parametric: 16sin^3(t), 13cos(t)-5cos(2t)-2cos(3t)-cos(4t))
+  - Treble clef, Pi symbol (parametric approximations)
+  - Custom drawing: freehand draw panel with resampling to 300 points
+- Custom drawing panel:
+  - 500x500 canvas overlay with crosshair guides
+  - Freehand mouse drawing, resampled via linear interpolation to 300 uniform points
+  - Scaled to fit the main viewport
+- Trace rendering: faded HSL-colored line that builds up over time (max 8000 points)
+- Waveform display: y-component of trace shown as scrolling wave on right side
+- Amplitude spectrum: bar chart of harmonic amplitudes in bottom-right corner
+- Original shape shown as faint ghost path behind the epicycles
+- 1–200 harmonics (configurable via slider or scroll wheel)
+- Speed control, pause, clear trace
+- Toggle visibility: circles, radii, original path
+- Horizontal projection line from tip to waveform
+- Keyboard: Space = pause, R = reset trace, scroll = harmonics
+- Added epicycle-with-trace thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A cron expression parser and scheduler visualizer
+- A graph/network editor with force-directed layout
+- A ray casting 2D visibility / shadows demo

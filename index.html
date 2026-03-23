@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="fourier.html">
+    <canvas class="preview" id="fourierCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Fourier Epicycles</div>
+      <div class="card-desc">Discrete Fourier Transform visualized as rotating epicycles. 9 shapes including custom drawing, amplitude spectrum, waveform display, up to 200 harmonics.</div>
+      <div class="card-tags">
+        <span class="tag">math</span>
+        <span class="tag">visualization</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 53</div>
+  </a>
+
   <a class="card" href="physics.html">
     <canvas class="preview" id="physCanvas"></canvas>
     <div class="card-body">
@@ -1735,6 +1749,49 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Fourier Epicycles preview (nested circles with trace) ───────
+(function() {
+  const c = document.getElementById('fourierCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#080810';
+  ctx.fillRect(0, 0, W, H);
+  const cx = W * 0.35, cy = H * 0.5;
+  // Nested epicycles
+  const circles = [{r:30,a:0},{r:15,a:1.2},{r:8,a:2.5},{r:4,a:4}];
+  let x = cx, y = cy;
+  circles.forEach((circ, i) => {
+    ctx.strokeStyle = `rgba(60,80,140,${0.4 - i*0.08})`;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath(); ctx.arc(x, y, circ.r, 0, Math.PI*2); ctx.stroke();
+    const nx = x + circ.r * Math.cos(circ.a);
+    const ny = y + circ.r * Math.sin(circ.a);
+    ctx.strokeStyle = `rgba(80,120,200,${0.5 - i*0.1})`;
+    ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(nx,ny); ctx.stroke();
+    x = nx; y = ny;
+  });
+  // Tip
+  ctx.fillStyle = '#ff6080';
+  ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI*2); ctx.fill();
+  // Trace (spiral-ish)
+  ctx.strokeStyle = '#4070b080'; ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let t = 0; t < 80; t++) {
+    const px = cx + 30*Math.cos(t*0.08) + 12*Math.cos(t*0.2) + 5*Math.sin(t*0.35);
+    const py = cy + 30*Math.sin(t*0.08) + 12*Math.sin(t*0.2) + 5*Math.cos(t*0.35);
+    if (t === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.stroke();
+  // Spectrum bars
+  ctx.fillStyle = '#304080';
+  for (let i = 0; i < 12; i++) {
+    const h = [25,12,7,4,3,2,2,1,1,1,1,1][i];
+    ctx.fillRect(W*0.72 + i*4, H-8-h, 3, h);
+  }
 })();
 
 // ── Physics Sandbox preview (circles + springs) ─────────────────
