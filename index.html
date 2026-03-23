@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="baseconv.html">
+    <canvas class="preview" id="baseCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Base Converter</div>
+      <div class="card-desc">Binary/octal/decimal/hex converter with clickable bit grid, bitwise operations (shift, AND, OR, XOR, NOT), byte swap, popcount, IEEE 754 float display.</div>
+      <div class="card-tags">
+        <span class="tag">tool</span>
+        <span class="tag">binary</span>
+        <span class="tag">dev</span>
+      </div>
+    </div>
+    <div class="run-label">Run 51</div>
+  </a>
+
   <a class="card" href="diff.html">
     <canvas class="preview" id="diffCanvas"></canvas>
     <div class="card-body">
@@ -1707,6 +1721,41 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Base Converter preview (bit grid + hex) ─────────────────────
+(function() {
+  const c = document.getElementById('baseCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#0a0a12';
+  ctx.fillRect(0, 0, W, H);
+  // Hex value
+  ctx.font = 'bold 10px "Courier New",monospace';
+  ctx.fillStyle = '#c080c0';
+  ctx.fillText('0xDEADBEEF', 6, 14);
+  // Decimal
+  ctx.font = '8px "Courier New",monospace';
+  ctx.fillStyle = '#8090e0';
+  ctx.fillText('3735928559', 6, 26);
+  // Bit grid
+  const bits = '11011110101011011011111011101111';
+  const cellW = 7, cellH = 8, startY = 34;
+  for (let i = 0; i < 32; i++) {
+    const col = i % 16, row = Math.floor(i / 16);
+    const x = 4 + col * (cellW + 1) + Math.floor(col / 4) * 3;
+    const y = startY + row * (cellH + 6);
+    const on = bits[i] === '1';
+    ctx.fillStyle = on ? '#1a3050' : '#0c0c18';
+    ctx.fillRect(x, y, cellW, cellH);
+    ctx.fillStyle = on ? '#60c0ff' : '#303050';
+    ctx.font = '6px "Courier New",monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(bits[i], x + cellW/2, y + cellH - 1);
+  }
+  ctx.textAlign = 'left';
 })();
 
 // ── Diff Viewer preview (side-by-side lines) ────────────────────

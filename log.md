@@ -1258,3 +1258,45 @@ Next ideas:
 - A physics sandbox (rigid body with springs and gravity)
 - A binary/hex/decimal converter calculator
 - A cron expression parser and scheduler visualizer
+
+---
+
+## 2026-03-23 — Run 51
+
+Built `baseconv.html`: binary/octal/decimal/hex converter with interactive bit grid and bitwise operations.
+- Real-time conversion between 6 representations:
+  - Binary (base 2) with space-separated nibbles
+  - Octal (base 8)
+  - Decimal (base 10) with signed/unsigned toggle
+  - Hexadecimal (base 16)
+  - Base64 (byte encoding)
+  - Custom base (2–36, configurable)
+- All fields use BigInt for arbitrary precision within bit width
+- Interactive bit grid:
+  - Visual 8-bit groups with clickable cells (toggle individual bits)
+  - Bit position indices displayed below each cell
+  - Color-coded: on bits are blue, off bits are gray
+- 4 bit widths: 8-bit, 16-bit, 32-bit (default), 64-bit
+  - Automatic masking to selected width
+- Signed/unsigned toggle with two's complement display
+- Bitwise operations:
+  - Shift left/right by configurable amount
+  - NOT, AND, OR, XOR with hex operand input
+  - Reverse bits, byte swap (endian conversion), population count
+- Number info panel:
+  - Unsigned and signed (two's complement) decimal values
+  - Bits set count, leading/trailing zeros
+  - Power of 2 detection with exponent
+  - ASCII character for printable range (32–126)
+  - IEEE 754 float interpretation for 32-bit values
+- "Unix Now" button loads current timestamp
+- Copy button per field (strips whitespace)
+- Input validation with error highlighting for invalid characters
+- Added bit-grid thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A physics sandbox (rigid body with springs and gravity)
+- A cron expression parser and scheduler visualizer
+- A Fourier series visualizer (epicycles drawing shapes)
