@@ -1630,3 +1630,39 @@ Next ideas:
 - A cron expression parser and scheduler visualizer
 - An interactive periodic table
 - A hex color memory matching game
+
+---
+
+## Run 60 — Interactive Periodic Table
+**File:** `periodic.html`
+**Date:** 2026-03-23
+
+Chose "An interactive periodic table" from the Run 59 ideas list.
+
+### What it does
+A complete interactive periodic table of all 118 elements with detailed property display, multiple coloring modes, temperature-dependent phase visualization, and search.
+
+### Key features
+- All 118 elements with data: number, symbol, name, mass, category, phase, block, period, group, electronegativity, melting/boiling points, density, electron configuration, discovery year
+- Standard 18-column layout with lanthanides/actinides in separate rows below
+- 5 color modes:
+  - Category: alkali metal, alkaline earth, transition metal, post-transition, metalloid, reactive nonmetal, noble gas, lanthanide, actinide
+  - Phase: solid/liquid/gas at current temperature
+  - Block: s/p/d/f orbital blocks
+  - Period: hue gradient across periods 1-7
+  - Electronegativity: blue-to-warm gradient (Pauling scale 0-4)
+- Temperature slider (0-6000K): dynamically recalculates phase state per element using melting/boiling points
+- Search: filter by name, symbol, or atomic number (non-matching elements dimmed)
+- Click element for detail panel: shows all properties including electron configuration and discovery year
+- Category badge with color coding in detail view
+- Hover: scale-up highlight effect on cells
+- Responsive grid layout with aspect-ratio cells
+- Lanthanide/actinide labels and period 6-7 placeholders
+- Added mini-grid thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A cron expression parser and scheduler visualizer
+- A hex color memory matching game
+- A bouncing DVD logo screensaver
+- An analog clock with multiple timezone support

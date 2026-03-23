@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="periodic.html">
+    <canvas class="preview" id="periodicCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Periodic Table</div>
+      <div class="card-desc">Interactive periodic table of all 118 elements. Color by category, phase, block, or electronegativity. Temperature slider shows phase changes. Search, click for detailed element properties.</div>
+      <div class="card-tags">
+        <span class="tag">science</span>
+        <span class="tag">reference</span>
+        <span class="tag">interactive</span>
+      </div>
+    </div>
+    <div class="run-label">Run 60</div>
+  </a>
+
   <a class="card" href="magfield.html">
     <canvas class="preview" id="magCanvas"></canvas>
     <div class="card-body">
@@ -1834,6 +1848,28 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Periodic Table preview (mini grid) ──────────────────────────
+{
+  const c = document.getElementById('periodicCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#080810';
+    ctx.fillRect(0, 0, w, h);
+    const cols = ['#8b3a3a','#6b5b3a','#3a5a7a','#3a5a7a','#3a5a7a','#3a5a7a','#3a5a7a','#3a5a7a','#3a5a7a','#3a5a7a','#3a5a7a','#3a5a7a','#4a6a5a','#5a5a3a','#3a6a6a','#3a6a6a','#3a6a6a','#5a3a6a'];
+    const rows = [[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],[1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1],[1,1,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]];
+    const cw = (w - 8) / 18, ch = (h - 8) / 9;
+    for (let r = 0; r < rows.length; r++) {
+      for (let cl = 0; cl < 18; cl++) {
+        if (!rows[r][cl]) continue;
+        ctx.fillStyle = cols[cl] || '#3a5a7a';
+        ctx.fillRect(4 + cl * cw, 4 + r * ch, cw - 1, ch - 1);
+      }
+    }
+  }
+}
 
 // ── Magnetic Field preview (dipole field lines) ────────────────
 {
