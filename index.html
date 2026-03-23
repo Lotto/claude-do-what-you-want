@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="dvd.html">
+    <canvas class="preview" id="dvdCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">DVD Bounce</div>
+      <div class="card-desc">Bouncing DVD logo screensaver. Multiple logos, 5 shapes (text, disc, box, diamond, star), custom text, trail mode, glow, corner hit tracking with flash effect. The legendary corner hit awaits.</div>
+      <div class="card-tags">
+        <span class="tag">animation</span>
+        <span class="tag">fun</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 68</div>
+  </a>
+
   <a class="card" href="2048.html">
     <canvas class="preview" id="g2048Canvas"></canvas>
     <div class="card-body">
@@ -1946,6 +1960,33 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── DVD Bounce preview (bouncing text) ──────────────────────────
+{
+  const c = document.getElementById('dvdCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, h);
+    // Draw DVD text at an angle
+    const hues = [0, 120, 240, 60, 300];
+    for (let i = 0; i < 3; i++) {
+      const hue = hues[i];
+      ctx.fillStyle = `hsl(${hue},80%,60%)`;
+      ctx.shadowColor = `hsl(${hue},80%,60%)`;
+      ctx.shadowBlur = 8;
+      ctx.font = `bold ${h * 0.25}px Courier New`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const x = w * 0.2 + i * w * 0.3;
+      const y = h * 0.3 + (i % 2) * h * 0.4;
+      ctx.fillText('DVD', x, y);
+    }
+    ctx.shadowBlur = 0;
+  }
+}
 
 // ── 2048 preview (number grid) ──────────────────────────────────
 {

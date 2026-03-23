@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DVD Bounce</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #000; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #040408; border-bottom: 1px solid #101020; flex-shrink: 0; flex-wrap: wrap; z-index: 10; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+  input[type="range"] { width: 60px; accent-color: #4060a0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+  input[type="text"] { background: #0c0c18; border: 1px solid #1a1a30; color: #a0a0b8; font: 11px 'Courier New', monospace; padding: 3px 8px; border-radius: 3px; width: 80px; }
+
+  canvas { display: block; flex: 1; }
+
+  #statusBar { padding: 4px 12px; background: #020204; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; z-index: 10; }
+  .stat b { color: #505078; font-weight: normal; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>DVD Bounce</h1>
+  <div class="sep"></div>
+  <label>Speed: <input type="range" id="rSpeed" min="1" max="10" value="3" oninput="speed=+this.value"></label>
+  <label>Logos: <input type="range" id="rCount" min="1" max="20" value="1" oninput="setCount(+this.value)"></label>
+  <label>Size: <input type="range" id="rSize" min="40" max="200" value="100" oninput="logoSize=+this.value;initLogos()"></label>
+  <div class="sep"></div>
+  <label>Text: <input type="text" id="txtLogo" value="DVD" oninput="logoText=this.value;initLogos()"></label>
+  <div class="sep"></div>
+  <select id="selShape" onchange="logoShape=this.value;initLogos()">
+    <option value="text">Text</option>
+    <option value="disc">Disc</option>
+    <option value="box">Box</option>
+    <option value="diamond">Diamond</option>
+    <option value="star">Star</option>
+  </select>
+  <div class="sep"></div>
+  <label><input type="checkbox" id="chkTrail" onchange="showTrail=this.checked"> Trail</label>
+  <label><input type="checkbox" id="chkGlow" checked onchange="showGlow=this.checked"> Glow</label>
+  <label><input type="checkbox" id="chkCorner" checked onchange="trackCorners=this.checked"> Track Corners</label>
+  <div class="sep"></div>
+  <button id="pauseBtn" onclick="togglePause()">Pause (P)</button>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="statusBar">
+  <span class="stat">Bounces: <b id="statBounces">0</b></span>
+  <span class="stat">Corner Hits: <b id="statCorners">0</b></span>
+  <span class="stat">Color Changes: <b id="statColors">0</b></span>
+  <span class="stat">FPS: <b id="statFps">0</b></span>
+  <span class="stat">Watch for the legendary corner hit!</span>
+</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = canvas.width = canvas.clientWidth;
+  H = canvas.height = canvas.clientHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+let speed = 3;
+let logoSize = 100;
+let logoText = 'DVD';
+let logoShape = 'text';
+let showTrail = false;
+let showGlow = true;
+let trackCorners = true;
+let paused = false;
+
+let logos = [];
+let totalBounces = 0;
+let cornerHits = 0;
+let colorChanges = 0;
+
+const hues = [0, 30, 60, 120, 180, 210, 240, 280, 320];
+
+class Logo {
+  constructor() {
+    this.w = logoSize;
+    this.h = logoSize * 0.6;
+    this.x = Math.random() * (W - this.w);
+    this.y = Math.random() * (H - this.h);
+    this.vx = (Math.random() < 0.5 ? 1 : -1);
+    this.vy = (Math.random() < 0.5 ? 1 : -1);
+    this.hue = hues[Math.random() * hues.length | 0];
+    this.cornerFlash = 0;
+  }
+
+  update() {
+    const spd = speed * 1.5;
+    this.x += this.vx * spd;
+    this.y += this.vy * spd;
+
+    let bounced = false;
+    let bx = false, by = false;
+
+    if (this.x <= 0) { this.x = 0; this.vx = Math.abs(this.vx); bounced = true; bx = true; }
+    if (this.x + this.w >= W) { this.x = W - this.w; this.vx = -Math.abs(this.vx); bounced = true; bx = true; }
+    if (this.y <= 0) { this.y = 0; this.vy = Math.abs(this.vy); bounced = true; by = true; }
+    if (this.y + this.h >= H) { this.y = H - this.h; this.vy = -Math.abs(this.vy); bounced = true; by = true; }
+
+    if (bounced) {
+      totalBounces++;
+      this.hue = hues[Math.random() * hues.length | 0];
+      colorChanges++;
+
+      // Corner hit!
+      if (bx && by) {
+        cornerHits++;
+        this.cornerFlash = 30;
+      }
+    }
+
+    if (this.cornerFlash > 0) this.cornerFlash--;
+
+    // Update dimensions
+    this.w = logoSize;
+    this.h = logoShape === 'text' ? logoSize * 0.6 : logoSize;
+  }
+
+  draw() {
+    const cx = this.x + this.w / 2;
+    const cy = this.y + this.h / 2;
+    const color = `hsl(${this.hue},80%,60%)`;
+    const lightColor = `hsl(${this.hue},80%,80%)`;
+
+    if (showGlow) {
+      ctx.shadowColor = color;
+      ctx.shadowBlur = this.cornerFlash > 0 ? 40 : 15;
+    }
+
+    // Corner flash
+    if (this.cornerFlash > 0 && trackCorners) {
+      const alpha = this.cornerFlash / 30;
+      ctx.fillStyle = `hsla(${this.hue},100%,80%,${alpha * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(cx, cy, logoSize * 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle = color;
+    ctx.strokeStyle = lightColor;
+    ctx.lineWidth = 2;
+
+    switch (logoShape) {
+      case 'text':
+        ctx.font = `bold ${this.h * 0.7}px 'Courier New', monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(logoText, cx, cy);
+        break;
+
+      case 'disc':
+        ctx.beginPath();
+        ctx.arc(cx, cy, this.w / 2, 0, Math.PI * 2);
+        ctx.fill();
+        // Inner ring
+        ctx.fillStyle = '#000';
+        ctx.beginPath();
+        ctx.arc(cx, cy, this.w * 0.15, 0, Math.PI * 2);
+        ctx.fill();
+        // Shine
+        ctx.fillStyle = `hsla(${this.hue},60%,80%,0.15)`;
+        ctx.beginPath();
+        ctx.ellipse(cx - this.w * 0.12, cy - this.w * 0.12, this.w * 0.2, this.w * 0.15, -0.5, 0, Math.PI * 2);
+        ctx.fill();
+        break;
+
+      case 'box':
+        ctx.fillRect(this.x, this.y, this.w, this.w);
+        ctx.strokeRect(this.x + 4, this.y + 4, this.w - 8, this.w - 8);
+        // DVD text inside
+        ctx.fillStyle = '#000';
+        ctx.font = `bold ${this.w * 0.3}px 'Courier New', monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(logoText, cx, cy);
+        break;
+
+      case 'diamond': {
+        const r = this.w / 2;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - r);
+        ctx.lineTo(cx + r, cy);
+        ctx.lineTo(cx, cy + r);
+        ctx.lineTo(cx - r, cy);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+      }
+
+      case 'star': {
+        const r = this.w / 2;
+        ctx.beginPath();
+        for (let i = 0; i < 5; i++) {
+          const a1 = (i / 5) * Math.PI * 2 - Math.PI / 2;
+          const a2 = ((i + 0.5) / 5) * Math.PI * 2 - Math.PI / 2;
+          ctx.lineTo(cx + Math.cos(a1) * r, cy + Math.sin(a1) * r);
+          ctx.lineTo(cx + Math.cos(a2) * r * 0.4, cy + Math.sin(a2) * r * 0.4);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        break;
+      }
+    }
+
+    ctx.shadowBlur = 0;
+  }
+}
+
+function initLogos() {
+  const count = logos.length || 1;
+  logos = [];
+  for (let i = 0; i < count; i++) logos.push(new Logo());
+}
+
+function setCount(n) {
+  while (logos.length < n) logos.push(new Logo());
+  while (logos.length > n) logos.pop();
+}
+
+function togglePause() {
+  paused = !paused;
+  const btn = document.getElementById('pauseBtn');
+  btn.textContent = paused ? 'Play (P)' : 'Pause (P)';
+  if (paused) btn.classList.add('active'); else btn.classList.remove('active');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'p') togglePause();
+});
+
+// ── Loop ─────────────────────────────────────────────────────────
+let lastTime = performance.now();
+let fpsCounter = 0, fpsDisplay = 0, fpsTimer = 0;
+
+function loop(now) {
+  const dt = now - lastTime;
+  lastTime = now;
+  fpsTimer += dt;
+  fpsCounter++;
+  if (fpsTimer >= 1000) {
+    fpsDisplay = fpsCounter;
+    fpsCounter = 0;
+    fpsTimer -= 1000;
+  }
+
+  if (!paused) {
+    // Background
+    if (showTrail) {
+      ctx.fillStyle = 'rgba(0,0,0,0.05)';
+      ctx.fillRect(0, 0, W, H);
+    } else {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+    }
+
+    for (const logo of logos) {
+      logo.update();
+      logo.draw();
+    }
+  }
+
+  document.getElementById('statBounces').textContent = totalBounces;
+  document.getElementById('statCorners').textContent = cornerHits;
+  document.getElementById('statColors').textContent = colorChanges;
+  document.getElementById('statFps').textContent = fpsDisplay;
+
+  requestAnimationFrame(loop);
+}
+
+initLogos();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

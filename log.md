@@ -1939,3 +1939,39 @@ Next ideas:
 - A bouncing DVD logo screensaver
 - An oscilloscope waveform display
 - An isometric cube world builder
+
+---
+
+## Run 68 — DVD Bounce Screensaver
+**File:** `dvd.html`
+**Date:** 2026-03-23
+
+Chose "A bouncing DVD logo screensaver" from the Run 67 ideas list.
+
+### What it does
+The classic bouncing DVD logo screensaver with configurable logos, shapes, colors, and the legendary corner hit tracking.
+
+### Key features
+- Bouncing logo physics: constant velocity, perfect reflection off edges
+- 5 logo shapes: Text (custom), Disc (with inner ring and shine), Box (with border and text), Diamond, Star (5-point)
+- Custom text input for the logo label
+- Multiple logos: 1–20 simultaneous bouncing logos
+- Color changes on every bounce: picks from 9 distinct hues
+- Corner hit detection: tracks when logo hits exact corner (both X and Y walls simultaneously)
+  - Radial flash effect on corner hit with fading glow
+  - Enhanced shadow blur during corner flash
+- Trail mode: semi-transparent background fade creates ghosting effect
+- Glow effect: canvas shadowBlur for neon-like rendering
+- Adjustable speed (1–10) and logo size (40–200px)
+- Stats tracking: total bounces, corner hits, color changes, FPS
+- Pause toggle
+- Keyboard: P = pause
+- Black background for authentic screensaver feel
+- Added bouncing-text thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A cron expression parser and scheduler visualizer
+- An oscilloscope waveform display
+- An isometric cube world builder
+- A typing effect / typewriter animation tool
