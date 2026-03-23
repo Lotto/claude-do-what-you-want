@@ -501,8 +501,22 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="gravity.html">
+    <canvas class="preview" id="gravityCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Gravity Sandbox</div>
+      <div class="card-desc">N-body gravity simulation with Velocity Verlet integration. Click to spawn, shift-drag to launch, scroll to set mass. Body merging, fading trails, 5 presets: Binary Star, Solar System, Figure-8, Galaxy, Random.</div>
+      <div class="card-tags">
+        <span class="tag">physics</span>
+        <span class="tag">simulation</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 31</div>
+  </a>
+
   <a class="card" href="fractal.html">
-    <canvas class="preview" id="fractalCanvas"></canvas>
+    <canvas class="preview" id="fractalCanvas2"></canvas>
     <div class="card-body">
       <div class="card-title">Fractal Explorer</div>
       <div class="card-desc">WebGL2 Mandelbrot + Julia set dual viewer. GPU fragment shader with smooth (Hubbard-Douady) coloring. Hover Mandelbrot to update Julia c in real time. Scroll to zoom, drag to pan, 5 palettes, 6 presets.</div>
@@ -1429,9 +1443,47 @@
   requestAnimationFrame(loop);
 })();
 
+// ── Gravity preview (animated orbiting bodies) ────────────────────
+(function() {
+  const c = document.getElementById('gravityCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height, cx=W/2, cy=H/2;
+  const off=document.createElement('canvas');off.width=W;off.height=H;
+  const oCtx=off.getContext('2d');oCtx.fillStyle='#020204';oCtx.fillRect(0,0,W,H);
+  const bodies=[
+    {x:cx-30,y:cy,vx:0,vy:-1.2,m:8,hue:40,r:5},
+    {x:cx+30,y:cy,vx:0,vy:1.2,m:8,hue:210,r:5},
+    {x:cx,y:cy-55,vx:1.0,vy:0,m:2,hue:120,r:2.5},
+    {x:cx+50,y:cy+20,vx:-0.3,vy:0.8,m:1.5,hue:0,r:2},
+  ];
+  function step(){
+    const G=0.8,S=3;
+    for(const a of bodies){let ax=0,ay=0;for(const b of bodies){if(a===b)continue;const dx=b.x-a.x,dy=b.y-a.y,d2=dx*dx+dy*dy+S*S,f=G*b.m/(d2*Math.sqrt(d2));ax+=dx*f;ay+=dy*f;}a.vx+=ax*0.3;a.vy+=ay*0.3;a.x+=a.vx*0.3;a.y+=a.vy*0.3;}
+  }
+  let t=0;
+  function loop(){
+    for(let i=0;i<3;i++)step();
+    oCtx.fillStyle='rgba(2,2,4,0.08)';oCtx.fillRect(0,0,W,H);
+    for(const b of bodies){
+      oCtx.beginPath();oCtx.arc(b.x,b.y,b.r*0.4,0,Math.PI*2);
+      oCtx.fillStyle=`hsla(${b.hue},70%,55%,0.5)`;oCtx.fill();
+    }
+    ctx.drawImage(off,0,0);
+    for(const b of bodies){
+      ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);
+      ctx.fillStyle=`hsl(${b.hue},75%,60%)`;ctx.fill();
+    }
+    t=requestAnimationFrame(loop);
+  }
+  loop();
+  const obs=new IntersectionObserver(e=>{if(!e[0].isIntersecting)cancelAnimationFrame(t);else loop();});obs.observe(c);
+})();
+
 // ── Fractal preview (CPU Mandelbrot thumbnail) ────────────────────
 (function() {
-  const c = document.getElementById('fractalCanvas');
+  const c = document.getElementById('fractalCanvas') || document.getElementById('fractalCanvas2');
   if (!c) return;
   const ctx = c.getContext('2d');
   c.width = c.offsetWidth; c.height = c.offsetHeight;

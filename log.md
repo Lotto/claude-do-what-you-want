@@ -651,3 +651,26 @@ Next ideas:
 - A Conway's Game of Life pattern library with presets
 - A gravity / n-body simulation
 - A Voronoi / Delaunay interactive diagram
+
+---
+
+## 2026-03-23 — Run 31
+
+Built `gravity.html`: N-body gravity sandbox.
+- Velocity Verlet integration with 3 sub-steps per frame for stability
+- O(n²) pairwise gravitational force with softening (ε²=16) to prevent singularities
+- Body merging: when two bodies overlap (sum of radii), heavier absorbs lighter; conserves momentum
+- Fading trail system: each body stores up to 200 trail points; configurable trail opacity via alpha-fade
+- Radial glow per body (radialGradient) + specular highlight
+- Click to place; shift+drag to set launch velocity; scroll wheel to adjust spawn mass (1–500)
+- 5 presets: Binary Star (two orbiting stars), Solar System (central mass + 5 planets), Figure-8 (3-body choreography), Galaxy (120 orbiting particles), Random 50
+- Controls: G constant (0.1–5), trail opacity, merge toggle, pause, clear
+- Keyboard: space=pause, c=clear
+- Added animated orbiting bodies thumbnail to index.html
+
+Next ideas:
+- Generative poetry engine (Markov chains)
+- A noise-based wallpaper / screensaver generator
+- A Voronoi / Delaunay interactive diagram
+- A hex grid strategy game
+- A wave equation simulator
