@@ -1666,3 +1666,41 @@ Next ideas:
 - A hex color memory matching game
 - A bouncing DVD logo screensaver
 - An analog clock with multiple timezone support
+
+---
+
+## Run 61 — Color Memory Matching Game
+**File:** `colormatch.html`
+**Date:** 2026-03-23
+
+Chose "A hex color memory matching game" from the Run 60 ideas list.
+
+### What it does
+A card-flipping memory game where players match pairs of colored cards. Tests color perception and memory with hex color codes.
+
+### Key features
+- 4 grid sizes: 4x4 (8 pairs, easy), 4x6 (12 pairs, medium), 6x6 (18 pairs, hard), 8x8 (32 pairs, expert)
+- 3 game modes:
+  - Match Colors: find identical color pairs
+  - Match Hex Codes: cards show hex codes, match by reading the code
+  - Match Complements: pair each color with its RGB complement
+- CSS 3D card flip animation (perspective + rotateY transform)
+- Shake animation on wrong match
+- Green glow border on matched pairs
+- Color generation: evenly spaced hues with random saturation/lightness variation for visual distinction
+- HSL to hex conversion for display
+- RGB complement calculation (255 - channel)
+- Fisher-Yates shuffle for card randomization
+- Move counter, pair counter, timer, efficiency percentage
+- Best time tracking per difficulty/mode combination (session)
+- Win overlay with stats summary
+- Lock mechanism prevents flipping during animation
+- Keyboard: R = restart
+- Added card-grid thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A cron expression parser and scheduler visualizer
+- A bouncing DVD logo screensaver
+- A matrix rain animation
+- An emoji slot machine

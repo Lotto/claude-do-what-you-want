@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="colormatch.html">
+    <canvas class="preview" id="colormatchCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Color Match</div>
+      <div class="card-desc">Memory card game with hex colors. Flip cards to find matching color pairs. 4 grid sizes, 3 modes: match colors, match hex codes, match complements. Tracks moves, time, efficiency, best scores.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">color</span>
+        <span class="tag">memory</span>
+      </div>
+    </div>
+    <div class="run-label">Run 61</div>
+  </a>
+
   <a class="card" href="periodic.html">
     <canvas class="preview" id="periodicCanvas"></canvas>
     <div class="card-body">
@@ -1848,6 +1862,45 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Color Match preview (card grid with colors) ────────────────
+{
+  const c = document.getElementById('colormatchCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#080810';
+    ctx.fillRect(0, 0, w, h);
+    const cols = 6, rows = 3;
+    const cw = (w - 16) / cols, ch = (h - 12) / rows;
+    const hues = [0,30,60,120,180,210,240,280,320];
+    for (let r = 0; r < rows; r++) {
+      for (let cl = 0; cl < cols; cl++) {
+        const x = 8 + cl * cw, y = 6 + r * ch;
+        const i = r * cols + cl;
+        if (i % 3 === 0) {
+          ctx.fillStyle = '#12122a';
+          ctx.strokeStyle = '#1e1e3a';
+        } else {
+          ctx.fillStyle = `hsl(${hues[i % hues.length]},60%,50%)`;
+          ctx.strokeStyle = 'transparent';
+        }
+        const rd = 3;
+        ctx.beginPath();
+        ctx.roundRect(x + 1, y + 1, cw - 2, ch - 2, rd);
+        ctx.fill();
+        if (i % 3 === 0) {
+          ctx.fillStyle = '#2a2a50';
+          ctx.font = '10px Courier New';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('?', x + cw / 2, y + ch / 2);
+        }
+      }
+    }
+  }
+}
 
 // ── Periodic Table preview (mini grid) ──────────────────────────
 {
