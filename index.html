@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="platformer.html">
+    <canvas class="preview" id="platCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Platformer</div>
+      <div class="card-desc">Procedurally generated infinite platformer. Seeded RNG levels with gaps, spikes, floating platforms, coins, enemies. Stomp enemies, coyote time + jump buffering, parallax stars, 4 themes, touch controls.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">procedural</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 40</div>
+  </a>
+
   <a class="card" href="fftvis.html">
     <canvas class="preview" id="fftCanvas"></canvas>
     <div class="card-body">
@@ -1553,6 +1567,47 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Platformer preview (static scene) ─────────────────────────────
+(function() {
+  const c = document.getElementById('platCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#060610';
+  ctx.fillRect(0, 0, W, H);
+  // Stars
+  ctx.fillStyle = '#ffffff08';
+  for(let i=0;i<15;i++) ctx.fillRect((i*37)%W,(i*53)%H,1,1);
+  // Ground
+  const gy = H*0.72;
+  ctx.fillStyle = '#2a3040';
+  ctx.fillRect(0, gy, W, H-gy);
+  ctx.fillStyle = '#ffffff10';
+  ctx.fillRect(0, gy, W, 2);
+  // Gap
+  ctx.fillStyle = '#060610';
+  ctx.fillRect(W*0.45, gy, W*0.12, H);
+  // Spike in gap
+  ctx.fillStyle = '#c03030';
+  ctx.beginPath();ctx.moveTo(W*0.48,H-4);ctx.lineTo(W*0.51,gy+6);ctx.lineTo(W*0.54,H-4);ctx.fill();
+  // Platform
+  ctx.fillStyle = '#3a4a5a';
+  ctx.fillRect(W*0.3, H*0.48, W*0.2, 4);
+  // Coin
+  ctx.beginPath();ctx.arc(W*0.4,H*0.42,4,0,Math.PI*2);ctx.fillStyle='#ffd700';ctx.fill();
+  // Player
+  ctx.fillStyle = '#4090e0';
+  ctx.fillRect(W*0.2, gy-14, 10, 13);
+  ctx.fillStyle='#fff';ctx.fillRect(W*0.2+5,gy-12,3,3);ctx.fillRect(W*0.2+8,gy-12,2,3);
+  // Enemy
+  ctx.fillStyle = '#d04040';
+  ctx.fillRect(W*0.7, gy-12, 11, 11);
+  ctx.fillStyle='#fff';ctx.fillRect(W*0.7+2,gy-10,2,2);ctx.fillRect(W*0.7+6,gy-10,2,2);
+  // Flag
+  ctx.fillStyle='#40d070';ctx.fillRect(W*0.88,gy-18,2,18);ctx.fillRect(W*0.9,gy-18,8,6);
 })();
 
 // ── FFT Visualizer preview (static bars) ──────────────────────────

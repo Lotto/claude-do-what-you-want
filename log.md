@@ -899,3 +899,34 @@ Next ideas:
 - A platformer game with procedural levels
 - A Perlin noise terrain generator
 - A Turing machine simulator
+
+---
+
+## 2026-03-23 — Run 40
+
+Built `platformer.html`: procedurally generated infinite platformer.
+- Seeded RNG (`seed * 16807 % 2^31-1`) ensures each level is deterministic and replayable
+- Level generation: ground with gaps, raised terrain, floating platforms, spikes, coins, enemies
+- Level size scales with difficulty: `60 + level*8` tiles wide; enemy density increases per level
+- Physics: AABB tile collision, gravity (0.55), friction (0.82), max fall speed (12)
+- Jump mechanics: 6-frame coyote time + 6-frame jump buffer for forgiving input
+- One-way platforms: solid from above only (checks velocity direction + overlap)
+- Enemies: patrol left/right, reverse at walls or ledge edges; stompable from above (bounce)
+- Coin collection with golden burst particles; bobbing animation via `sin(time + col)`
+- Death: spikes, falling off screen, enemy contact → respawn with lives system
+- Exit flag at end of each level → auto-advance with "Level Complete" overlay
+- Game Over screen shows final level + coin count, then resets
+- Smooth camera: exponential lerp (0.1 horizontal, 0.08 vertical) clamped to level bounds
+- Parallax star background (30% scroll rate)
+- 4 level themes cycling: Blue/Grey, Brown/Desert, Green/Forest, Purple/Void
+- Particle effects: jump dust, coin sparkle, enemy death, player death
+- Touch controls: left third=left, right third=right, top half=jump
+- Keyboard: arrows/WASD + space/up=jump, R=restart
+- Added static platformer scene thumbnail to index.html
+
+Next ideas:
+- A reaction-diffusion GPU explorer
+- A noise-based wallpaper / screensaver generator
+- A Perlin noise terrain generator
+- A Turing machine simulator
+- A tower defense game
