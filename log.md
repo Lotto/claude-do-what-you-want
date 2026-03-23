@@ -1592,3 +1592,41 @@ Next ideas:
 - A cron expression parser and scheduler visualizer
 - A magnetic field line visualizer
 - An interactive periodic table
+
+---
+
+## Run 59 — Magnetic Field Visualizer
+**File:** `magfield.html`
+**Date:** 2026-03-23
+
+Chose "A magnetic field line visualizer" from the Run 58 ideas list.
+
+### What it does
+An interactive 2D magnetic field visualizer where users place North and South poles and see computed field lines, arrow grids, or potential heatmaps in real time.
+
+### Key features
+- Place N (positive) and S (negative) magnetic poles with configurable strength (1–10)
+- 4 visualization modes:
+  - Field Lines: traces from N poles outward using field direction integration (RK1/Euler steps)
+  - Arrow Grid: uniform grid of arrows showing field direction and magnitude (log-scaled length)
+  - Both: combined field lines + arrow overlay
+  - Potential Map: scalar potential heatmap (blue=negative, red=positive) via pixel-level computation
+- Field computation: 2D monopole model, B ∝ 1/r², summed across all poles
+- Configurable line count (8–64), integration steps (50–500)
+- Drag poles to rearrange in real time
+- Right-click to delete poles
+- Animated flow dots along field lines showing field direction
+- Color mode: rainbow hue per line or monochrome blue
+- 3 presets: Dipole, Quadrupole, Parallel (4-pole)
+- Pole rendering: colored circles with radial glow (red=N, blue=S)
+- Lines terminate when reaching opposite pole or leaving canvas bounds
+- Touch support for mobile
+- Keyboard: N/S = toggle polarity, C = clear, A = animate
+- Added dipole-field-lines thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A cron expression parser and scheduler visualizer
+- An interactive periodic table
+- A hex color memory matching game

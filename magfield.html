@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Magnetic Field</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+  input[type="range"] { width: 60px; accent-color: #4060a0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+
+  canvas { display: block; flex: 1; cursor: crosshair; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; }
+  .stat b { color: #505078; font-weight: normal; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Magnetic Field</h1>
+  <div class="sep"></div>
+  <button class="active" id="btnN" onclick="setPole('N')">+ North (N)</button>
+  <button id="btnS" onclick="setPole('S')">− South (S)</button>
+  <div class="sep"></div>
+  <label>Strength: <input type="range" id="rStr" min="1" max="10" value="5"></label>
+  <label>Lines: <input type="range" id="rLines" min="8" max="64" value="24" oninput="document.getElementById('lineVal').textContent=this.value"> <span id="lineVal">24</span></label>
+  <label>Steps: <input type="range" id="rSteps" min="50" max="500" value="200"></label>
+  <div class="sep"></div>
+  <select id="selVis" onchange="visMode=this.value;needsRedraw=true">
+    <option value="lines">Field Lines</option>
+    <option value="arrows">Arrow Grid</option>
+    <option value="both">Both</option>
+    <option value="potential">Potential Map</option>
+  </select>
+  <div class="sep"></div>
+  <label><input type="checkbox" id="chkColor" checked onchange="colorLines=this.checked;needsRedraw=true"> Color</label>
+  <label><input type="checkbox" id="chkAnimate" onchange="animate=this.checked"> Animate</label>
+  <div class="sep"></div>
+  <button onclick="clearPoles()">Clear (C)</button>
+  <button onclick="loadPreset('dipole')">Dipole</button>
+  <button onclick="loadPreset('quad')">Quadrupole</button>
+  <button onclick="loadPreset('parallel')">Parallel</button>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="statusBar">
+  <span class="stat">Poles: <b id="statPoles">0</b></span>
+  <span class="stat">Mode: <b id="statMode">lines</b></span>
+  <span class="stat">Click = place pole | Drag = move | Right-click = delete | N/S = toggle polarity</span>
+</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = canvas.width = canvas.clientWidth;
+  H = canvas.height = canvas.clientHeight;
+  needsRedraw = true;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── State ────────────────────────────────────────────────────────
+let poles = []; // { x, y, sign: +1 or -1, strength }
+let currentPole = 'N'; // N = +1, S = -1
+let visMode = 'lines';
+let colorLines = true;
+let animate = false;
+let animOffset = 0;
+let needsRedraw = true;
+let dragging = null;
+let dragOffset = { x: 0, y: 0 };
+
+function setPole(p) {
+  currentPole = p;
+  document.getElementById('btnN').classList.toggle('active', p === 'N');
+  document.getElementById('btnS').classList.toggle('active', p === 'S');
+}
+
+function clearPoles() {
+  poles = [];
+  needsRedraw = true;
+}
+
+function loadPreset(name) {
+  poles = [];
+  const mx = W / 2, my = H / 2;
+  switch (name) {
+    case 'dipole':
+      poles.push({ x: mx - 120, y: my, sign: 1, strength: 5 });
+      poles.push({ x: mx + 120, y: my, sign: -1, strength: 5 });
+      break;
+    case 'quad':
+      poles.push({ x: mx - 100, y: my - 100, sign: 1, strength: 4 });
+      poles.push({ x: mx + 100, y: my - 100, sign: -1, strength: 4 });
+      poles.push({ x: mx - 100, y: my + 100, sign: -1, strength: 4 });
+      poles.push({ x: mx + 100, y: my + 100, sign: 1, strength: 4 });
+      break;
+    case 'parallel':
+      poles.push({ x: mx - 150, y: my - 80, sign: 1, strength: 4 });
+      poles.push({ x: mx - 150, y: my + 80, sign: 1, strength: 4 });
+      poles.push({ x: mx + 150, y: my - 80, sign: -1, strength: 4 });
+      poles.push({ x: mx + 150, y: my + 80, sign: -1, strength: 4 });
+      break;
+  }
+  needsRedraw = true;
+}
+
+// ── Field computation ────────────────────────────────────────────
+function fieldAt(x, y) {
+  let bx = 0, by = 0;
+  for (const p of poles) {
+    const dx = x - p.x;
+    const dy = y - p.y;
+    const r2 = dx * dx + dy * dy;
+    const r = Math.sqrt(r2);
+    if (r < 5) continue;
+    const str = p.sign * p.strength * 1000;
+    // 2D monopole: B ∝ 1/r
+    const f = str / r2;
+    bx += f * dx / r;
+    by += f * dy / r;
+  }
+  return { x: bx, y: by };
+}
+
+function potentialAt(x, y) {
+  let v = 0;
+  for (const p of poles) {
+    const dx = x - p.x;
+    const dy = y - p.y;
+    const r = Math.sqrt(dx * dx + dy * dy);
+    if (r < 2) r = 2;
+    v += p.sign * p.strength * 100 / r;
+  }
+  return v;
+}
+
+// ── Drawing ──────────────────────────────────────────────────────
+function draw() {
+  ctx.fillStyle = '#080810';
+  ctx.fillRect(0, 0, W, H);
+
+  if (poles.length === 0) {
+    ctx.fillStyle = '#202040';
+    ctx.font = '14px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('Click to place magnetic poles', W / 2, H / 2);
+    ctx.fillText('or try a preset above', W / 2, H / 2 + 20);
+    return;
+  }
+
+  const mode = visMode;
+
+  if (mode === 'potential') drawPotentialMap();
+  if (mode === 'lines' || mode === 'both') drawFieldLines();
+  if (mode === 'arrows' || mode === 'both') drawArrowGrid();
+
+  // Draw poles
+  for (const p of poles) {
+    // Glow
+    const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 30);
+    const col = p.sign > 0 ? '255,60,60' : '60,100,255';
+    grad.addColorStop(0, `rgba(${col},0.3)`);
+    grad.addColorStop(1, `rgba(${col},0)`);
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 30, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Pole circle
+    ctx.fillStyle = p.sign > 0 ? '#ff4040' : '#4070ff';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 12px Courier New';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.sign > 0 ? 'N' : 'S', p.x, p.y);
+  }
+}
+
+function drawFieldLines() {
+  const numLines = +document.getElementById('rLines').value;
+  const maxSteps = +document.getElementById('rSteps').value;
+  const stepSize = 3;
+
+  for (const p of poles) {
+    if (p.sign < 0) continue; // only trace from N poles (or all if no N)
+
+    for (let i = 0; i < numLines; i++) {
+      const angle = (i / numLines) * Math.PI * 2;
+      const startX = p.x + Math.cos(angle) * 14;
+      const startY = p.y + Math.sin(angle) * 14;
+
+      traceLine(startX, startY, 1, maxSteps, stepSize, i / numLines);
+    }
+  }
+
+  // If only S poles, trace from them reversed
+  const hasN = poles.some(p => p.sign > 0);
+  if (!hasN) {
+    for (const p of poles) {
+      for (let i = 0; i < numLines; i++) {
+        const angle = (i / numLines) * Math.PI * 2;
+        const startX = p.x + Math.cos(angle) * 14;
+        const startY = p.y + Math.sin(angle) * 14;
+        traceLine(startX, startY, -1, maxSteps, stepSize, i / numLines);
+      }
+    }
+  }
+}
+
+function traceLine(sx, sy, dir, maxSteps, stepSize, hueBase) {
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+
+  let x = sx, y = sy;
+  let totalDist = 0;
+
+  for (let s = 0; s < maxSteps; s++) {
+    const b = fieldAt(x, y);
+    const mag = Math.sqrt(b.x * b.x + b.y * b.y);
+    if (mag < 0.0001) break;
+
+    const nx = (b.x / mag) * dir;
+    const ny = (b.y / mag) * dir;
+
+    x += nx * stepSize;
+    y += ny * stepSize;
+    totalDist += stepSize;
+
+    // Stop if out of bounds
+    if (x < -50 || x > W + 50 || y < -50 || y > H + 50) break;
+
+    // Stop if near a pole (reached destination)
+    let nearPole = false;
+    for (const p of poles) {
+      const dx = x - p.x;
+      const dy = y - p.y;
+      if (dx * dx + dy * dy < 144) { nearPole = true; break; }
+    }
+
+    ctx.lineTo(x, y);
+
+    if (nearPole) break;
+  }
+
+  if (colorLines) {
+    const hue = hueBase * 360;
+    ctx.strokeStyle = `hsla(${hue},70%,60%,0.6)`;
+  } else {
+    ctx.strokeStyle = 'rgba(100,140,220,0.4)';
+  }
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  // Draw animated dots along line if animating
+  if (animate) {
+    drawAnimDots(sx, sy, dir, maxSteps, stepSize);
+  }
+}
+
+function drawAnimDots(sx, sy, dir, maxSteps, stepSize) {
+  let x = sx, y = sy;
+  const dotSpacing = 20;
+
+  for (let s = 0; s < maxSteps; s++) {
+    const b = fieldAt(x, y);
+    const mag = Math.sqrt(b.x * b.x + b.y * b.y);
+    if (mag < 0.0001) break;
+
+    const nx = (b.x / mag) * dir;
+    const ny = (b.y / mag) * dir;
+
+    x += nx * stepSize;
+    y += ny * stepSize;
+
+    if (x < -50 || x > W + 50 || y < -50 || y > H + 50) break;
+
+    let nearPole = false;
+    for (const p of poles) {
+      if ((x - p.x) ** 2 + (y - p.y) ** 2 < 144) { nearPole = true; break; }
+    }
+    if (nearPole) break;
+
+    const phase = (s * stepSize + animOffset) % dotSpacing;
+    if (phase < stepSize * 1.5) {
+      ctx.fillStyle = 'rgba(200,220,255,0.8)';
+      ctx.beginPath();
+      ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function drawArrowGrid() {
+  const spacing = 30;
+  ctx.strokeStyle = 'rgba(100,140,200,0.3)';
+  ctx.fillStyle = 'rgba(100,140,200,0.3)';
+  ctx.lineWidth = 1;
+
+  for (let gx = spacing; gx < W; gx += spacing) {
+    for (let gy = spacing; gy < H; gy += spacing) {
+      const b = fieldAt(gx, gy);
+      const mag = Math.sqrt(b.x * b.x + b.y * b.y);
+      if (mag < 0.0001) continue;
+
+      const len = Math.min(12, Math.log(mag + 1) * 4);
+      const nx = b.x / mag;
+      const ny = b.y / mag;
+
+      const ex = gx + nx * len;
+      const ey = gy + ny * len;
+
+      ctx.beginPath();
+      ctx.moveTo(gx, gy);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+
+      // Arrowhead
+      const ax = nx * 3, ay = ny * 3;
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - ax - ay * 0.5, ey - ay + ax * 0.5);
+      ctx.lineTo(ex - ax + ay * 0.5, ey - ay - ax * 0.5);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+}
+
+function drawPotentialMap() {
+  const step = 4;
+  const imgData = ctx.createImageData(W, H);
+  const data = imgData.data;
+
+  // Find range first
+  let minV = Infinity, maxV = -Infinity;
+  const vals = [];
+  for (let y = 0; y < H; y += step) {
+    for (let x = 0; x < W; x += step) {
+      const v = potentialAt(x, y);
+      const clamped = Math.max(-50, Math.min(50, v));
+      vals.push(clamped);
+      if (clamped < minV) minV = clamped;
+      if (clamped > maxV) maxV = clamped;
+    }
+  }
+
+  let vi = 0;
+  for (let y = 0; y < H; y += step) {
+    for (let x = 0; x < W; x += step) {
+      const v = vals[vi++];
+      const t = (maxV !== minV) ? (v - minV) / (maxV - minV) : 0.5;
+
+      let r, g, b;
+      if (t < 0.5) {
+        // Blue to black
+        const s = t * 2;
+        r = 0; g = 0; b = Math.floor(s * 180);
+      } else {
+        // Black to red
+        const s = (t - 0.5) * 2;
+        r = Math.floor(s * 200); g = 0; b = 0;
+      }
+
+      for (let dy = 0; dy < step && y + dy < H; dy++) {
+        for (let dx = 0; dx < step && x + dx < W; dx++) {
+          const idx = ((y + dy) * W + (x + dx)) * 4;
+          data[idx] = r; data[idx+1] = g; data[idx+2] = b; data[idx+3] = 255;
+        }
+      }
+    }
+  }
+  ctx.putImageData(imgData, 0, 0);
+}
+
+// ── Input ────────────────────────────────────────────────────────
+function poleAt(x, y) {
+  for (let i = poles.length - 1; i >= 0; i--) {
+    const p = poles[i];
+    if ((x - p.x) ** 2 + (y - p.y) ** 2 < 400) return i;
+  }
+  return -1;
+}
+
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  if (e.button === 2) {
+    // Right click: delete
+    const idx = poleAt(mx, my);
+    if (idx >= 0) { poles.splice(idx, 1); needsRedraw = true; }
+    return;
+  }
+
+  const idx = poleAt(mx, my);
+  if (idx >= 0) {
+    dragging = idx;
+    dragOffset.x = poles[idx].x - mx;
+    dragOffset.y = poles[idx].y - my;
+  } else {
+    const str = +document.getElementById('rStr').value;
+    poles.push({ x: mx, y: my, sign: currentPole === 'N' ? 1 : -1, strength: str });
+    needsRedraw = true;
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (dragging === null) return;
+  const rect = canvas.getBoundingClientRect();
+  poles[dragging].x = e.clientX - rect.left + dragOffset.x;
+  poles[dragging].y = e.clientY - rect.top + dragOffset.y;
+  needsRedraw = true;
+});
+
+canvas.addEventListener('mouseup', () => { dragging = null; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// Touch
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  const mx = t.clientX - rect.left;
+  const my = t.clientY - rect.top;
+  const idx = poleAt(mx, my);
+  if (idx >= 0) {
+    dragging = idx;
+    dragOffset.x = poles[idx].x - mx;
+    dragOffset.y = poles[idx].y - my;
+  } else {
+    const str = +document.getElementById('rStr').value;
+    poles.push({ x: mx, y: my, sign: currentPole === 'N' ? 1 : -1, strength: str });
+    needsRedraw = true;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (dragging === null) return;
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  poles[dragging].x = t.clientX - rect.left + dragOffset.x;
+  poles[dragging].y = t.clientY - rect.top + dragOffset.y;
+  needsRedraw = true;
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { dragging = null; });
+
+// ── Keyboard ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'n') setPole('N');
+  if (e.key === 's') setPole('S');
+  if (e.key === 'c') clearPoles();
+  if (e.key === 'a') {
+    animate = !animate;
+    document.getElementById('chkAnimate').checked = animate;
+  }
+});
+
+// ── Loop ─────────────────────────────────────────────────────────
+function loop() {
+  if (animate) {
+    animOffset = (animOffset + 0.5) % 1000;
+    needsRedraw = true;
+  }
+
+  if (needsRedraw) {
+    draw();
+    needsRedraw = false;
+  }
+
+  document.getElementById('statPoles').textContent = poles.length;
+  document.getElementById('statMode').textContent = visMode;
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// Start with dipole
+loadPreset('dipole');
+</script>
+</body>
+</html>

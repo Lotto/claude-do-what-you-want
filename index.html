@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="magfield.html">
+    <canvas class="preview" id="magCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Magnetic Field</div>
+      <div class="card-desc">Interactive magnetic field line visualizer. Place N/S poles, drag to rearrange. Field lines, arrow grid, potential heatmap views. Animated flow dots, 3 presets (dipole, quadrupole, parallel).</div>
+      <div class="card-tags">
+        <span class="tag">physics</span>
+        <span class="tag">visualization</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 59</div>
+  </a>
+
   <a class="card" href="sand.html">
     <canvas class="preview" id="sandCanvas"></canvas>
     <div class="card-body">
@@ -1820,6 +1834,53 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Magnetic Field preview (dipole field lines) ────────────────
+{
+  const c = document.getElementById('magCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#080810';
+    ctx.fillRect(0, 0, w, h);
+    const cx = w / 2, cy = h / 2;
+    const pN = { x: cx - 25, y: cy }, pS = { x: cx + 25, y: cy };
+    // Draw field lines
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      let x = pN.x + Math.cos(a) * 6;
+      let y = pN.y + Math.sin(a) * 6;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      for (let s = 0; s < 80; s++) {
+        let bx = 0, by = 0;
+        for (const p of [{ ...pN, s: 1 }, { ...pS, s: -1 }]) {
+          const dx = x - p.x, dy = y - p.y;
+          const r2 = dx * dx + dy * dy;
+          const r = Math.sqrt(r2);
+          if (r < 3) { bx = 0; by = 0; break; }
+          const f = p.s * 500 / r2;
+          bx += f * dx / r; by += f * dy / r;
+        }
+        const m = Math.sqrt(bx * bx + by * by);
+        if (m < 0.001) break;
+        x += (bx / m) * 2; y += (by / m) * 2;
+        if (x < 0 || x > w || y < 0 || y > h) break;
+        if ((x - pS.x) ** 2 + (y - pS.y) ** 2 < 36) break;
+        ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = `hsla(${i * 30},70%,60%,0.5)`;
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+    }
+    // Poles
+    ctx.fillStyle = '#ff4040';
+    ctx.beginPath(); ctx.arc(pN.x, pN.y, 4, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#4070ff';
+    ctx.beginPath(); ctx.arc(pS.x, pS.y, 4, 0, Math.PI * 2); ctx.fill();
+  }
+}
 
 // ── Falling Sand preview (layered materials) ───────────────────
 {
