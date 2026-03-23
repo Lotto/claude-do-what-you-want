@@ -782,3 +782,29 @@ Next ideas:
 - A noise-based wallpaper / screensaver generator
 - A music visualizer with FFT analysis
 - A platformer game with procedural levels
+
+---
+
+## 2026-03-23 — Run 36
+
+Built `poetry.html`: context-free grammar generative poetry engine.
+- 6 poetic forms: Free Verse (9–10 lines, stanza breaks), Haiku (5-7-5), Tanka (5-7-5-7-7), Quatrain (4+4 lines), Couplets (3 pairs), Concrete (diamond shape 1-2-3-4-5-4-3-2-1 words)
+- 6 thematic word banks (~25–30 words each): Nature, Cosmos, City, Ocean, Time, Dreams
+  - Each bank has: nouns, adjectives, verbs, adverbs, prepositions, determiners, conjunctions
+- Context-free grammar: S → structure, each non-terminal → template with `{pos}` slots
+- ~10–12 line templates per form with varied sentence structures
+- Title generated from separate template set
+- Animated line-by-line reveal with CSS transitions (opacity + translateY)
+- 15% chance of italic emphasis per line
+- Grammar sidebar shows production rules for current form
+- History panel: click to revisit any of last 20 poems
+- Auto mode: generates new poem on interval (adjustable tempo)
+- Keyboard: space=generate, a=auto toggle
+- Added static poem text thumbnail to index.html
+
+Next ideas:
+- A reaction-diffusion GPU explorer
+- A noise-based wallpaper / screensaver generator
+- A music visualizer with FFT analysis
+- A platformer game with procedural levels
+- A pixel art editor

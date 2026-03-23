@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="poetry.html">
+    <canvas class="preview" id="poetryCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Poetry Engine</div>
+      <div class="card-desc">Context-free grammar generative poetry. 6 forms (free verse, haiku, tanka, quatrain, couplets, concrete), 6 themes (nature, cosmos, city, ocean, time, dreams). Animated reveal, grammar sidebar, auto mode.</div>
+      <div class="card-tags">
+        <span class="tag">generative</span>
+        <span class="tag">text</span>
+        <span class="tag">interactive</span>
+      </div>
+    </div>
+    <div class="run-label">Run 36</div>
+  </a>
+
   <a class="card" href="automata.html">
     <canvas class="preview" id="automataCanvas"></canvas>
     <div class="card-body">
@@ -1497,6 +1511,36 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Poetry preview (text lines on dark bg) ────────────────────────
+(function() {
+  const c = document.getElementById('poetryCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#020206';
+  ctx.fillRect(0, 0, W, H);
+  const lines = ['gentle forest','the ancient river falls','beneath pale stone','','wild moss and quiet fern','softly the dawn wakes'];
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  let y = H*0.15;
+  // Title
+  ctx.fillStyle = '#b0b0c8';
+  ctx.font = '9px Courier New';
+  ctx.fillText('silent meadow', W/2, y);
+  y += 18;
+  ctx.font = '8px Courier New';
+  for (const line of lines) {
+    if (!line) { y += 8; continue; }
+    ctx.fillStyle = '#6868888';
+    ctx.fillText(line, W/2, y);
+    y += 13;
+  }
+  ctx.fillStyle = '#303048';
+  ctx.font = '7px Courier New';
+  ctx.fillText('— generated · free · nature', W/2, H*0.88);
 })();
 
 // ── Automata preview (Rule 110 triangle) ──────────────────────────

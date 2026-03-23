@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Poetry Engine</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #020206; color: #a0a0b0; font: 11px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { padding: 7px 14px; background: #06060a; border-bottom: 1px solid #10101c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; }
+  button:hover { background: #12122a; color: #a0a0c8; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  #main { flex: 1; display: flex; overflow: hidden; }
+  #poem-panel { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px; overflow-y: auto; }
+  #poem { max-width: 600px; width: 100%; }
+  .poem-line { opacity: 0; transform: translateY(12px); transition: opacity 0.8s ease, transform 0.8s ease; margin: 6px 0; }
+  .poem-line.visible { opacity: 1; transform: translateY(0); }
+  .poem-title { font-size: 14px; color: #b0b0c8; letter-spacing: 0.15em; margin-bottom: 20px; text-align: center; }
+  .poem-text { font-size: 13px; line-height: 1.9; color: #8888a8; text-align: center; }
+  .poem-text.emphasis { color: #a0a0c8; font-style: italic; }
+  .poem-break { height: 16px; }
+  .poem-author { font-size: 10px; color: #404060; text-align: center; margin-top: 24px; letter-spacing: 0.1em; }
+  #sidebar { width: 260px; background: #04040a; border-left: 1px solid #10101c; padding: 14px; overflow-y: auto; flex-shrink: 0; }
+  #sidebar h2 { font-size: 10px; color: #606080; letter-spacing: 0.15em; text-transform: uppercase; margin: 14px 0 6px; }
+  #sidebar h2:first-child { margin-top: 0; }
+  .grammar-rule { font-size: 10px; color: #505068; margin: 2px 0; padding: 2px 4px; border-radius: 2px; }
+  .grammar-rule:hover { background: #0a0a18; }
+  .grammar-symbol { color: #6080b0; }
+  .grammar-arrow { color: #404060; margin: 0 4px; }
+  .grammar-terminal { color: #808098; }
+  #history { margin-top: 10px; }
+  .hist-item { font-size: 10px; color: #404060; padding: 3px 0; border-bottom: 1px solid #0a0a14; cursor: pointer; }
+  .hist-item:hover { color: #7070a0; }
+  canvas { display: none; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Poetry Engine</h1>
+  <div class="sep"></div>
+  <select id="selForm">
+    <option value="free">Free Verse</option>
+    <option value="haiku">Haiku</option>
+    <option value="tanka">Tanka</option>
+    <option value="quatrain">Quatrain</option>
+    <option value="couplet">Couplets</option>
+    <option value="concrete">Concrete</option>
+  </select>
+  <select id="selTheme">
+    <option value="nature">Nature</option>
+    <option value="cosmos">Cosmos</option>
+    <option value="city">City</option>
+    <option value="ocean">Ocean</option>
+    <option value="time">Time</option>
+    <option value="dream">Dreams</option>
+  </select>
+  <div class="sep"></div>
+  <button id="btnGenerate">Generate (Space)</button>
+  <button id="btnAuto">Auto</button>
+  <div class="sep"></div>
+  <label>Tempo <input type="range" id="rngTempo" min="1" max="10" step="1" value="5"></label>
+</div>
+<div id="main">
+  <div id="poem-panel">
+    <div id="poem"></div>
+  </div>
+  <div id="sidebar">
+    <h2>Grammar</h2>
+    <div id="grammarDisplay"></div>
+    <h2>History</h2>
+    <div id="history"></div>
+  </div>
+</div>
+<canvas id="c"></canvas>
+
+<script>
+'use strict';
+
+// ── Word banks (per theme) ───────────────────────────────────────
+const WORDS = {
+  nature: {
+    noun: ['river','forest','mountain','leaf','stone','rain','wind','tree','dawn','flower','meadow','bird','moss','shadow','cloud','frost','petal','branch','root','earth','vine','fern','brook','valley','ridge','sky','dew','thorn','seed','bark'],
+    adj: ['ancient','gentle','wild','golden','silver','quiet','deep','vast','thin','pale','bright','dark','soft','cold','warm','still','lone','green','misty','silent','hollow','tangled','fallen','woven','bare','weathered'],
+    verb: ['falls','drifts','grows','turns','breaks','whispers','sleeps','wakes','folds','bends','rises','sings','trembles','reaches','settles','blooms','scatters','gathers','echoes','fades','lingers','spirals','dissolves','shimmers'],
+    adv: ['slowly','softly','gently','endlessly','silently','deeply','barely','always','never','once','still','now','here','there','below','above','within','beyond'],
+    prep: ['beneath','above','between','among','through','across','within','beside','beyond','under','along','over','toward','around','against','into'],
+    det: ['the','a','this','that','each','every','no','one','some'],
+    conj: ['and','but','yet','while','as','when','where','though','until','before','after','like'],
+  },
+  cosmos: {
+    noun: ['star','void','nebula','comet','orbit','light','dust','signal','horizon','galaxy','nova','eclipse','quasar','pulse','photon','gravity','silence','infinity','atom','plasma','spectrum','wavelength','singularity','aurora','constellation'],
+    adj: ['infinite','distant','cold','burning','ancient','faint','bright','vast','hollow','dying','newborn','spinning','frozen','luminous','dark','radiant','spectral','ethereal','cosmic','stellar','quantum','binary','dormant'],
+    verb: ['expands','collapses','drifts','pulses','burns','fades','spins','radiates','echoes','fragments','aligns','orbits','implodes','scatters','ignites','converges','dissolves','emerges','oscillates','transforms'],
+    adv: ['endlessly','silently','slowly','forever','distantly','faintly','brightly','always','never','outward','inward','beyond','through','across','still'],
+    prep: ['beyond','through','across','within','between','above','beneath','among','past','toward','around','inside','outside','against'],
+    det: ['the','a','this','each','every','no','one','some','that'],
+    conj: ['and','but','yet','while','as','where','when','until','before','though'],
+  },
+  city: {
+    noun: ['street','light','window','wall','door','bridge','tower','wire','glass','crowd','train','smoke','clock','sign','alley','shadow','rain','neon','concrete','steel','corner','station','engine','noise','silence','rooftop','gutter','pavement'],
+    adj: ['empty','bright','dark','narrow','tall','broken','cold','warm','distant','flickering','rusted','grey','pale','sharp','blind','muted','electric','hollow','cracked','endless','familiar','forgotten','anonymous'],
+    verb: ['hums','flickers','passes','fades','echoes','rises','falls','rattles','glows','moves','stops','waits','drips','cracks','blinks','rumbles','drifts','pulses','shutters','vanishes','lingers'],
+    adv: ['always','never','somewhere','nowhere','quietly','loudly','slowly','quickly','barely','still','once','here','there','below','above','away','ahead','behind'],
+    prep: ['beneath','above','between','through','across','behind','beside','under','over','along','around','against','toward','inside','past','below'],
+    det: ['the','a','this','that','each','every','no','one','some'],
+    conj: ['and','but','yet','while','as','when','where','though','until'],
+  },
+  ocean: {
+    noun: ['wave','tide','shore','salt','foam','depth','current','coral','shell','sand','reef','whale','kelp','storm','horizon','anchor','hull','drift','abyss','surface','moon','pearl','harbor','vessel','sail','spray','undertow'],
+    adj: ['deep','vast','dark','cold','warm','gentle','rough','endless','still','churning','ancient','sunken','tidal','briny','phosphorescent','glassy','turquoise','emerald','grey','wild','calm','silent','translucent'],
+    verb: ['rises','falls','crashes','drifts','pulls','sinks','floats','swells','recedes','churns','glimmers','dissolves','carries','rolls','breaks','surges','retreats','whispers','roars','gathers','scatters'],
+    adv: ['endlessly','slowly','deeply','gently','always','never','far','below','above','outward','inward','still','here','there','beyond','softly'],
+    prep: ['beneath','above','below','between','through','across','under','over','beyond','along','around','within','against','toward','into'],
+    det: ['the','a','this','that','each','every','no','one','some'],
+    conj: ['and','but','yet','while','as','when','where','though','until'],
+  },
+  time: {
+    noun: ['moment','hour','clock','memory','dust','echo','shadow','thread','door','mirror','second','century','dawn','dusk','midnight','age','season','cycle','trace','fragment','passage','threshold','ruin','footprint','silence'],
+    adj: ['lost','forgotten','endless','brief','ancient','eternal','fleeting','slow','fast','still','broken','distant','fading','golden','grey','hollow','circular','linear','suspended','frozen','passing','quiet'],
+    verb: ['passes','fades','turns','returns','echoes','dissolves','erodes','unfolds','repeats','lingers','shifts','drifts','breaks','collapses','expands','accumulates','erases','remembers','forgets','measures','marks'],
+    adv: ['always','never','once','still','again','slowly','quickly','endlessly','briefly','forever','now','then','here','there','before','after','already','yet'],
+    prep: ['through','between','beyond','within','before','after','beneath','above','across','among','against','along','around','toward','until','past'],
+    det: ['the','a','this','that','each','every','no','one','some','all'],
+    conj: ['and','but','yet','while','as','when','where','though','until','before','after'],
+  },
+  dream: {
+    noun: ['door','mirror','corridor','face','voice','water','sky','staircase','garden','fog','window','key','room','thread','mask','feather','candle','moth','labyrinth','clock','shadow','flame','veil','echo','threshold'],
+    adj: ['strange','shifting','familiar','forgotten','lucid','dim','bright','hollow','endless','twisted','soft','sharp','transparent','blurred','floating','silent','impossible','fragile','vivid','pale','formless','crystalline'],
+    verb: ['opens','closes','shifts','dissolves','floats','falls','turns','speaks','whispers','vanishes','appears','transforms','unravels','folds','bends','shatters','glows','drifts','spirals','merges','fragments','reveals'],
+    adv: ['always','never','somewhere','nowhere','softly','slowly','suddenly','gently','barely','endlessly','here','there','within','beyond','almost','perhaps','silently'],
+    prep: ['through','beyond','within','between','behind','beneath','above','inside','outside','across','among','toward','past','beside','around','into'],
+    det: ['the','a','this','that','each','every','no','one','some'],
+    conj: ['and','but','yet','while','as','when','where','though','until','if'],
+  },
+};
+
+// ── Context-free grammar rules ───────────────────────────────────
+// S → line patterns; each line is a sentence pattern
+const GRAMMARS = {
+  free: {
+    poem: [
+      ['L','L','L','B','L','L','B','L','L','L'],
+      ['L','L','B','L','L','L','B','L','L'],
+      ['L','B','L','L','B','L','L','B','L'],
+    ],
+    L: [
+      '{det} {adj} {noun} {verb} {adv}',
+      '{prep} {det} {noun}, {det} {noun} {verb}',
+      '{adj} {noun} {conj} {adj} {noun}',
+      '{det} {noun} {verb} {prep} {det} {adj} {noun}',
+      '{adv}, {det} {noun} {verb}',
+      '{verb} {det} {adj} {noun}',
+      '{det} {noun} {verb} {conj} {verb}',
+      '{prep} {adj} {noun}',
+      '{noun} {prep} {noun}, {adj} {conj} {adj}',
+      '{adv} {det} {noun} {verb} {prep} {noun}',
+      '{det} {adj} {adj} {noun}',
+      '{conj} {det} {noun} {verb} {adv}',
+    ],
+  },
+  haiku: {
+    poem: [['H5','H7','H5']],
+    H5: [
+      '{adj} {noun}',
+      '{det} {noun} {verb}',
+      '{noun} {prep} {noun}',
+      '{adj} {adj} {noun}',
+      '{verb} {det} {noun}',
+    ],
+    H7: [
+      '{det} {adj} {noun} {verb} {adv}',
+      '{prep} {det} {adj} {noun}',
+      '{noun} {conj} {noun} {verb} {adv}',
+      '{det} {noun} {verb} {prep} {noun}',
+      '{adv} {det} {noun} {verb}',
+    ],
+  },
+  tanka: {
+    poem: [['H5','H7','H5','B','H7','H7']],
+    H5: [
+      '{adj} {noun}',
+      '{det} {noun} {verb}',
+      '{noun} {prep} {noun}',
+    ],
+    H7: [
+      '{det} {adj} {noun} {verb} {adv}',
+      '{prep} {det} {adj} {noun}',
+      '{noun} {conj} {noun} {verb} {adv}',
+    ],
+  },
+  quatrain: {
+    poem: [['L','L','L','L','B','L','L','L','L']],
+    L: [
+      '{det} {adj} {noun} {verb} {prep} {det} {noun}',
+      '{prep} {det} {adj} {noun}, {det} {noun} {verb}',
+      '{adv} {det} {noun} {verb} {conj} {verb}',
+      '{det} {noun} {verb} {prep} {adj} {noun}',
+      '{conj} {det} {adj} {noun} {verb} {adv}',
+    ],
+  },
+  couplet: {
+    poem: [['L','L','B','L','L','B','L','L']],
+    L: [
+      '{det} {adj} {noun} {verb} {prep} {noun}',
+      '{prep} {det} {noun}, {det} {adj} {noun}',
+      '{adv} {det} {noun} {verb} {adv}',
+      '{det} {noun} {conj} {det} {noun} {verb}',
+    ],
+  },
+  concrete: {
+    poem: [['C1','C2','C3','C4','C5','C4','C3','C2','C1']],
+    C1: ['{noun}'],
+    C2: ['{adj} {noun}'],
+    C3: ['{det} {adj} {noun}'],
+    C4: ['{det} {noun} {verb} {adv}'],
+    C5: ['{det} {adj} {noun} {verb} {prep} {det} {noun}'],
+  },
+};
+
+// ── Generator ────────────────────────────────────────────────────
+let currentForm = 'free';
+let currentTheme = 'nature';
+let autoMode = false;
+let autoTimer = null;
+let tempo = 5;
+let history = [];
+
+function pick(arr) { return arr[Math.random() * arr.length | 0]; }
+
+function expandTemplate(template, words) {
+  return template.replace(/\{(\w+)\}/g, (_, key) => {
+    if (words[key]) return pick(words[key]);
+    return key;
+  });
+}
+
+function generatePoem() {
+  const grammar = GRAMMARS[currentForm];
+  const words = WORDS[currentTheme];
+  const structure = pick(grammar.poem);
+
+  const lines = [];
+  for (const symbol of structure) {
+    if (symbol === 'B') {
+      lines.push({ type: 'break' });
+    } else if (grammar[symbol]) {
+      const template = pick(grammar[symbol]);
+      const text = expandTemplate(template, words);
+      const emphasis = Math.random() < 0.15;
+      lines.push({ type: 'text', text, emphasis });
+    }
+  }
+
+  // Generate title
+  const titleTemplates = [
+    '{adj} {noun}',
+    '{noun} {prep} {noun}',
+    '{det} {adj} {noun}',
+    '{noun} {conj} {noun}',
+    '{prep} {det} {noun}',
+  ];
+  const title = expandTemplate(pick(titleTemplates), words);
+
+  return { title, lines };
+}
+
+function displayPoem(poem) {
+  const container = document.getElementById('poem');
+  container.innerHTML = '';
+
+  // Title
+  const titleEl = document.createElement('div');
+  titleEl.className = 'poem-line poem-title';
+  titleEl.textContent = poem.title;
+  container.appendChild(titleEl);
+
+  // Lines
+  for (const line of poem.lines) {
+    const el = document.createElement('div');
+    if (line.type === 'break') {
+      el.className = 'poem-line poem-break';
+    } else {
+      el.className = `poem-line poem-text${line.emphasis ? ' emphasis' : ''}`;
+      el.textContent = line.text;
+    }
+    container.appendChild(el);
+  }
+
+  // Author line
+  const authorEl = document.createElement('div');
+  authorEl.className = 'poem-line poem-author';
+  authorEl.textContent = `— generated · ${currentForm} · ${currentTheme}`;
+  container.appendChild(authorEl);
+
+  // Animate in with stagger
+  const lineEls = container.querySelectorAll('.poem-line');
+  lineEls.forEach((el, i) => {
+    setTimeout(() => el.classList.add('visible'), 100 + i * (200 - tempo * 15));
+  });
+
+  // Add to history
+  const histText = poem.lines.filter(l => l.type === 'text').map(l => l.text).join(' / ');
+  history.unshift({ title: poem.title, text: histText, poem });
+  if (history.length > 20) history.pop();
+  updateHistory();
+  updateGrammarDisplay();
+}
+
+function generate() {
+  const poem = generatePoem();
+  displayPoem(poem);
+}
+
+// ── Grammar display ──────────────────────────────────────────────
+function updateGrammarDisplay() {
+  const el = document.getElementById('grammarDisplay');
+  const grammar = GRAMMARS[currentForm];
+  let html = '';
+
+  for (const [symbol, rules] of Object.entries(grammar)) {
+    if (symbol === 'poem') {
+      html += `<div class="grammar-rule"><span class="grammar-symbol">S</span><span class="grammar-arrow">→</span><span class="grammar-terminal">${rules[0].join(' ')}</span></div>`;
+    } else {
+      const sample = rules.slice(0, 3);
+      for (const rule of sample) {
+        html += `<div class="grammar-rule"><span class="grammar-symbol">${symbol}</span><span class="grammar-arrow">→</span><span class="grammar-terminal">${rule}</span></div>`;
+      }
+      if (rules.length > 3) {
+        html += `<div class="grammar-rule" style="color:#303048">  ... +${rules.length - 3} more</div>`;
+      }
+    }
+  }
+  el.innerHTML = html;
+}
+
+function updateHistory() {
+  const el = document.getElementById('history');
+  el.innerHTML = '';
+  for (const item of history) {
+    const div = document.createElement('div');
+    div.className = 'hist-item';
+    div.textContent = item.title;
+    div.addEventListener('click', () => displayPoem(item.poem));
+    el.appendChild(div);
+  }
+}
+
+// ── Auto mode ────────────────────────────────────────────────────
+function toggleAuto() {
+  autoMode = !autoMode;
+  document.getElementById('btnAuto').textContent = autoMode ? 'Stop' : 'Auto';
+  if (autoMode) {
+    autoTimer = setInterval(generate, 3000 + (10 - tempo) * 800);
+  } else {
+    clearInterval(autoTimer);
+  }
+}
+
+// ── Controls ─────────────────────────────────────────────────────
+document.getElementById('selForm').addEventListener('change', e => { currentForm = e.target.value; });
+document.getElementById('selTheme').addEventListener('change', e => { currentTheme = e.target.value; });
+document.getElementById('btnGenerate').addEventListener('click', generate);
+document.getElementById('btnAuto').addEventListener('click', toggleAuto);
+document.getElementById('rngTempo').addEventListener('input', e => {
+  tempo = parseInt(e.target.value);
+  if (autoMode) {
+    clearInterval(autoTimer);
+    autoTimer = setInterval(generate, 3000 + (10 - tempo) * 800);
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  if (e.key === ' ') { e.preventDefault(); generate(); }
+  if (e.key === 'a') toggleAuto();
+});
+
+// ── Init ─────────────────────────────────────────────────────────
+generate();
+</script>
+</body>
+</html>
