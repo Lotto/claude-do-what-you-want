@@ -930,3 +930,33 @@ Next ideas:
 - A Perlin noise terrain generator
 - A Turing machine simulator
 - A tower defense game
+
+---
+
+## 2026-03-23 — Run 41
+
+Built `turing.html`: visual Turing machine simulator.
+- Infinite tape (sparse object storage, reads blank for unset positions)
+- Animated tape display: cells scroll to keep head centered, head highlighted with glow + triangle indicator
+- Transition table: `(state, symbol) → (write, move, nextState)` displayed as interactive HTML table
+- Active transition row highlighted in real time as machine executes
+- Execution log panel: shows last 50 steps as `step: state[read] → write,move,next`
+- Step mode (single step) and run mode (continuous with adjustable speed 1–200 steps/sec)
+- Batch execution: at high speeds processes up to 20 steps per render frame
+- Accept states: machine halts and shows "Accepted" when entering an accept state
+- 6 programs:
+  - Binary Increment: scans to rightmost bit, propagates carry
+  - Palindrome Check: marks and matches outer symbols inward (accepts "abba")
+  - Unary Addition: replaces + with 1, erases trailing 1 (e.g. 111+11 → 11111)
+  - Binary Invert: flips 0↔1 left to right
+  - Busy Beaver 3: classic 3-state busy beaver (writes 6 ones, 14 steps)
+  - Duplicate String: marks, scans, copies each symbol past separator
+- Keyboard: space=run/pause, s=step, r=reset
+- Added tape cell thumbnail to index.html
+
+Next ideas:
+- A reaction-diffusion GPU explorer
+- A noise-based wallpaper / screensaver generator
+- A Perlin noise terrain generator
+- A tower defense game
+- A regex visualizer / tester

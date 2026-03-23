@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Turing Machine</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #020206; color: #a0a0b0; font: 11px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { padding: 7px 14px; background: #06060a; border-bottom: 1px solid #10101c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; }
+  button:hover { background: #12122a; color: #a0a0c8; }
+  button.active { background: #1a3060; color: #80c0ff; border-color: #3060a0; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  input[type=range] { width: 65px; accent-color: #4060c0; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  #main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+  #tape-area { height: 140px; position: relative; flex-shrink: 0; border-bottom: 1px solid #10101c; overflow: hidden; }
+  #tape-canvas { width: 100%; height: 100%; }
+  #bottom { flex: 1; display: flex; overflow: hidden; }
+  #table-panel { flex: 1; padding: 12px; overflow-y: auto; }
+  #log-panel { width: 240px; background: #04040a; border-left: 1px solid #10101c; padding: 10px; overflow-y: auto; flex-shrink: 0; }
+  #log-panel h2 { font-size: 10px; color: #606080; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 6px; }
+  .log-entry { font-size: 9px; color: #404060; padding: 1px 0; font-family: 'Courier New', monospace; }
+  .log-entry.active { color: #80a0d0; }
+  table { border-collapse: collapse; font-size: 10px; }
+  th { background: #08080f; color: #606080; padding: 4px 8px; border: 1px solid #141422; text-align: left; }
+  td { padding: 3px 8px; border: 1px solid #0e0e1a; color: #808098; }
+  td.highlight { background: #1a2040; color: #a0c0ff; }
+  tr:hover td { background: #0a0a18; }
+  .state-label { color: #6080c0; font-weight: bold; }
+  .dir { color: #80b080; }
+  .write-sym { color: #c0a060; }
+  #status { font-size: 11px; }
+  .running { color: #40c070; }
+  .halted { color: #e06040; }
+  .accepted { color: #60d0ff; }
+  #info { position: absolute; bottom: 8px; left: 12px; font-size: 10px; color: #1a1a30; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Turing Machine</h1>
+  <div class="sep"></div>
+  <select id="selPreset">
+    <option value="-1">— Program —</option>
+    <option value="0">Binary Increment</option>
+    <option value="1">Palindrome Check</option>
+    <option value="2">Unary Addition</option>
+    <option value="3">Binary Invert</option>
+    <option value="4">Busy Beaver 3</option>
+    <option value="5">Duplicate String</option>
+  </select>
+  <div class="sep"></div>
+  <button id="btnStep">Step (S)</button>
+  <button id="btnRun">Run (Space)</button>
+  <button id="btnReset">Reset (R)</button>
+  <div class="sep"></div>
+  <label>Speed <input type="range" id="rngSpeed" min="1" max="200" step="1" value="10"></label>
+  <div class="sep"></div>
+  <span id="status">Ready</span>
+  <span id="stepCount" style="font-size:10px;color:#404060;margin-left:8px"></span>
+</div>
+<div id="main">
+  <div id="tape-area">
+    <canvas id="tape-canvas"></canvas>
+  </div>
+  <div id="bottom">
+    <div id="table-panel">
+      <table id="transTable"></table>
+    </div>
+    <div id="log-panel">
+      <h2>Execution Log</h2>
+      <div id="log"></div>
+    </div>
+  </div>
+</div>
+<div id="info">step through or run · tape is infinite both directions · programs in transition table</div>
+
+<script>
+'use strict';
+
+const tapeCanvas = document.getElementById('tape-canvas');
+const tapeCtx = tapeCanvas.getContext('2d');
+
+// ── Machine state ────────────────────────────────────────────────
+let tape = {};         // sparse: position → symbol (string)
+let head = 0;          // head position
+let state = 'q0';      // current state
+let halted = false;
+let accepted = false;
+let running = false;
+let runTimer = null;
+let steps = 0;
+let speed = 10;        // steps per second
+let transitions = {};  // { "state,symbol": { write, move, nextState } }
+let states = [];       // ordered list
+let alphabet = [];     // symbols used
+let blankSym = '_';
+let acceptStates = new Set();
+let logEntries = [];
+
+function readTape(pos) {
+  return tape[pos] !== undefined ? tape[pos] : blankSym;
+}
+
+function writeTape(pos, sym) {
+  if (sym === blankSym) delete tape[pos];
+  else tape[pos] = sym;
+}
+
+// ── Step ─────────────────────────────────────────────────────────
+function step() {
+  if (halted) return false;
+  const sym = readTape(head);
+  const key = `${state},${sym}`;
+  const trans = transitions[key];
+
+  if (!trans) {
+    halted = true;
+    accepted = acceptStates.has(state);
+    updateStatus();
+    return false;
+  }
+
+  const oldState = state;
+  const oldSym = sym;
+
+  writeTape(head, trans.write);
+  state = trans.nextState;
+  head += trans.move === 'R' ? 1 : trans.move === 'L' ? -1 : 0;
+  steps++;
+
+  // Log
+  logEntries.push({
+    step: steps,
+    from: oldState, read: oldSym,
+    write: trans.write, move: trans.move, to: trans.nextState,
+  });
+  if (logEntries.length > 500) logEntries.shift();
+
+  if (acceptStates.has(state)) {
+    halted = true;
+    accepted = true;
+  }
+
+  updateStatus();
+  return true;
+}
+
+function updateStatus() {
+  const el = document.getElementById('status');
+  if (halted) {
+    if (accepted) { el.textContent = 'Accepted'; el.className = 'accepted'; }
+    else { el.textContent = 'Halted'; el.className = 'halted'; }
+  } else {
+    el.textContent = `State: ${state}`;
+    el.className = running ? 'running' : '';
+  }
+  document.getElementById('stepCount').textContent = `${steps} steps`;
+}
+
+// ── Programs ─────────────────────────────────────────────────────
+function loadProgram(prog) {
+  tape = {};
+  head = 0;
+  state = prog.start;
+  halted = false;
+  accepted = false;
+  steps = 0;
+  logEntries = [];
+  transitions = {};
+  acceptStates = new Set(prog.accept || []);
+  blankSym = prog.blank || '_';
+
+  // Write initial tape
+  if (prog.tape) {
+    for (let i = 0; i < prog.tape.length; i++) {
+      if (prog.tape[i] !== blankSym) tape[i] = prog.tape[i];
+    }
+  }
+  head = prog.headStart || 0;
+
+  // Load transitions
+  for (const t of prog.transitions) {
+    const key = `${t[0]},${t[1]}`;
+    transitions[key] = { write: t[2], move: t[3], nextState: t[4] };
+  }
+
+  // Extract states and alphabet
+  const stateSet = new Set(), alphaSet = new Set();
+  for (const t of prog.transitions) {
+    stateSet.add(t[0]); stateSet.add(t[4]);
+    alphaSet.add(t[1]); alphaSet.add(t[2]);
+  }
+  states = [...stateSet].sort();
+  alphabet = [...alphaSet].sort();
+
+  stopRun();
+  updateStatus();
+  renderTable();
+  renderTape();
+  renderLog();
+}
+
+const PROGRAMS = [
+  {
+    name: 'Binary Increment',
+    start: 'q0', accept: ['halt'],
+    blank: '_',
+    tape: '1','0','1','1'.split(''),
+    headStart: 3,
+    transitions: [
+      // Go to rightmost digit (already there for this setup — scan right first)
+      ['q0','0','0','R','q0'],
+      ['q0','1','1','R','q0'],
+      ['q0','_','_','L','carry'],
+      // Carry
+      ['carry','0','1','N','halt'],
+      ['carry','1','0','L','carry'],
+      ['carry','_','1','N','halt'],
+    ],
+  },
+  {
+    name: 'Palindrome Check',
+    start: 'q0', accept: ['yes'],
+    blank: '_',
+    tape: 'a','b','b','a'.split(''),
+    headStart: 0,
+    transitions: [
+      // Check first char
+      ['q0','a','_','R','findRa'],
+      ['q0','b','_','R','findRb'],
+      ['q0','_','_','N','yes'],
+      // Scan right for 'a'
+      ['findRa','a','a','R','findRa'],
+      ['findRa','b','b','R','findRa'],
+      ['findRa','_','_','L','matchA'],
+      // Match rightmost = a
+      ['matchA','a','_','L','goBack'],
+      ['matchA','b','b','N','no'],
+      ['matchA','_','_','N','yes'],
+      // Scan right for 'b'
+      ['findRb','a','a','R','findRb'],
+      ['findRb','b','b','R','findRb'],
+      ['findRb','_','_','L','matchB'],
+      // Match rightmost = b
+      ['matchB','b','_','L','goBack'],
+      ['matchB','a','a','N','no'],
+      ['matchB','_','_','N','yes'],
+      // Go back to left
+      ['goBack','a','a','L','goBack'],
+      ['goBack','b','b','L','goBack'],
+      ['goBack','_','_','R','q0'],
+    ],
+  },
+  {
+    name: 'Unary Addition',
+    start: 'q0', accept: ['halt'],
+    blank: '_',
+    tape: '1','1','1','+','1','1'.split(''),
+    headStart: 0,
+    transitions: [
+      // Scan right to find +
+      ['q0','1','1','R','q0'],
+      ['q0','+','1','R','find_end'],
+      // Find end of second number
+      ['find_end','1','1','R','find_end'],
+      ['find_end','_','_','L','erase'],
+      // Erase last 1
+      ['erase','1','_','N','halt'],
+    ],
+  },
+  {
+    name: 'Binary Invert',
+    start: 'q0', accept: ['halt'],
+    blank: '_',
+    tape: '1','0','1','1','0'.split(''),
+    headStart: 0,
+    transitions: [
+      ['q0','0','1','R','q0'],
+      ['q0','1','0','R','q0'],
+      ['q0','_','_','N','halt'],
+    ],
+  },
+  {
+    name: 'Busy Beaver 3',
+    start: 'A', accept: ['HALT'],
+    blank: '0',
+    tape: [],
+    headStart: 0,
+    transitions: [
+      ['A','0','1','R','B'],
+      ['A','1','1','L','C'],
+      ['B','0','1','L','A'],
+      ['B','1','1','R','B'],
+      ['C','0','1','L','B'],
+      ['C','1','1','N','HALT'],
+    ],
+  },
+  {
+    name: 'Duplicate String',
+    start: 'q0', accept: ['halt'],
+    blank: '_',
+    tape: '1','1','1'.split(''),
+    headStart: 0,
+    transitions: [
+      // Mark current 1 as X, go to end to write 1
+      ['q0','1','X','R','scan_r'],
+      ['q0','_','_','N','restore'],  // all marked, restore
+      // Scan right past remaining 1s and separator
+      ['scan_r','1','1','R','scan_r'],
+      ['scan_r','#','#','R','scan_r'],
+      ['scan_r','_','#','R','place'],
+      // Scan right in output to find blank
+      ['place','1','1','R','place'],
+      ['place','_','1','L','go_back'],
+      // Go all the way back to the X
+      ['go_back','1','1','L','go_back'],
+      ['go_back','#','#','L','go_back'],
+      ['go_back','X','X','R','skip_done'],
+      // Skip past already-done Xs
+      ['skip_done','X','X','R','skip_done'],
+      ['skip_done','1','X','R','scan_r'],
+      ['skip_done','#','#','N','restore'],
+      // Restore Xs back to 1s
+      ['restore','X','1','R','restore'],
+      ['restore','#','#','N','clean_sep'],
+      ['restore','_','_','N','halt'],
+      // Remove separator
+      ['clean_sep','_','_','L','clean_sep'],
+      ['clean_sep','1','1','N','halt'],
+    ],
+  },
+];
+
+// Fix tape arrays (string split quirk)
+PROGRAMS[0].tape = ['1','0','1','1'];
+PROGRAMS[1].tape = ['a','b','b','a'];
+PROGRAMS[2].tape = ['1','1','1','+','1','1'];
+PROGRAMS[3].tape = ['1','0','1','1','0'];
+PROGRAMS[5].tape = ['1','1','1'];
+
+// ── Tape rendering ───────────────────────────────────────────────
+function renderTape() {
+  const W = tapeCanvas.width = tapeCanvas.offsetWidth;
+  const H = tapeCanvas.height = tapeCanvas.offsetHeight;
+  tapeCtx.fillStyle = '#020206';
+  tapeCtx.fillRect(0, 0, W, H);
+
+  const cellW = 36, cellH = 42;
+  const centerX = W / 2;
+  const tapeY = H / 2 - cellH / 2;
+
+  // How many cells visible
+  const visible = Math.ceil(W / cellW) + 2;
+  const startCell = head - Math.floor(visible / 2);
+
+  for (let i = 0; i < visible; i++) {
+    const pos = startCell + i;
+    const x = centerX + (pos - head) * cellW - cellW / 2;
+    const sym = readTape(pos);
+    const isHead = pos === head;
+
+    // Cell background
+    if (isHead) {
+      tapeCtx.fillStyle = '#1a2a50';
+      tapeCtx.shadowColor = 'rgba(80,140,255,0.3)';
+      tapeCtx.shadowBlur = 10;
+    } else {
+      tapeCtx.fillStyle = '#0a0a18';
+      tapeCtx.shadowBlur = 0;
+    }
+    tapeCtx.fillRect(x, tapeY, cellW - 2, cellH);
+    tapeCtx.shadowBlur = 0;
+
+    // Border
+    tapeCtx.strokeStyle = isHead ? '#4080d0' : '#1a1a2c';
+    tapeCtx.lineWidth = isHead ? 2 : 1;
+    tapeCtx.strokeRect(x, tapeY, cellW - 2, cellH);
+
+    // Symbol
+    tapeCtx.fillStyle = sym === blankSym ? '#303048' : (isHead ? '#a0c0ff' : '#808098');
+    tapeCtx.font = 'bold 16px Courier New';
+    tapeCtx.textAlign = 'center';
+    tapeCtx.textBaseline = 'middle';
+    tapeCtx.fillText(sym, x + cellW / 2 - 1, tapeY + cellH / 2);
+
+    // Position number
+    tapeCtx.fillStyle = '#252538';
+    tapeCtx.font = '8px Courier New';
+    tapeCtx.fillText(pos, x + cellW / 2 - 1, tapeY + cellH + 10);
+  }
+
+  // Head indicator (triangle)
+  tapeCtx.fillStyle = '#4080d0';
+  const hx = centerX;
+  const hy = tapeY - 8;
+  tapeCtx.beginPath();
+  tapeCtx.moveTo(hx, hy + 8);
+  tapeCtx.lineTo(hx - 6, hy);
+  tapeCtx.lineTo(hx + 6, hy);
+  tapeCtx.closePath();
+  tapeCtx.fill();
+
+  // State label
+  tapeCtx.fillStyle = '#6080c0';
+  tapeCtx.font = 'bold 11px Courier New';
+  tapeCtx.fillText(state, centerX, hy - 6);
+}
+
+// ── Transition table rendering ───────────────────────────────────
+function renderTable() {
+  const table = document.getElementById('transTable');
+  let html = '<tr><th>State</th><th>Read</th><th>Write</th><th>Move</th><th>Next</th></tr>';
+
+  const keys = Object.keys(transitions).sort();
+  for (const key of keys) {
+    const [st, sym] = key.split(',');
+    const t = transitions[key];
+    const isActive = st === state && sym === readTape(head) && !halted;
+    const cls = isActive ? ' class="highlight"' : '';
+    html += `<tr>`;
+    html += `<td${cls}><span class="state-label">${st}</span></td>`;
+    html += `<td${cls}>${sym}</td>`;
+    html += `<td${cls}><span class="write-sym">${t.write}</span></td>`;
+    html += `<td${cls}><span class="dir">${t.move}</span></td>`;
+    html += `<td${cls}><span class="state-label">${t.nextState}</span></td>`;
+    html += `</tr>`;
+  }
+  table.innerHTML = html;
+}
+
+// ── Log rendering ────────────────────────────────────────────────
+function renderLog() {
+  const el = document.getElementById('log');
+  const recent = logEntries.slice(-50);
+  el.innerHTML = recent.map((e, i) => {
+    const isLast = i === recent.length - 1;
+    return `<div class="log-entry${isLast ? ' active' : ''}">${e.step}: ${e.from}[${e.read}] → ${e.write},${e.move},${e.to}</div>`;
+  }).join('');
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Run control ──────────────────────────────────────────────────
+function doStep() {
+  if (step()) {
+    renderTape();
+    renderTable();
+    renderLog();
+    return true;
+  }
+  return false;
+}
+
+function startRun() {
+  if (halted) return;
+  running = true;
+  document.getElementById('btnRun').textContent = 'Pause';
+  document.getElementById('btnRun').classList.add('active');
+  runLoop();
+}
+
+function stopRun() {
+  running = false;
+  clearTimeout(runTimer);
+  document.getElementById('btnRun').textContent = 'Run (Space)';
+  document.getElementById('btnRun').classList.remove('active');
+}
+
+function runLoop() {
+  if (!running || halted) { stopRun(); updateStatus(); return; }
+  const batch = Math.max(1, Math.min(20, speed / 10 | 0));
+  for (let i = 0; i < batch; i++) {
+    if (!step()) { stopRun(); break; }
+  }
+  renderTape();
+  renderTable();
+  renderLog();
+  runTimer = setTimeout(runLoop, Math.max(5, 1000 / speed));
+}
+
+function toggleRun() {
+  if (running) stopRun();
+  else startRun();
+}
+
+function reset() {
+  const idx = document.getElementById('selPreset').value;
+  if (idx >= 0) loadProgram(PROGRAMS[idx]);
+  else if (PROGRAMS[0]) loadProgram(PROGRAMS[0]);
+}
+
+// ── Controls ─────────────────────────────────────────────────────
+document.getElementById('selPreset').addEventListener('change', e => {
+  const i = parseInt(e.target.value);
+  if (i >= 0) loadProgram(PROGRAMS[i]);
+});
+
+document.getElementById('btnStep').addEventListener('click', doStep);
+document.getElementById('btnRun').addEventListener('click', toggleRun);
+document.getElementById('btnReset').addEventListener('click', reset);
+document.getElementById('rngSpeed').addEventListener('input', e => { speed = parseInt(e.target.value); });
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  if (e.key === ' ') { e.preventDefault(); toggleRun(); }
+  if (e.key === 's' || e.key === 'S') doStep();
+  if (e.key === 'r' || e.key === 'R') reset();
+});
+
+window.addEventListener('resize', () => { renderTape(); });
+
+// ── Init ─────────────────────────────────────────────────────────
+loadProgram(PROGRAMS[0]);
+</script>
+</body>
+</html>
