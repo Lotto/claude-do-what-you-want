@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diff Viewer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+
+  #main { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+
+  /* Input mode */
+  #inputMode { display: flex; flex: 1; overflow: hidden; }
+  .input-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .input-pane:first-child { border-right: 1px solid #141428; }
+  .pane-label { font-size: 9px; color: #303050; letter-spacing: 0.15em; text-transform: uppercase; padding: 4px 12px; background: #06060c; border-bottom: 1px solid #101020; flex-shrink: 0; }
+  .input-pane textarea {
+    flex: 1; background: #0a0a12; border: none; color: #c8c8e0; font: 12px/1.5 'Courier New', monospace;
+    padding: 8px 12px; outline: none; resize: none; tab-size: 4; white-space: pre; overflow: auto;
+  }
+
+  /* Diff output mode */
+  #diffMode { display: none; flex: 1; overflow: hidden; }
+
+  /* Side-by-side view */
+  #sideBySide { display: flex; flex: 1; overflow: hidden; }
+  .diff-pane { flex: 1; overflow: auto; min-width: 0; }
+  .diff-pane:first-child { border-right: 1px solid #141428; }
+
+  /* Unified view */
+  #unifiedView { flex: 1; overflow: auto; display: none; }
+
+  .diff-table { width: 100%; border-collapse: collapse; }
+  .diff-table td { padding: 0 8px; vertical-align: top; white-space: pre; font: 12px/1.6 'Courier New', monospace; }
+  .diff-gutter { width: 45px; min-width: 45px; text-align: right; color: #303050; user-select: none; padding-right: 8px !important; border-right: 1px solid #101020; }
+  .diff-code { padding-left: 10px !important; }
+
+  .diff-add { background: #0a2010; }
+  .diff-add .diff-code { color: #70c070; }
+  .diff-del { background: #200a0a; }
+  .diff-del .diff-code { color: #c07070; }
+  .diff-mod { background: #1a1a08; }
+  .diff-mod .diff-code { color: #c0c070; }
+  .diff-empty { background: #0c0c14; }
+  .diff-empty .diff-code { color: #202030; }
+  .diff-same .diff-code { color: #707088; }
+
+  .diff-highlight { background: rgba(255,255,100,0.08); border-radius: 2px; padding: 0 1px; }
+  .char-add { background: #1a4020; color: #90e090; border-radius: 2px; }
+  .char-del { background: #401a1a; color: #e09090; border-radius: 2px; }
+
+  /* Chunk separator */
+  .diff-chunk-sep td { background: #0a0a1a; color: #303060; font-size: 10px; padding: 2px 8px; border-top: 1px solid #101028; border-bottom: 1px solid #101028; }
+
+  /* Minimap */
+  #minimap { width: 40px; flex-shrink: 0; background: #06060c; border-left: 1px solid #101020; position: relative; cursor: pointer; }
+  #minimapCanvas { width: 100%; height: 100%; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; }
+  .stat b { color: #505078; font-weight: normal; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Diff Viewer</h1>
+  <div class="sep"></div>
+  <button id="btnCompare" onclick="compare()">Compare (Ctrl+Enter)</button>
+  <button id="btnEdit" onclick="showInput()" style="display:none">Edit</button>
+  <div class="sep"></div>
+  <button id="btnSide" class="active" onclick="setView('side')">Side by Side</button>
+  <button id="btnUnified" onclick="setView('unified')">Unified</button>
+  <div class="sep"></div>
+  <label style="color:#505068;font-size:11px">Context:
+    <select id="selContext" onchange="rerender()">
+      <option value="3">3 lines</option>
+      <option value="5">5 lines</option>
+      <option value="10">10 lines</option>
+      <option value="999" selected>Full</option>
+    </select>
+  </label>
+  <div class="sep"></div>
+  <button onclick="swapInputs()">Swap</button>
+  <button onclick="loadSample()">Sample</button>
+  <button id="btnPrev" onclick="navChunk(-1)" style="display:none">Prev Change</button>
+  <button id="btnNext" onclick="navChunk(1)" style="display:none">Next Change</button>
+</div>
+
+<div id="main">
+  <div id="inputMode">
+    <div class="input-pane">
+      <div class="pane-label">Original (Left)</div>
+      <textarea id="textA" spellcheck="false" placeholder="Paste original text here...">function greet(name) {
+  console.log("Hello, " + name);
+  return true;
+}
+
+function add(a, b) {
+  return a + b;
+}
+
+function multiply(a, b) {
+  return a * b;
+}
+
+const PI = 3.14;
+const greeting = "hello";</textarea>
+    </div>
+    <div class="input-pane">
+      <div class="pane-label">Modified (Right)</div>
+      <textarea id="textB" spellcheck="false" placeholder="Paste modified text here...">function greet(name, formal) {
+  const prefix = formal ? "Good day" : "Hello";
+  console.log(prefix + ", " + name + "!");
+  return true;
+}
+
+function add(a, b) {
+  return a + b;
+}
+
+function subtract(a, b) {
+  return a - b;
+}
+
+const PI = 3.14159;
+const greeting = "hello";
+const farewell = "goodbye";</textarea>
+    </div>
+  </div>
+
+  <div id="diffMode">
+    <div id="sideBySide">
+      <div class="diff-pane" id="leftPane"></div>
+      <div class="diff-pane" id="rightPane"></div>
+      <div id="minimap"><canvas id="minimapCanvas"></canvas></div>
+    </div>
+    <div id="unifiedView"></div>
+  </div>
+</div>
+
+<div id="statusBar">
+  <span class="stat">Added: <b id="statAdd">0</b></span>
+  <span class="stat">Removed: <b id="statDel">0</b></span>
+  <span class="stat">Modified: <b id="statMod">0</b></span>
+  <span class="stat">Unchanged: <b id="statSame">0</b></span>
+  <span class="stat">Chunks: <b id="statChunks">0</b></span>
+</div>
+
+<script>
+'use strict';
+
+let diffResult = null;
+let chunks = [];
+let currentView = 'side';
+let chunkPositions = [];
+
+// ── Myers diff (LCS-based) ─────────────────────────────────────
+function lcs(a, b) {
+  const m = a.length, n = b.length;
+  // Optimize for large inputs with O(ND) approach
+  if (m * n > 50000000) return simpleDiff(a, b);
+
+  const dp = new Uint16Array((m + 1) * (n + 1));
+  const W = n + 1;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (a[i - 1] === b[j - 1]) {
+        dp[i * W + j] = dp[(i - 1) * W + (j - 1)] + 1;
+      } else {
+        dp[i * W + j] = Math.max(dp[(i - 1) * W + j], dp[i * W + (j - 1)]);
+      }
+    }
+  }
+  // Backtrack
+  const ops = [];
+  let i = m, j = n;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && a[i - 1] === b[j - 1]) {
+      ops.unshift({ type: 'same', aIdx: i - 1, bIdx: j - 1 });
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i * W + (j - 1)] >= dp[(i - 1) * W + j])) {
+      ops.unshift({ type: 'add', bIdx: j - 1 });
+      j--;
+    } else {
+      ops.unshift({ type: 'del', aIdx: i - 1 });
+      i--;
+    }
+  }
+  return ops;
+}
+
+function simpleDiff(a, b) {
+  // For very large files, use a simpler line-by-line approach
+  const ops = [];
+  let i = 0, j = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      ops.push({ type: 'same', aIdx: i, bIdx: j });
+      i++; j++;
+    } else {
+      ops.push({ type: 'del', aIdx: i });
+      ops.push({ type: 'add', bIdx: j });
+      i++; j++;
+    }
+  }
+  while (i < a.length) { ops.push({ type: 'del', aIdx: i++ }); }
+  while (j < b.length) { ops.push({ type: 'add', bIdx: j++ }); }
+  return ops;
+}
+
+// ── Character-level diff for modified lines ─────────────────────
+function charDiff(oldLine, newLine) {
+  // Simple character LCS for highlighting inline changes
+  const m = oldLine.length, n = newLine.length;
+  if (m * n > 500000) return { old: escHtml(oldLine), new: escHtml(newLine) };
+
+  const dp = [];
+  for (let i = 0; i <= m; i++) {
+    dp[i] = new Uint16Array(n + 1);
+    for (let j = 0; j <= n; j++) {
+      if (i === 0 || j === 0) dp[i][j] = 0;
+      else if (oldLine[i - 1] === newLine[j - 1]) dp[i][j] = dp[i - 1][j - 1] + 1;
+      else dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+
+  let oldHtml = '', newHtml = '';
+  let i = m, j = n;
+  let oldBuf = '', newBuf = '';
+
+  function flushOld() { if (oldBuf) { oldHtml = `<span class="char-del">${escHtml(oldBuf)}</span>` + oldHtml; oldBuf = ''; } }
+  function flushNew() { if (newBuf) { newHtml = `<span class="char-add">${escHtml(newBuf)}</span>` + newHtml; newBuf = ''; } }
+
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldLine[i - 1] === newLine[j - 1]) {
+      flushOld(); flushNew();
+      oldHtml = escHtml(oldLine[i - 1]) + oldHtml;
+      newHtml = escHtml(newLine[j - 1]) + newHtml;
+      i--; j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      newBuf = newLine[j - 1] + newBuf;
+      j--;
+    } else {
+      oldBuf = oldLine[i - 1] + oldBuf;
+      i--;
+    }
+  }
+  flushOld(); flushNew();
+  return { old: oldHtml, new: newHtml };
+}
+
+function escHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// ── Build structured diff ───────────────────────────────────────
+function buildDiff(aLines, bLines) {
+  const ops = lcs(aLines, bLines);
+
+  // Group consecutive del+add as "modified" pairs
+  const rows = [];
+  let i = 0;
+  while (i < ops.length) {
+    if (ops[i].type === 'same') {
+      rows.push({ type: 'same', aLine: aLines[ops[i].aIdx], bLine: bLines[ops[i].bIdx], aNum: ops[i].aIdx + 1, bNum: ops[i].bIdx + 1 });
+      i++;
+    } else {
+      // Collect consecutive dels and adds
+      const dels = [], adds = [];
+      while (i < ops.length && ops[i].type === 'del') { dels.push(ops[i]); i++; }
+      while (i < ops.length && ops[i].type === 'add') { adds.push(ops[i]); i++; }
+
+      const maxLen = Math.max(dels.length, adds.length);
+      for (let k = 0; k < maxLen; k++) {
+        const d = k < dels.length ? dels[k] : null;
+        const a = k < adds.length ? adds[k] : null;
+
+        if (d && a) {
+          // Modified line — do char diff
+          const cd = charDiff(aLines[d.aIdx], bLines[a.bIdx]);
+          rows.push({ type: 'mod', aLine: aLines[d.aIdx], bLine: bLines[a.bIdx], aNum: d.aIdx + 1, bNum: a.bIdx + 1, aHtml: cd.old, bHtml: cd.new });
+        } else if (d) {
+          rows.push({ type: 'del', aLine: aLines[d.aIdx], aNum: d.aIdx + 1 });
+        } else if (a) {
+          rows.push({ type: 'add', bLine: bLines[a.bIdx], bNum: a.bIdx + 1 });
+        }
+      }
+    }
+  }
+  return rows;
+}
+
+// ── Build chunks with context ───────────────────────────────────
+function buildChunks(rows, contextLines) {
+  if (contextLines >= 999) return [{ rows, startA: 1, startB: 1 }];
+
+  const changed = rows.map((r, i) => r.type !== 'same' ? i : -1).filter(i => i >= 0);
+  if (changed.length === 0) return [];
+
+  const result = [];
+  let chunkRows = [];
+  let lastEnd = -1;
+
+  changed.forEach((ci, idx) => {
+    const start = Math.max(0, ci - contextLines);
+    const end = Math.min(rows.length - 1, ci + contextLines);
+
+    if (start > lastEnd + 1 && chunkRows.length > 0) {
+      result.push({ rows: chunkRows });
+      chunkRows = [];
+    }
+
+    const from = Math.max(lastEnd + 1, start);
+    for (let i = from; i <= end; i++) {
+      chunkRows.push(rows[i]);
+    }
+    lastEnd = end;
+  });
+
+  if (chunkRows.length > 0) result.push({ rows: chunkRows });
+  return result;
+}
+
+// ── Render side-by-side ─────────────────────────────────────────
+function renderSideBySide(allRows) {
+  const ctx = parseInt(document.getElementById('selContext').value);
+  const chs = buildChunks(allRows, ctx);
+  chunks = chs;
+
+  let leftHtml = '<table class="diff-table">';
+  let rightHtml = '<table class="diff-table">';
+
+  chs.forEach((chunk, ci) => {
+    if (ci > 0) {
+      leftHtml += `<tr class="diff-chunk-sep"><td colspan="2">...</td></tr>`;
+      rightHtml += `<tr class="diff-chunk-sep"><td colspan="2">...</td></tr>`;
+    }
+
+    chunk.rows.forEach(r => {
+      if (r.type === 'same') {
+        leftHtml += `<tr class="diff-same"><td class="diff-gutter">${r.aNum}</td><td class="diff-code">${escHtml(r.aLine)}</td></tr>`;
+        rightHtml += `<tr class="diff-same"><td class="diff-gutter">${r.bNum}</td><td class="diff-code">${escHtml(r.bLine)}</td></tr>`;
+      } else if (r.type === 'mod') {
+        leftHtml += `<tr class="diff-mod"><td class="diff-gutter">${r.aNum}</td><td class="diff-code">${r.aHtml}</td></tr>`;
+        rightHtml += `<tr class="diff-mod"><td class="diff-gutter">${r.bNum}</td><td class="diff-code">${r.bHtml}</td></tr>`;
+      } else if (r.type === 'del') {
+        leftHtml += `<tr class="diff-del"><td class="diff-gutter">${r.aNum}</td><td class="diff-code">${escHtml(r.aLine)}</td></tr>`;
+        rightHtml += `<tr class="diff-empty"><td class="diff-gutter"></td><td class="diff-code"></td></tr>`;
+      } else if (r.type === 'add') {
+        leftHtml += `<tr class="diff-empty"><td class="diff-gutter"></td><td class="diff-code"></td></tr>`;
+        rightHtml += `<tr class="diff-add"><td class="diff-gutter">${r.bNum}</td><td class="diff-code">${escHtml(r.bLine)}</td></tr>`;
+      }
+    });
+  });
+
+  leftHtml += '</table>';
+  rightHtml += '</table>';
+
+  document.getElementById('leftPane').innerHTML = leftHtml;
+  document.getElementById('rightPane').innerHTML = rightHtml;
+
+  // Sync scroll
+  syncPanes();
+  drawMinimap(allRows);
+}
+
+// ── Render unified ──────────────────────────────────────────────
+function renderUnified(allRows) {
+  const ctx = parseInt(document.getElementById('selContext').value);
+  const chs = buildChunks(allRows, ctx);
+
+  let html = '<table class="diff-table">';
+
+  chs.forEach((chunk, ci) => {
+    if (ci > 0) {
+      html += `<tr class="diff-chunk-sep"><td colspan="3">...</td></tr>`;
+    }
+    chunk.rows.forEach(r => {
+      if (r.type === 'same') {
+        html += `<tr class="diff-same"><td class="diff-gutter">${r.aNum}</td><td class="diff-gutter">${r.bNum}</td><td class="diff-code"> ${escHtml(r.aLine)}</td></tr>`;
+      } else if (r.type === 'mod') {
+        html += `<tr class="diff-del"><td class="diff-gutter">${r.aNum}</td><td class="diff-gutter"></td><td class="diff-code">-${r.aHtml}</td></tr>`;
+        html += `<tr class="diff-add"><td class="diff-gutter"></td><td class="diff-gutter">${r.bNum}</td><td class="diff-code">+${r.bHtml}</td></tr>`;
+      } else if (r.type === 'del') {
+        html += `<tr class="diff-del"><td class="diff-gutter">${r.aNum}</td><td class="diff-gutter"></td><td class="diff-code">-${escHtml(r.aLine)}</td></tr>`;
+      } else if (r.type === 'add') {
+        html += `<tr class="diff-add"><td class="diff-gutter"></td><td class="diff-gutter">${r.bNum}</td><td class="diff-code">+${escHtml(r.bLine)}</td></tr>`;
+      }
+    });
+  });
+
+  html += '</table>';
+  document.getElementById('unifiedView').innerHTML = html;
+}
+
+// ── Sync scroll between panes ───────────────────────────────────
+function syncPanes() {
+  const left = document.getElementById('leftPane');
+  const right = document.getElementById('rightPane');
+  let syncing = false;
+
+  left.addEventListener('scroll', () => {
+    if (syncing) return;
+    syncing = true;
+    right.scrollTop = left.scrollTop;
+    right.scrollLeft = left.scrollLeft;
+    syncing = false;
+  });
+  right.addEventListener('scroll', () => {
+    if (syncing) return;
+    syncing = true;
+    left.scrollTop = right.scrollTop;
+    left.scrollLeft = right.scrollLeft;
+    syncing = false;
+  });
+}
+
+// ── Minimap ─────────────────────────────────────────────────────
+function drawMinimap(allRows) {
+  const canvas = document.getElementById('minimapCanvas');
+  const container = document.getElementById('minimap');
+  canvas.width = container.clientWidth;
+  canvas.height = container.clientHeight;
+  const ctx = canvas.getContext('2d');
+  const H = canvas.height;
+  const lineH = Math.max(1, H / allRows.length);
+
+  ctx.fillStyle = '#06060c';
+  ctx.fillRect(0, 0, canvas.width, H);
+
+  allRows.forEach((r, i) => {
+    const y = (i / allRows.length) * H;
+    if (r.type === 'add') ctx.fillStyle = '#1a4020';
+    else if (r.type === 'del') ctx.fillStyle = '#401a1a';
+    else if (r.type === 'mod') ctx.fillStyle = '#3a3a10';
+    else return;
+    ctx.fillRect(0, y, canvas.width, Math.max(lineH, 1.5));
+  });
+
+  // Click to scroll
+  container.addEventListener('click', e => {
+    const rect = container.getBoundingClientRect();
+    const pct = (e.clientY - rect.top) / rect.height;
+    const pane = document.getElementById('leftPane');
+    pane.scrollTop = pct * (pane.scrollHeight - pane.clientHeight);
+  });
+}
+
+// ── Main compare ────────────────────────────────────────────────
+function compare() {
+  const aText = document.getElementById('textA').value;
+  const bText = document.getElementById('textB').value;
+  const aLines = aText.split('\n');
+  const bLines = bText.split('\n');
+
+  diffResult = buildDiff(aLines, bLines);
+
+  // Stats
+  let adds = 0, dels = 0, mods = 0, same = 0;
+  diffResult.forEach(r => {
+    if (r.type === 'add') adds++;
+    else if (r.type === 'del') dels++;
+    else if (r.type === 'mod') mods++;
+    else same++;
+  });
+  document.getElementById('statAdd').textContent = adds;
+  document.getElementById('statDel').textContent = dels;
+  document.getElementById('statMod').textContent = mods;
+  document.getElementById('statSame').textContent = same;
+
+  const changedChunks = buildChunks(diffResult, parseInt(document.getElementById('selContext').value));
+  document.getElementById('statChunks').textContent = changedChunks.length;
+
+  // Show diff mode
+  document.getElementById('inputMode').style.display = 'none';
+  document.getElementById('diffMode').style.display = 'flex';
+  document.getElementById('btnCompare').style.display = 'none';
+  document.getElementById('btnEdit').style.display = '';
+  document.getElementById('btnPrev').style.display = '';
+  document.getElementById('btnNext').style.display = '';
+
+  renderSideBySide(diffResult);
+  renderUnified(diffResult);
+}
+
+function rerender() {
+  if (!diffResult) return;
+  renderSideBySide(diffResult);
+  renderUnified(diffResult);
+}
+
+function showInput() {
+  document.getElementById('inputMode').style.display = 'flex';
+  document.getElementById('diffMode').style.display = 'none';
+  document.getElementById('btnCompare').style.display = '';
+  document.getElementById('btnEdit').style.display = 'none';
+  document.getElementById('btnPrev').style.display = 'none';
+  document.getElementById('btnNext').style.display = 'none';
+}
+
+function setView(v) {
+  currentView = v;
+  document.getElementById('btnSide').classList.toggle('active', v === 'side');
+  document.getElementById('btnUnified').classList.toggle('active', v === 'unified');
+  document.getElementById('sideBySide').style.display = v === 'side' ? 'flex' : 'none';
+  document.getElementById('unifiedView').style.display = v === 'unified' ? 'block' : 'none';
+}
+
+function swapInputs() {
+  const a = document.getElementById('textA');
+  const b = document.getElementById('textB');
+  const tmp = a.value;
+  a.value = b.value;
+  b.value = tmp;
+}
+
+// ── Navigate chunks ─────────────────────────────────────────────
+let currentChunkIdx = -1;
+
+function navChunk(dir) {
+  if (!diffResult) return;
+  // Find change rows
+  const changeIdxs = [];
+  const leftPane = document.getElementById('leftPane');
+  const rows = leftPane.querySelectorAll('tr.diff-add, tr.diff-del, tr.diff-mod');
+  if (rows.length === 0) return;
+
+  currentChunkIdx += dir;
+  if (currentChunkIdx < 0) currentChunkIdx = rows.length - 1;
+  if (currentChunkIdx >= rows.length) currentChunkIdx = 0;
+
+  rows[currentChunkIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// ── Sample ──────────────────────────────────────────────────────
+function loadSample() {
+  document.getElementById('textA').value = `<!DOCTYPE html>
+<html>
+<head>
+  <title>My App</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>Welcome</h1>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/about">About</a>
+    </nav>
+  </header>
+  <main>
+    <p>Hello World</p>
+  </main>
+  <footer>
+    <p>Copyright 2025</p>
+  </footer>
+</body>
+</html>`;
+
+  document.getElementById('textB').value = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <title>My App v2</title>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="theme.css">
+</head>
+<body>
+  <header class="main-header">
+    <h1>Welcome</h1>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/about">About</a>
+      <a href="/contact">Contact</a>
+    </nav>
+  </header>
+  <main>
+    <p>Hello World!</p>
+    <p>This is the new version.</p>
+  </main>
+  <footer>
+    <p>Copyright 2026</p>
+  </footer>
+</body>
+</html>`;
+}
+
+// ── Keyboard ────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    if (document.getElementById('inputMode').style.display !== 'none') compare();
+  }
+  if (e.key === 'Escape' && document.getElementById('diffMode').style.display !== 'none') {
+    showInput();
+  }
+  if (document.getElementById('diffMode').style.display !== 'none') {
+    if (e.key === 'n' || e.key === 'j') navChunk(1);
+    if (e.key === 'p' || e.key === 'k') navChunk(-1);
+  }
+});
+
+// ── Init ────────────────────────────────────────────────────────
+</script>
+</body>
+</html>

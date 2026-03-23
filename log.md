@@ -1223,3 +1223,38 @@ Next ideas:
 - A physics sandbox (rigid body with springs and gravity)
 - A diff viewer (side-by-side text comparison)
 - A binary/hex/decimal converter calculator
+
+---
+
+## 2026-03-23 — Run 50
+
+Built `diff.html`: side-by-side and unified text diff viewer with character-level highlighting.
+- LCS-based diff algorithm:
+  - Dynamic programming longest common subsequence for line-level alignment
+  - O(mn) DP table with Uint16Array for memory efficiency
+  - Fallback simple diff for very large inputs (m*n > 50M)
+  - Backtracking to produce same/add/del operations
+- Character-level inline diff:
+  - Secondary LCS on modified line pairs to identify exact character changes
+  - Changed characters highlighted with colored background spans (char-add/char-del)
+- Two view modes:
+  - Side-by-side: synchronized dual panes with matched line numbers
+  - Unified: single pane with +/- prefixes (git-style)
+- Configurable context: 3, 5, 10 lines, or full file
+  - Chunks separated by `...` separators when context < full
+- Color coding: green (added), red (removed), yellow (modified), gray (unchanged), dark (empty filler)
+- Minimap: canvas sidebar showing change locations as colored bars, click to scroll
+- Chunk navigation: Prev/Next Change buttons, n/j and p/k keyboard shortcuts
+- Synchronized scroll between left and right panes
+- Stats bar: added/removed/modified/unchanged line counts, chunk count
+- Swap button to reverse left/right inputs
+- Sample button loads HTML before/after example
+- Keyboard: Ctrl+Enter = compare, Escape = back to edit, n/p = navigate changes
+- Added side-by-side preview thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A physics sandbox (rigid body with springs and gravity)
+- A binary/hex/decimal converter calculator
+- A cron expression parser and scheduler visualizer

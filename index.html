@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="diff.html">
+    <canvas class="preview" id="diffCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Diff Viewer</div>
+      <div class="card-desc">Side-by-side and unified text diff with LCS algorithm, character-level inline highlighting, minimap, chunk navigation, context control, synchronized scroll.</div>
+      <div class="card-tags">
+        <span class="tag">tool</span>
+        <span class="tag">diff</span>
+        <span class="tag">dev</span>
+      </div>
+    </div>
+    <div class="run-label">Run 50</div>
+  </a>
+
   <a class="card" href="gradient.html">
     <canvas class="preview" id="gradCanvas"></canvas>
     <div class="card-body">
@@ -1693,6 +1707,64 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Diff Viewer preview (side-by-side lines) ────────────────────
+(function() {
+  const c = document.getElementById('diffCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#0a0a12';
+  ctx.fillRect(0, 0, W, H);
+  const mid = W / 2;
+  ctx.fillStyle = '#141428';
+  ctx.fillRect(mid - 0.5, 0, 1, H);
+  ctx.font = '7px "Courier New",monospace';
+  const lines = [
+    { type: 'same', t: 'function greet()' },
+    { type: 'del',  t: '  log("Hello")' },
+    { type: 'add',  t: '  log("Hi there")' },
+    { type: 'same', t: '  return true;' },
+    { type: 'same', t: '}' },
+    { type: 'del',  t: 'const x = 10;' },
+    { type: 'add',  t: 'const x = 42;' },
+    { type: 'same', t: '' },
+    { type: 'add',  t: 'const y = 99;' },
+  ];
+  let ly = 0, ln = 1, rn = 1;
+  lines.forEach(l => {
+    const y = 8 + ly * 9;
+    if (l.type === 'same') {
+      ctx.fillStyle = '#303050';
+      ctx.fillText(ln+'', 2, y); ctx.fillText(rn+'', mid+2, y);
+      ctx.fillStyle = '#505068';
+      ctx.fillText(l.t, 16, y); ctx.fillText(l.t, mid+16, y);
+      ln++; rn++;
+    } else if (l.type === 'del') {
+      ctx.fillStyle = '#200a0a';
+      ctx.fillRect(0, y-7, mid-1, 9);
+      ctx.fillStyle = '#303050';
+      ctx.fillText(ln+'', 2, y);
+      ctx.fillStyle = '#c07070';
+      ctx.fillText(l.t, 16, y);
+      ctx.fillStyle = '#0c0c14';
+      ctx.fillRect(mid+1, y-7, mid-1, 9);
+      ln++;
+    } else {
+      ctx.fillStyle = '#0c0c14';
+      ctx.fillRect(0, y-7, mid-1, 9);
+      ctx.fillStyle = '#0a2010';
+      ctx.fillRect(mid+1, y-7, mid-1, 9);
+      ctx.fillStyle = '#303050';
+      ctx.fillText(rn+'', mid+2, y);
+      ctx.fillStyle = '#70c070';
+      ctx.fillText(l.t, mid+16, y);
+      rn++;
+    }
+    ly++;
+  });
 })();
 
 // ── Gradient Builder preview (gradient bar with stops) ──────────
