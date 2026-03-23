@@ -2016,3 +2016,39 @@ Next ideas:
 - An oscilloscope waveform display
 - A typing effect / typewriter animation tool
 - A Minesweeper game
+
+---
+
+## Run 70 — Minesweeper
+**File:** `minesweeper.html`
+**Date:** 2026-03-23
+
+Chose "A Minesweeper game" from the Run 69 ideas list.
+
+### What it does
+A faithful recreation of classic Minesweeper with 4 difficulty levels, all standard mechanics, and session statistics.
+
+### Key features
+- 4 difficulties: Easy (9×9, 10 mines), Medium (16×16, 40), Hard (30×16, 99), Extreme (30×20, 150)
+- Safe first click: mines placed after first click, guaranteeing safe opening with 3×3 safe zone
+- Recursive flood-fill: clicking a zero cell reveals all connected zero cells and their numbered borders
+- Chord clicking: left-click or middle-click on revealed number auto-reveals neighbors when adjacent flag count matches
+- Flag cycling: right-click cycles through none → flag → question mark → none
+- Mine counter: shows remaining mines (total minus flags placed)
+- Timer: starts on first click, counts seconds, stops on win/loss
+- Game states:
+  - Win: all non-mine cells revealed, auto-flags remaining mines, 😎 face
+  - Loss: reveals all mines, highlights the exploded mine in red, 😵 face
+  - Playing: 😊 face
+- Color-coded numbers: 1=blue, 2=green, 3=red, 4=purple, 5=brown, 6=teal, 7=gray, 8=light gray
+- Session stats: games played, wins, best time per difficulty, win rate
+- CSS grid layout with responsive cell sizing
+- Keyboard: R = new game
+- Added grid-with-numbers thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A cron expression parser and scheduler visualizer
+- An oscilloscope waveform display
+- A Tetris clone
+- A pixel font / bitmap text editor

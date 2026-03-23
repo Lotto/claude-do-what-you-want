@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="minesweeper.html">
+    <canvas class="preview" id="mineCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Minesweeper</div>
+      <div class="card-desc">Classic Minesweeper with 4 difficulties (9×9 to 30×20). Flood-fill reveal, chord clicking, flag/question marks, safe first click, timer, mine counter, win rate tracking, best times.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">puzzle</span>
+        <span class="tag">classic</span>
+      </div>
+    </div>
+    <div class="run-label">Run 70</div>
+  </a>
+
   <a class="card" href="isometric.html">
     <canvas class="preview" id="isoCanvas"></canvas>
     <div class="card-body">
@@ -1974,6 +1988,45 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Minesweeper preview (grid with numbers) ─────────────────────
+{
+  const c = document.getElementById('mineCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#080810';
+    ctx.fillRect(0, 0, w, h);
+    const gs = 8, cs = Math.min((w - 8) / gs, (h - 8) / gs);
+    const ox = (w - gs * cs) / 2, oy = (h - gs * cs) / 2;
+    const nums = [[0,1,0,0,1,0,0,0],[1,0,0,1,0,0,1,0],[0,0,2,0,0,1,0,0],[0,1,0,'f',2,0,0,1],[1,0,0,2,'f',0,1,0],[0,0,1,0,1,0,0,0],[0,1,0,0,0,1,0,0],[0,0,0,1,0,0,0,0]];
+    const ncols = ['','#4080ff','#40a040','#e04040'];
+    ctx.font = `bold ${cs * 0.55}px Courier New`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (let r = 0; r < gs; r++) {
+      for (let cl = 0; cl < gs; cl++) {
+        const x = ox + cl * cs, y = oy + r * cs;
+        const v = nums[r][cl];
+        if (v === 'f') {
+          ctx.fillStyle = '#161630';
+          ctx.fillRect(x, y, cs - 1, cs - 1);
+          ctx.font = `${cs * 0.5}px serif`;
+          ctx.fillText('🚩', x + cs / 2, y + cs / 2);
+          ctx.font = `bold ${cs * 0.55}px Courier New`;
+        } else if (v === 0) {
+          ctx.fillStyle = '#0c0c1a';
+          ctx.fillRect(x, y, cs - 1, cs - 1);
+        } else {
+          ctx.fillStyle = '#0c0c1a';
+          ctx.fillRect(x, y, cs - 1, cs - 1);
+          ctx.fillStyle = ncols[v] || '#4080ff';
+          ctx.fillText(v, x + cs / 2, y + cs / 2);
+        }
+      }
+    }
+  }
+}
 
 // ── Isometric Builder preview (cube stack) ──────────────────────
 {
