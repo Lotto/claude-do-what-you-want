@@ -1975,3 +1975,44 @@ Next ideas:
 - An oscilloscope waveform display
 - An isometric cube world builder
 - A typing effect / typewriter animation tool
+
+---
+
+## Run 69 — Isometric Cube World Builder
+**File:** `isometric.html`
+**Date:** 2026-03-23
+
+Chose "An isometric cube world builder" from the Run 68 ideas list.
+
+### What it does
+A voxel-style world builder using isometric projection. Place, remove, and paint cubes on a 16×16 grid with 16 vertical layers.
+
+### Key features
+- Isometric projection: 2:1 diamond tile ratio with 3-face cube rendering (top, left, right)
+- 16×16×16 build volume with layer-by-layer editing
+- 3 tools: Place (add cubes), Remove (delete cubes), Paint (recolor existing cubes)
+- 8 material colors: grass, dirt, stone, sand, purple, teal, red, gray
+  - Each material has distinct top/left/right face shading for 3D illusion
+- Painter's algorithm: cubes sorted by (x+y+z*0.01) for correct depth ordering
+- Grid overlay: shows isometric diamond grid on current layer
+- Hover preview: semi-transparent ghost cube follows cursor in place mode
+- Pan view: middle/right-click drag to pan camera offset
+- Scroll wheel: change active layer up/down
+- Click-and-drag: continuous placement/removal while mouse button held
+- 4 presets:
+  - Flat: 12×12 grass platform
+  - Pyramid: 6-layer stepped pyramid with color gradient
+  - Stairs: ascending staircase with stone/gray
+  - Castle: walled fortress with 4 corner towers, gate opening, crenellations
+- PNG export
+- Touch support
+- Keyboard: 1/2/3 = tools, C = clear, Q/E = layer up/down
+- Map stored as string-keyed Map ("x,y,z" → colorIndex) for sparse storage
+- Added castle-preview thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A cron expression parser and scheduler visualizer
+- An oscilloscope waveform display
+- A typing effect / typewriter animation tool
+- A Minesweeper game

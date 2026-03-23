@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="isometric.html">
+    <canvas class="preview" id="isoCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Isometric Builder</div>
+      <div class="card-desc">Voxel world builder with isometric projection. Place, remove, paint cubes on a 16×16×16 grid. 8 materials, layer-by-layer editing, pan view, 4 presets (flat, pyramid, stairs, castle). PNG export.</div>
+      <div class="card-tags">
+        <span class="tag">3D</span>
+        <span class="tag">builder</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 69</div>
+  </a>
+
   <a class="card" href="dvd.html">
     <canvas class="preview" id="dvdCanvas"></canvas>
     <div class="card-body">
@@ -1960,6 +1974,37 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Isometric Builder preview (cube stack) ──────────────────────
+{
+  const c = document.getElementById('isoCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#080810';
+    ctx.fillRect(0, 0, w, h);
+    const tw = 14, th = 7, ch = 9;
+    const cx = w / 2, cy = h * 0.55;
+    function iso(gx, gy, gz) {
+      return { x: cx + (gx - gy) * tw / 2, y: cy + (gx + gy) * th / 2 - gz * ch };
+    }
+    function cube(gx, gy, gz, top, left, right) {
+      const p = iso(gx, gy, gz);
+      const hw = tw / 2, hh = th / 2;
+      ctx.fillStyle = top;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y - hh); ctx.lineTo(p.x + hw, p.y); ctx.lineTo(p.x, p.y + hh); ctx.lineTo(p.x - hw, p.y); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = left;
+      ctx.beginPath(); ctx.moveTo(p.x - hw, p.y); ctx.lineTo(p.x, p.y + hh); ctx.lineTo(p.x, p.y + hh + ch); ctx.lineTo(p.x - hw, p.y + ch); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = right;
+      ctx.beginPath(); ctx.moveTo(p.x + hw, p.y); ctx.lineTo(p.x, p.y + hh); ctx.lineTo(p.x, p.y + hh + ch); ctx.lineTo(p.x + hw, p.y + ch); ctx.closePath(); ctx.fill();
+    }
+    // Small castle preview
+    for (let x = 0; x < 5; x++) for (let y = 0; y < 5; y++) cube(x, y, 0, '#9a9a9a', '#5a5a5a', '#7a7a7a');
+    for (let z = 1; z <= 2; z++) { for (let i = 0; i < 5; i++) { cube(i, 0, z, '#6a7aaa', '#3a4a7a', '#4a5a8a'); cube(i, 4, z, '#6a7aaa', '#3a4a7a', '#4a5a8a'); cube(0, i, z, '#6a7aaa', '#3a4a7a', '#4a5a8a'); cube(4, i, z, '#6a7aaa', '#3a4a7a', '#4a5a8a'); } }
+    for (let z = 1; z <= 3; z++) { cube(0, 0, z, '#aa4a4a', '#7a2a2a', '#8a3a3a'); cube(4, 0, z, '#aa4a4a', '#7a2a2a', '#8a3a3a'); cube(0, 4, z, '#aa4a4a', '#7a2a2a', '#8a3a3a'); cube(4, 4, z, '#aa4a4a', '#7a2a2a', '#8a3a3a'); }
+  }
+}
 
 // ── DVD Bounce preview (bouncing text) ──────────────────────────
 {

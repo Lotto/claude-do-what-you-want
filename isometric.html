@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Isometric Builder</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+  input[type="range"] { width: 60px; accent-color: #4060a0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+
+  .color-btn { width: 20px; height: 20px; border: 2px solid #1a1a30; border-radius: 3px; cursor: pointer; padding: 0; }
+  .color-btn.active { border-color: #80b0ff; box-shadow: 0 0 4px rgba(80,140,255,0.4); }
+
+  canvas { display: block; flex: 1; cursor: crosshair; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; }
+  .stat b { color: #505078; font-weight: normal; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Isometric Builder</h1>
+  <div class="sep"></div>
+  <button class="active" id="btnPlace" onclick="setTool('place')">Place (1)</button>
+  <button id="btnRemove" onclick="setTool('remove')">Remove (2)</button>
+  <button id="btnPaint" onclick="setTool('paint')">Paint (3)</button>
+  <div class="sep"></div>
+  <button class="color-btn active" id="c0" style="background:#4a7a4a" onclick="selectColor(0)"></button>
+  <button class="color-btn" id="c1" style="background:#7a5a3a" onclick="selectColor(1)"></button>
+  <button class="color-btn" id="c2" style="background:#4a5a8a" onclick="selectColor(2)"></button>
+  <button class="color-btn" id="c3" style="background:#8a6a3a" onclick="selectColor(3)"></button>
+  <button class="color-btn" id="c4" style="background:#6a4a6a" onclick="selectColor(4)"></button>
+  <button class="color-btn" id="c5" style="background:#5a7a7a" onclick="selectColor(5)"></button>
+  <button class="color-btn" id="c6" style="background:#8a3a3a" onclick="selectColor(6)"></button>
+  <button class="color-btn" id="c7" style="background:#7a7a7a" onclick="selectColor(7)"></button>
+  <div class="sep"></div>
+  <label>Layer: <input type="range" id="rLayer" min="0" max="15" value="0" oninput="currentLayer=+this.value;document.getElementById('layerVal').textContent=this.value;needsRedraw=true"> <span id="layerVal">0</span></label>
+  <div class="sep"></div>
+  <button onclick="loadPreset('flat')">Flat</button>
+  <button onclick="loadPreset('pyramid')">Pyramid</button>
+  <button onclick="loadPreset('stairs')">Stairs</button>
+  <button onclick="loadPreset('castle')">Castle</button>
+  <div class="sep"></div>
+  <button onclick="clearAll()">Clear (C)</button>
+  <button onclick="exportPNG()">Export</button>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="statusBar">
+  <span class="stat">Cubes: <b id="statCubes">0</b></span>
+  <span class="stat">Layer: <b id="statLayer">0</b></span>
+  <span class="stat">Click = place/remove | Scroll = change layer | Drag = pan view</span>
+</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = canvas.width = canvas.clientWidth;
+  H = canvas.height = canvas.clientHeight;
+  needsRedraw = true;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Constants ────────────────────────────────────────────────────
+const GRID = 16;
+const TILE_W = 32;
+const TILE_H = 16;
+const CUBE_H = 20;
+
+const COLORS = [
+  { top: '#5a9a5a', left: '#3a6a3a', right: '#4a7a4a' },  // grass
+  { top: '#9a7a4a', left: '#6a4a2a', right: '#7a5a3a' },  // dirt
+  { top: '#6a7aaa', left: '#3a4a7a', right: '#4a5a8a' },  // stone
+  { top: '#caa050', left: '#8a6a30', right: '#aa8040' },  // sand
+  { top: '#8a5a8a', left: '#5a3a5a', right: '#6a4a6a' },  // purple
+  { top: '#6a9a9a', left: '#3a6a6a', right: '#5a7a7a' },  // teal
+  { top: '#aa4a4a', left: '#7a2a2a', right: '#8a3a3a' },  // red
+  { top: '#9a9a9a', left: '#5a5a5a', right: '#7a7a7a' },  // gray
+];
+
+// ── State ────────────────────────────────────────────────────────
+let cubes = new Map(); // key "x,y,z" -> colorIndex
+let tool = 'place';
+let currentColor = 0;
+let currentLayer = 0;
+let needsRedraw = true;
+let panX = 0, panY = 0;
+let panning = false, panStart = null;
+let hoverCell = null;
+
+function key(x, y, z) { return `${x},${y},${z}`; }
+
+function setTool(t) {
+  tool = t;
+  document.getElementById('btnPlace').classList.toggle('active', t === 'place');
+  document.getElementById('btnRemove').classList.toggle('active', t === 'remove');
+  document.getElementById('btnPaint').classList.toggle('active', t === 'paint');
+}
+
+function selectColor(i) {
+  currentColor = i;
+  for (let c = 0; c < 8; c++)
+    document.getElementById('c' + c).classList.toggle('active', c === i);
+}
+
+// ── Isometric conversion ─────────────────────────────────────────
+function isoToScreen(gx, gy, gz) {
+  const sx = (gx - gy) * TILE_W / 2;
+  const sy = (gx + gy) * TILE_H / 2 - gz * CUBE_H;
+  return { x: sx + W / 2 + panX, y: sy + H / 3 + panY };
+}
+
+function screenToGrid(mx, my) {
+  // Inverse of iso projection at current layer
+  const sx = mx - W / 2 - panX;
+  const sy = my - H / 3 - panY + currentLayer * CUBE_H;
+  // sx = (gx - gy) * TILE_W/2
+  // sy = (gx + gy) * TILE_H/2
+  const gx = (sx / (TILE_W / 2) + sy / (TILE_H / 2)) / 2;
+  const gy = (sy / (TILE_H / 2) - sx / (TILE_W / 2)) / 2;
+  return { x: Math.round(gx), y: Math.round(gy) };
+}
+
+// ── Drawing ──────────────────────────────────────────────────────
+function drawCube(gx, gy, gz, colorIdx, highlight = false) {
+  const col = COLORS[colorIdx] || COLORS[0];
+  const { x: cx, y: cy } = isoToScreen(gx, gy, gz);
+
+  const hw = TILE_W / 2;
+  const hh = TILE_H / 2;
+  const ch = CUBE_H;
+
+  // Top face
+  ctx.fillStyle = highlight ? lighten(col.top) : col.top;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - hh);
+  ctx.lineTo(cx + hw, cy);
+  ctx.lineTo(cx, cy + hh);
+  ctx.lineTo(cx - hw, cy);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+
+  // Left face
+  ctx.fillStyle = highlight ? lighten(col.left) : col.left;
+  ctx.beginPath();
+  ctx.moveTo(cx - hw, cy);
+  ctx.lineTo(cx, cy + hh);
+  ctx.lineTo(cx, cy + hh + ch);
+  ctx.lineTo(cx - hw, cy + ch);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Right face
+  ctx.fillStyle = highlight ? lighten(col.right) : col.right;
+  ctx.beginPath();
+  ctx.moveTo(cx + hw, cy);
+  ctx.lineTo(cx, cy + hh);
+  ctx.lineTo(cx, cy + hh + ch);
+  ctx.lineTo(cx + hw, cy + ch);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+}
+
+function lighten(hex) {
+  const r = Math.min(255, parseInt(hex.slice(1, 3), 16) + 40);
+  const g = Math.min(255, parseInt(hex.slice(3, 5), 16) + 40);
+  const b = Math.min(255, parseInt(hex.slice(5, 7), 16) + 40);
+  return `rgb(${r},${g},${b})`;
+}
+
+function draw() {
+  ctx.fillStyle = '#080810';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw grid on current layer
+  ctx.strokeStyle = 'rgba(60,60,100,0.15)';
+  ctx.lineWidth = 0.5;
+  for (let gx = 0; gx < GRID; gx++) {
+    for (let gy = 0; gy < GRID; gy++) {
+      const { x: cx, y: cy } = isoToScreen(gx, gy, currentLayer);
+      const hw = TILE_W / 2;
+      const hh = TILE_H / 2;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - hh);
+      ctx.lineTo(cx + hw, cy);
+      ctx.lineTo(cx, cy + hh);
+      ctx.lineTo(cx - hw, cy);
+      ctx.closePath();
+      ctx.stroke();
+    }
+  }
+
+  // Collect and sort cubes by depth (painter's algorithm)
+  const sorted = [];
+  for (const [k, c] of cubes) {
+    const [gx, gy, gz] = k.split(',').map(Number);
+    sorted.push({ gx, gy, gz, color: c });
+  }
+  // Sort: back to front (low x+y first), bottom to top (low z first)
+  sorted.sort((a, b) => {
+    const da = a.gx + a.gy + a.gz * 0.01;
+    const db = b.gx + b.gy + b.gz * 0.01;
+    return da - db;
+  });
+
+  for (const { gx, gy, gz, color } of sorted) {
+    drawCube(gx, gy, gz, color, false);
+  }
+
+  // Hover preview
+  if (hoverCell && tool === 'place') {
+    const { x: gx, y: gy } = hoverCell;
+    if (gx >= 0 && gx < GRID && gy >= 0 && gy < GRID) {
+      ctx.globalAlpha = 0.4;
+      drawCube(gx, gy, currentLayer, currentColor, true);
+      ctx.globalAlpha = 1;
+    }
+  }
+}
+
+// ── Actions ──────────────────────────────────────────────────────
+function placeAt(mx, my) {
+  const g = screenToGrid(mx, my);
+  if (g.x < 0 || g.x >= GRID || g.y < 0 || g.y >= GRID) return;
+  const k = key(g.x, g.y, currentLayer);
+
+  if (tool === 'place') {
+    cubes.set(k, currentColor);
+  } else if (tool === 'remove') {
+    cubes.delete(k);
+  } else if (tool === 'paint') {
+    if (cubes.has(k)) cubes.set(k, currentColor);
+  }
+  needsRedraw = true;
+}
+
+function clearAll() {
+  cubes.clear();
+  needsRedraw = true;
+}
+
+function exportPNG() {
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = 'isometric.png';
+  a.click();
+}
+
+// ── Presets ───────────────────────────────────────────────────────
+function loadPreset(name) {
+  cubes.clear();
+  switch (name) {
+    case 'flat':
+      for (let x = 2; x < 14; x++)
+        for (let y = 2; y < 14; y++)
+          cubes.set(key(x, y, 0), 0);
+      break;
+
+    case 'pyramid':
+      for (let z = 0; z < 6; z++) {
+        const start = 2 + z;
+        const end = 14 - z;
+        for (let x = start; x < end; x++)
+          for (let y = start; y < end; y++)
+            cubes.set(key(x, y, z), z < 2 ? 2 : (z < 4 ? 3 : 6));
+      }
+      break;
+
+    case 'stairs':
+      for (let i = 0; i < 10; i++) {
+        for (let y = 3; y < 13; y++) {
+          for (let z = 0; z <= i; z++) {
+            cubes.set(key(3 + i, y, z), z === i ? 2 : 7);
+          }
+        }
+      }
+      break;
+
+    case 'castle': {
+      // Base
+      for (let x = 3; x < 13; x++)
+        for (let y = 3; y < 13; y++)
+          cubes.set(key(x, y, 0), 7);
+      // Walls
+      for (let z = 1; z <= 3; z++) {
+        for (let i = 3; i < 13; i++) {
+          cubes.set(key(i, 3, z), 2);
+          cubes.set(key(i, 12, z), 2);
+          cubes.set(key(3, i, z), 2);
+          cubes.set(key(12, i, z), 2);
+        }
+      }
+      // Towers
+      for (const [tx, ty] of [[3,3],[12,3],[3,12],[12,12]]) {
+        for (let z = 1; z <= 5; z++) {
+          cubes.set(key(tx, ty, z), 2);
+          cubes.set(key(tx+1, ty, z), 2);
+          cubes.set(key(tx, ty+1, z), 2);
+          cubes.set(key(tx-1, ty, z), 2);
+          cubes.set(key(tx, ty-1, z), 2);
+        }
+        // Crenellations
+        cubes.set(key(tx, ty, 6), 6);
+      }
+      // Gate
+      cubes.delete(key(7, 3, 1));
+      cubes.delete(key(8, 3, 1));
+      cubes.delete(key(7, 3, 2));
+      cubes.delete(key(8, 3, 2));
+      break;
+    }
+  }
+  currentLayer = 0;
+  document.getElementById('rLayer').value = 0;
+  document.getElementById('layerVal').textContent = '0';
+  needsRedraw = true;
+}
+
+// ── Input ────────────────────────────────────────────────────────
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 1 || e.button === 2) {
+    panning = true;
+    panStart = { x: e.clientX - panX, y: e.clientY - panY };
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  placeAt(e.clientX - rect.left, e.clientY - rect.top);
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (panning) {
+    panX = e.clientX - panStart.x;
+    panY = e.clientY - panStart.y;
+    needsRedraw = true;
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  hoverCell = screenToGrid(mx, my);
+  needsRedraw = true;
+
+  if (e.buttons === 1) {
+    placeAt(mx, my);
+  }
+});
+
+canvas.addEventListener('mouseup', () => { panning = false; });
+canvas.addEventListener('mouseleave', () => { panning = false; hoverCell = null; needsRedraw = true; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  currentLayer = Math.max(0, Math.min(15, currentLayer + (e.deltaY > 0 ? -1 : 1)));
+  document.getElementById('rLayer').value = currentLayer;
+  document.getElementById('layerVal').textContent = currentLayer;
+  needsRedraw = true;
+});
+
+// Touch
+let touchId = null;
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  touchId = t.identifier;
+  const rect = canvas.getBoundingClientRect();
+  placeAt(t.clientX - rect.left, t.clientY - rect.top);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = Array.from(e.touches).find(tt => tt.identifier === touchId);
+  if (!t) return;
+  const rect = canvas.getBoundingClientRect();
+  placeAt(t.clientX - rect.left, t.clientY - rect.top);
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { touchId = null; });
+
+// ── Keyboard ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === '1') setTool('place');
+  if (e.key === '2') setTool('remove');
+  if (e.key === '3') setTool('paint');
+  if (e.key === 'c') clearAll();
+  if (e.key === 'q') { currentLayer = Math.min(15, currentLayer + 1); needsRedraw = true; }
+  if (e.key === 'e') { currentLayer = Math.max(0, currentLayer - 1); needsRedraw = true; }
+  document.getElementById('rLayer').value = currentLayer;
+  document.getElementById('layerVal').textContent = currentLayer;
+  // Color keys
+  const ci = '!@#$%^&*'.indexOf(e.key);
+  if (ci >= 0 && ci < 8) selectColor(ci);
+});
+
+// ── Loop ─────────────────────────────────────────────────────────
+function loop() {
+  if (needsRedraw) {
+    draw();
+    needsRedraw = false;
+  }
+  document.getElementById('statCubes').textContent = cubes.size;
+  document.getElementById('statLayer').textContent = currentLayer;
+  requestAnimationFrame(loop);
+}
+
+loadPreset('castle');
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
