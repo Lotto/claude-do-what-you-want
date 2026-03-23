@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="wave.html">
+    <canvas class="preview" id="waveCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Wave Simulator</div>
+      <div class="card-desc">2D wave equation finite difference simulation. Pulse, continuous source, double slit, and wall-drawing modes. 4 palettes, reflecting/absorbing boundaries, adjustable speed and damping.</div>
+      <div class="card-tags">
+        <span class="tag">physics</span>
+        <span class="tag">simulation</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 32</div>
+  </a>
+
   <a class="card" href="gravity.html">
     <canvas class="preview" id="gravityCanvas"></canvas>
     <div class="card-body">
@@ -1439,6 +1453,55 @@
     }
     ctx.drawImage(off,0,0);
     requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+
+// ── Wave preview (concentric ripples) ─────────────────────────────
+(function() {
+  const c = document.getElementById('waveCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height, S = 2;
+  const gw = Math.ceil(W/S), gh = Math.ceil(H/S);
+  let cur = new Float32Array(gw*gh), prev = new Float32Array(gw*gh);
+  const img = ctx.createImageData(gw, gh);
+  // Drop initial disturbance
+  const cx = gw/2|0, cy = gh/2|0, R = 4;
+  for (let dy=-R;dy<=R;dy++) for (let dx=-R;dx<=R;dx++) {
+    const d2=dx*dx+dy*dy; if(d2>R*R) continue;
+    const i=(cy+dy)*gw+(cx+dx);
+    if(i>=0&&i<gw*gh) cur[i]=Math.exp(-d2/(R*R*0.3))*2;
+  }
+  function step() {
+    const c2=0.16, damp=0.997, next=new Float32Array(gw*gh);
+    for(let y=1;y<gh-1;y++) for(let x=1;x<gw-1;x++){
+      const i=y*gw+x;
+      const lap=cur[i-1]+cur[i+1]+cur[i-gw]+cur[i+gw]-4*cur[i];
+      next[i]=(2*cur[i]-prev[i]+c2*lap)*damp;
+    }
+    for(let x=0;x<gw;x++){next[x]=next[gw+x];next[(gh-1)*gw+x]=next[(gh-2)*gw+x];}
+    for(let y=0;y<gh;y++){next[y*gw]=next[y*gw+1];next[y*gw+gw-1]=next[y*gw+gw-2];}
+    prev.set(cur); cur.set(next);
+  }
+  function render() {
+    const d=img.data;
+    for(let i=0;i<gw*gh;i++){
+      const v=Math.max(-1,Math.min(1,cur[i])), t=v*0.5+0.5, off=i*4;
+      if(t<0.3){d[off]=0;d[off+1]=t/0.3*40|0;d[off+2]=40+t/0.3*80|0;}
+      else if(t<0.5){d[off]=0;d[off+1]=40+(t-0.3)/0.2*120|0;d[off+2]=120+(t-0.3)/0.2*80|0;}
+      else if(t<0.7){d[off]=(t-0.5)/0.2*160|0;d[off+1]=160+(t-0.5)/0.2*95|0;d[off+2]=200+(t-0.5)/0.2*55|0;}
+      else{d[off]=160+(t-0.7)/0.3*95|0;d[off+1]=255;d[off+2]=255;}
+      d[off+3]=255;
+    }
+    ctx.putImageData(img,0,0);
+    ctx.imageSmoothingEnabled=false;
+    ctx.drawImage(c,0,0,gw,gh,0,0,W,H);
+  }
+  let f=0;
+  function loop(){
+    if(f<120){for(let i=0;i<2;i++)step();render();f++;requestAnimationFrame(loop);}
   }
   requestAnimationFrame(loop);
 })();

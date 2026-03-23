@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wave Simulator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #020206; color: #a0a0b0; font: 11px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { padding: 7px 14px; background: #06060a; border-bottom: 1px solid #10101c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; }
+  canvas { display: block; flex: 1; cursor: crosshair; image-rendering: pixelated; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; }
+  button:hover { background: #12122a; color: #a0a0c8; }
+  button.active { background: #1a3060; color: #80c0ff; border-color: #3060a0; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  input[type=range] { width: 68px; accent-color: #4060c0; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  #info { position: absolute; bottom: 8px; left: 12px; font-size: 10px; color: #1a1a30; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Wave</h1>
+  <div class="sep"></div>
+  <select id="selMode">
+    <option value="pulse">Pulse</option>
+    <option value="continuous">Continuous</option>
+    <option value="slit2">Double Slit</option>
+    <option value="wall">Draw Wall</option>
+  </select>
+  <div class="sep"></div>
+  <label>Speed <input type="range" id="rngSpeed" min="0.1" max="0.9" step="0.05" value="0.4"></label>
+  <label>Damping <input type="range" id="rngDamp" min="0.990" max="1.000" step="0.001" value="0.998"></label>
+  <label>Radius <input type="range" id="rngR" min="1" max="12" step="1" value="4"></label>
+  <div class="sep"></div>
+  <select id="selPal">
+    <option value="0">Ocean</option>
+    <option value="1">Thermal</option>
+    <option value="2">Electric</option>
+    <option value="3">Mono</option>
+  </select>
+  <select id="selBound">
+    <option value="reflect">Reflecting</option>
+    <option value="absorb">Absorbing</option>
+  </select>
+  <div class="sep"></div>
+  <button id="btnPause">Pause</button>
+  <button id="btnClear">Clear</button>
+</div>
+<canvas id="c"></canvas>
+<div id="info">click=drop · drag=paint · shift=erase wall · space=pause</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// Simulation grid (lower res for speed, scaled up)
+const SCALE = 2;
+let GW, GH;
+let cur, prev, walls;
+let img;
+
+let speed = 0.4, damp = 0.998, srcRadius = 4;
+let palIdx = 0, boundary = 'reflect', mode = 'pulse';
+let paused = false, mouseDown = false, mouseX = 0, mouseY = 0;
+let contSources = []; // for continuous mode
+let frame = 0;
+
+function initGrid() {
+  GW = Math.ceil(canvas.width / SCALE);
+  GH = Math.ceil(canvas.height / SCALE);
+  cur   = new Float32Array(GW * GH);
+  prev  = new Float32Array(GW * GH);
+  walls = new Uint8Array(GW * GH);
+  img   = ctx.createImageData(GW, GH);
+  contSources = [];
+}
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight - canvas.getBoundingClientRect().top;
+  initGrid();
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Palettes ──────────────────────────────────────────────────────
+// Each palette: maps value in [-1,1] to [r,g,b]
+const PALETTES = [
+  // Ocean: deep blue → cyan → white → cyan → deep blue
+  function(v) {
+    const t = v * 0.5 + 0.5; // [0,1]
+    if (t < 0.3) return [0, t/0.3*40|0, 40+t/0.3*80|0];
+    if (t < 0.5) return [0, 40+(t-0.3)/0.2*120|0, 120+(t-0.3)/0.2*80|0];
+    if (t < 0.7) return [(t-0.5)/0.2*160|0, 160+(t-0.5)/0.2*95|0, 200+(t-0.5)/0.2*55|0];
+    return [160+(t-0.7)/0.3*95|0, 255, 255];
+  },
+  // Thermal: blue → black → red → yellow → white
+  function(v) {
+    const t = v * 0.5 + 0.5;
+    if (t < 0.25) return [0, 0, (1-t/0.25)*200|0];
+    if (t < 0.5)  return [(t-0.25)/0.25*200|0, 0, 0];
+    if (t < 0.75) return [200+(t-0.5)/0.25*55|0, (t-0.5)/0.25*200|0, 0];
+    return [255, 200+(t-0.75)/0.25*55|0, (t-0.75)/0.25*255|0];
+  },
+  // Electric: black → purple → blue → cyan → white
+  function(v) {
+    const t = v * 0.5 + 0.5;
+    if (t < 0.3) return [t/0.3*80|0, 0, t/0.3*120|0];
+    if (t < 0.5) return [80-(t-0.3)/0.2*40|0, (t-0.3)/0.2*80|0, 120+(t-0.3)/0.2*100|0];
+    if (t < 0.7) return [40-(t-0.5)/0.2*40|0, 80+(t-0.5)/0.2*175|0, 220+(t-0.5)/0.2*35|0];
+    return [(t-0.7)/0.3*255|0, 255, 255];
+  },
+  // Mono
+  function(v) {
+    const t = (v * 0.5 + 0.5) * 255 | 0;
+    return [t, t, t];
+  },
+];
+
+// ── Simulation step ───────────────────────────────────────────────
+function step() {
+  const c2 = speed * speed;
+  const next = new Float32Array(GW * GH);
+
+  for (let y = 1; y < GH - 1; y++) {
+    for (let x = 1; x < GW - 1; x++) {
+      const i = y * GW + x;
+      if (walls[i]) { next[i] = 0; continue; }
+
+      // Laplacian (5-point stencil)
+      let lap = 0;
+      // Check walls for neighbors
+      const l = walls[i-1]  ? cur[i] : cur[i-1];
+      const r = walls[i+1]  ? cur[i] : cur[i+1];
+      const u = walls[i-GW] ? cur[i] : cur[i-GW];
+      const d = walls[i+GW] ? cur[i] : cur[i+GW];
+      lap = l + r + u + d - 4 * cur[i];
+
+      next[i] = (2 * cur[i] - prev[i] + c2 * lap) * damp;
+    }
+  }
+
+  // Boundary conditions
+  if (boundary === 'absorb') {
+    // Absorbing: zero edges
+    for (let x = 0; x < GW; x++) {
+      next[x] = 0; next[(GH-1)*GW+x] = 0;
+    }
+    for (let y = 0; y < GH; y++) {
+      next[y*GW] = 0; next[y*GW+GW-1] = 0;
+    }
+  } else {
+    // Reflecting: copy neighbor values
+    for (let x = 0; x < GW; x++) {
+      next[x] = next[GW+x];
+      next[(GH-1)*GW+x] = next[(GH-2)*GW+x];
+    }
+    for (let y = 0; y < GH; y++) {
+      next[y*GW] = next[y*GW+1];
+      next[y*GW+GW-1] = next[y*GW+GW-2];
+    }
+  }
+
+  prev.set(cur);
+  cur.set(next);
+}
+
+// ── Drop / disturb ────────────────────────────────────────────────
+function disturb(gx, gy, amplitude) {
+  const R = srcRadius;
+  for (let dy = -R; dy <= R; dy++) {
+    for (let dx = -R; dx <= R; dx++) {
+      const d2 = dx*dx + dy*dy;
+      if (d2 > R*R) continue;
+      const nx = gx+dx, ny = gy+dy;
+      if (nx < 0 || nx >= GW || ny < 0 || ny >= GH) continue;
+      const i = ny*GW+nx;
+      if (walls[i]) continue;
+      const g = Math.exp(-d2 / (R*R*0.3)) * amplitude;
+      cur[i] += g;
+    }
+  }
+}
+
+function setWall(gx, gy, val) {
+  const R = Math.max(1, srcRadius >> 1);
+  for (let dy = -R; dy <= R; dy++) {
+    for (let dx = -R; dx <= R; dx++) {
+      if (dx*dx+dy*dy > R*R) continue;
+      const nx = gx+dx, ny = gy+dy;
+      if (nx < 1 || nx >= GW-1 || ny < 1 || ny >= GH-1) continue;
+      walls[ny*GW+nx] = val;
+      if (val) { cur[ny*GW+nx] = 0; prev[ny*GW+nx] = 0; }
+    }
+  }
+}
+
+// Double slit setup
+function setupDoubleSlit() {
+  // Clear walls
+  walls.fill(0);
+  // Vertical wall with two slits
+  const wx = GW * 0.45 | 0;
+  const slitW = 3, slitGap = GH * 0.15 | 0, slitH = GH * 0.06 | 0;
+  const cy = GH / 2 | 0;
+  for (let y = 0; y < GH; y++) {
+    for (let dx = 0; dx < slitW; dx++) {
+      const inSlit1 = Math.abs(y - (cy - slitGap/2)) < slitH;
+      const inSlit2 = Math.abs(y - (cy + slitGap/2)) < slitH;
+      if (!inSlit1 && !inSlit2 && wx+dx < GW) walls[y*GW+wx+dx] = 1;
+    }
+  }
+  // Place continuous source left of wall
+  contSources = [{x: GW*0.15|0, y: cy, freq: 0.3, amp: 1.5}];
+}
+
+// ── Render ────────────────────────────────────────────────────────
+function render() {
+  const pal = PALETTES[palIdx];
+  const d = img.data;
+
+  for (let y = 0; y < GH; y++) {
+    for (let x = 0; x < GW; x++) {
+      const i = y * GW + x;
+      const off = i * 4;
+      if (walls[i]) {
+        d[off] = 40; d[off+1] = 40; d[off+2] = 50; d[off+3] = 255;
+      } else {
+        const v = Math.max(-1, Math.min(1, cur[i]));
+        const [r,g,b] = pal(v);
+        d[off] = r; d[off+1] = g; d[off+2] = b; d[off+3] = 255;
+      }
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  // Scale up
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(canvas, 0, 0, GW, GH, 0, 0, canvas.width, canvas.height);
+}
+
+// ── Main loop ─────────────────────────────────────────────────────
+function loop() {
+  if (!paused) {
+    // Continuous sources
+    for (const s of contSources) {
+      disturb(s.x, s.y, s.amp * Math.sin(frame * s.freq));
+    }
+    for (let i = 0; i < 2; i++) step();
+    frame++;
+  }
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ── Input ─────────────────────────────────────────────────────────
+function toGrid(e) {
+  const r = canvas.getBoundingClientRect();
+  return [
+    ((e.clientX - r.left) / r.width  * GW) | 0,
+    ((e.clientY - r.top)  / r.height * GH) | 0,
+  ];
+}
+
+canvas.addEventListener('mousedown', e => {
+  mouseDown = true;
+  const [gx, gy] = toGrid(e);
+  if (mode === 'wall') {
+    setWall(gx, gy, e.shiftKey ? 0 : 1);
+  } else if (mode === 'continuous') {
+    contSources.push({x:gx, y:gy, freq: 0.3, amp: 1.5});
+  } else if (mode === 'slit2') {
+    setupDoubleSlit();
+  } else {
+    disturb(gx, gy, 2);
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!mouseDown) return;
+  const [gx, gy] = toGrid(e);
+  if (mode === 'wall') {
+    setWall(gx, gy, e.shiftKey ? 0 : 1);
+  } else if (mode === 'pulse') {
+    disturb(gx, gy, 1.5);
+  }
+});
+
+canvas.addEventListener('mouseup', () => mouseDown = false);
+canvas.addEventListener('mouseleave', () => mouseDown = false);
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// Touch
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  const [gx, gy] = toGrid(t);
+  if (mode === 'pulse') disturb(gx, gy, 2);
+  else if (mode === 'wall') setWall(gx, gy, 1);
+  else if (mode === 'continuous') contSources.push({x:gx,y:gy,freq:0.3,amp:1.5});
+  else if (mode === 'slit2') setupDoubleSlit();
+}, {passive:false});
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  const [gx, gy] = toGrid(t);
+  if (mode === 'pulse') disturb(gx, gy, 1.2);
+  else if (mode === 'wall') setWall(gx, gy, 1);
+}, {passive:false});
+
+// ── Controls ──────────────────────────────────────────────────────
+document.getElementById('selMode').addEventListener('change', e => { mode = e.target.value; });
+document.getElementById('rngSpeed').addEventListener('input', e => { speed = parseFloat(e.target.value); });
+document.getElementById('rngDamp').addEventListener('input', e => { damp = parseFloat(e.target.value); });
+document.getElementById('rngR').addEventListener('input', e => { srcRadius = parseInt(e.target.value); });
+document.getElementById('selPal').addEventListener('change', e => { palIdx = parseInt(e.target.value); });
+document.getElementById('selBound').addEventListener('change', e => { boundary = e.target.value; });
+document.getElementById('btnPause').addEventListener('click', () => {
+  paused = !paused;
+  document.getElementById('btnPause').textContent = paused ? 'Resume' : 'Pause';
+});
+document.getElementById('btnClear').addEventListener('click', () => {
+  cur.fill(0); prev.fill(0); walls.fill(0); contSources = []; frame = 0;
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  if (e.key === ' ') {
+    paused = !paused;
+    document.getElementById('btnPause').textContent = paused ? 'Resume' : 'Pause';
+    e.preventDefault();
+  }
+  if (e.key === 'c') { cur.fill(0); prev.fill(0); walls.fill(0); contSources = []; frame = 0; }
+});
+
+// ── Init ──────────────────────────────────────────────────────────
+loop();
+</script>
+</body>
+</html>

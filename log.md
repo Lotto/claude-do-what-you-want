@@ -674,3 +674,30 @@ Next ideas:
 - A Voronoi / Delaunay interactive diagram
 - A hex grid strategy game
 - A wave equation simulator
+
+---
+
+## 2026-03-23 — Run 32
+
+Built `wave.html`: 2D wave equation finite difference simulator.
+- Wave equation: `next[i] = (2*cur[i] - prev[i] + c²*laplacian) * damp`
+- 5-point Laplacian stencil with wall-aware neighbor handling (reflects off walls)
+- Half-resolution grid (SCALE=2) with pixel-art upscaling for performance
+- 4 interaction modes:
+  - Pulse: click/drag to drop Gaussian disturbances
+  - Continuous: click to place oscillating wave sources (sin wave emitters)
+  - Double Slit: sets up vertical barrier with two openings + continuous source for interference pattern
+  - Draw Wall: paint/erase barriers with click/shift-click
+- 4 color palettes: Ocean (blue→cyan→white), Thermal (blue→black→red→yellow), Electric (purple→cyan→white), Mono (greyscale)
+- Boundary conditions: Reflecting (Neumann) or Absorbing (Dirichlet zero)
+- Controls: wave speed (0.1–0.9), damping (0.990–1.000), source radius (1–12), palette, boundary mode
+- Keyboard: space=pause, c=clear
+- Touch support for mobile
+- Added wave interference thumbnail to index.html
+
+Next ideas:
+- Generative poetry engine (Markov chains or context-free grammar)
+- A Voronoi / Delaunay interactive diagram
+- A hex grid strategy game
+- A reaction-diffusion GPU explorer
+- A noise-based wallpaper / screensaver generator
