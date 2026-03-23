@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="rope.html">
+    <canvas class="preview" id="ropeCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Rope Physics</div>
+      <div class="card-desc">Verlet integration rope/chain simulation. 5 presets: rope, chain, cloth grid, bridge, pendulums. Drag nodes, right-click to cut links, wind force, tension coloring, adjustable gravity/stiffness.</div>
+      <div class="card-tags">
+        <span class="tag">physics</span>
+        <span class="tag">simulation</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 64</div>
+  </a>
+
   <a class="card" href="connect4.html">
     <canvas class="preview" id="c4Canvas"></canvas>
     <div class="card-body">
@@ -1890,6 +1904,40 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Rope Physics preview (hanging rope) ─────────────────────────
+{
+  const c = document.getElementById('ropeCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#080810';
+    ctx.fillRect(0, 0, w, h);
+    // Catenary-like curve
+    const n = 15;
+    const pts = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const x = 10 + t * (w - 20);
+      const sag = Math.pow(t - 0.5, 2) * -4 + 1;
+      const y = 12 + sag * (h * 0.5);
+      pts.push({ x, y });
+    }
+    ctx.strokeStyle = '#4080c0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y));
+    ctx.stroke();
+    // Pinned ends
+    ctx.fillStyle = '#80b0ff';
+    ctx.beginPath(); ctx.arc(pts[0].x, pts[0].y, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(pts[n-1].x, pts[n-1].y, 3, 0, Math.PI * 2); ctx.fill();
+    // Nodes
+    ctx.fillStyle = '#4060a0';
+    pts.forEach(p => { ctx.beginPath(); ctx.arc(p.x, p.y, 2, 0, Math.PI * 2); ctx.fill(); });
+  }
+}
 
 // ── Connect Four preview (board with pieces) ───────────────────
 {

@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rope Physics</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+  input[type="range"] { width: 60px; accent-color: #4060a0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+
+  canvas { display: block; flex: 1; cursor: crosshair; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; }
+  .stat b { color: #505078; font-weight: normal; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Rope Physics</h1>
+  <div class="sep"></div>
+  <label>Nodes: <input type="range" id="rNodes" min="5" max="80" value="30" oninput="document.getElementById('nodeVal').textContent=this.value"> <span id="nodeVal">30</span></label>
+  <label>Gravity: <input type="range" id="rGrav" min="0" max="20" value="10" oninput="gravity=+this.value*0.1"></label>
+  <label>Stiffness: <input type="range" id="rStiff" min="1" max="20" value="10" oninput="iterations=+this.value"></label>
+  <label>Damping: <input type="range" id="rDamp" min="90" max="100" value="99" oninput="damping=this.value/100"></label>
+  <div class="sep"></div>
+  <select id="selStyle" onchange="ropeStyle=this.value">
+    <option value="rope">Rope</option>
+    <option value="chain">Chain</option>
+    <option value="cloth">Cloth Grid</option>
+    <option value="bridge">Bridge</option>
+    <option value="pendulums">Pendulums</option>
+  </select>
+  <div class="sep"></div>
+  <label><input type="checkbox" id="chkWind" onchange="wind=this.checked"> Wind</label>
+  <button onclick="spawn()">Spawn (Space)</button>
+  <button onclick="clearAll()">Clear (C)</button>
+  <button id="pauseBtn" onclick="togglePause()">Pause (P)</button>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="statusBar">
+  <span class="stat">Points: <b id="statPts">0</b></span>
+  <span class="stat">Links: <b id="statLinks">0</b></span>
+  <span class="stat">FPS: <b id="statFps">0</b></span>
+  <span class="stat">Drag nodes | Right-click to cut | Space = spawn</span>
+</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = canvas.width = canvas.clientWidth;
+  H = canvas.height = canvas.clientHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── State ────────────────────────────────────────────────────────
+let points = [];
+let links = [];
+let gravity = 1.0;
+let iterations = 10;
+let damping = 0.99;
+let wind = false;
+let paused = false;
+let ropeStyle = 'rope';
+
+class Point {
+  constructor(x, y, pinned = false) {
+    this.x = x; this.y = y;
+    this.ox = x; this.oy = y;
+    this.pinned = pinned;
+    this.mass = 1;
+  }
+}
+
+class Link {
+  constructor(a, b, dist) {
+    this.a = a;
+    this.b = b;
+    this.dist = dist || Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
+  }
+}
+
+// ── Spawning ─────────────────────────────────────────────────────
+function spawn() {
+  const nodeCount = +document.getElementById('rNodes').value;
+  const style = ropeStyle;
+
+  switch (style) {
+    case 'rope': spawnRope(nodeCount); break;
+    case 'chain': spawnChain(nodeCount); break;
+    case 'cloth': spawnCloth(); break;
+    case 'bridge': spawnBridge(nodeCount); break;
+    case 'pendulums': spawnPendulums(); break;
+  }
+}
+
+function spawnRope(n) {
+  const startX = W * 0.2 + Math.random() * W * 0.6;
+  const startY = 60 + Math.random() * 40;
+  const seg = Math.min(15, (W * 0.5) / n);
+
+  const newPts = [];
+  const newLinks = [];
+
+  for (let i = 0; i < n; i++) {
+    const p = new Point(startX + i * seg, startY, i === 0 || i === n - 1);
+    newPts.push(p);
+    points.push(p);
+    if (i > 0) {
+      const l = new Link(newPts[i - 1], newPts[i], seg);
+      newLinks.push(l);
+      links.push(l);
+    }
+  }
+}
+
+function spawnChain(n) {
+  const startX = W / 2;
+  const startY = 40;
+  const seg = 12;
+
+  const newPts = [];
+  for (let i = 0; i < n; i++) {
+    const p = new Point(startX, startY + i * seg, i === 0);
+    newPts.push(p);
+    points.push(p);
+    if (i > 0) {
+      links.push(new Link(newPts[i - 1], newPts[i], seg));
+    }
+  }
+}
+
+function spawnCloth() {
+  const cols = 20, rows = 15;
+  const spacing = Math.min((W - 100) / cols, (H - 150) / rows, 18);
+  const ox = (W - cols * spacing) / 2;
+  const oy = 50;
+
+  const grid = [];
+  for (let r = 0; r < rows; r++) {
+    grid[r] = [];
+    for (let c = 0; c < cols; c++) {
+      const p = new Point(ox + c * spacing, oy + r * spacing, r === 0 && (c % 3 === 0));
+      grid[r][c] = p;
+      points.push(p);
+
+      if (c > 0) links.push(new Link(grid[r][c - 1], p, spacing));
+      if (r > 0) links.push(new Link(grid[r - 1][c], p, spacing));
+    }
+  }
+}
+
+function spawnBridge(n) {
+  const pad = 80;
+  const y = H * 0.35;
+  const seg = (W - pad * 2) / (n - 1);
+
+  const top = [];
+  const bot = [];
+  const hangDist = 20;
+
+  for (let i = 0; i < n; i++) {
+    const x = pad + i * seg;
+    const pinned = i === 0 || i === n - 1;
+    const pt = new Point(x, y, pinned);
+    top.push(pt);
+    points.push(pt);
+
+    const pb = new Point(x, y + hangDist, false);
+    bot.push(pb);
+    points.push(pb);
+
+    links.push(new Link(pt, pb, hangDist));
+
+    if (i > 0) {
+      links.push(new Link(top[i - 1], top[i], seg));
+      links.push(new Link(bot[i - 1], bot[i], seg));
+    }
+  }
+}
+
+function spawnPendulums() {
+  const count = 7;
+  const spacing = W / (count + 1);
+  const length = H * 0.5;
+  const segs = 12;
+  const segLen = length / segs;
+
+  for (let p = 0; p < count; p++) {
+    const sx = spacing * (p + 1);
+    const sy = 50;
+    let prev = new Point(sx, sy, true);
+    points.push(prev);
+
+    for (let i = 1; i <= segs; i++) {
+      const pt = new Point(sx, sy + i * segLen, false);
+      if (i === segs) pt.mass = 3;
+      points.push(pt);
+      links.push(new Link(prev, pt, segLen));
+      prev = pt;
+    }
+  }
+}
+
+function clearAll() {
+  points = [];
+  links = [];
+}
+
+// ── Simulation ───────────────────────────────────────────────────
+function simulate() {
+  const dt = 1;
+
+  // Apply forces (Verlet integration)
+  for (const p of points) {
+    if (p.pinned) continue;
+
+    const vx = (p.x - p.ox) * damping;
+    const vy = (p.y - p.oy) * damping;
+
+    p.ox = p.x;
+    p.oy = p.y;
+
+    p.x += vx;
+    p.y += vy + gravity * p.mass;
+
+    // Wind
+    if (wind) {
+      p.x += Math.sin(Date.now() * 0.002 + p.y * 0.02) * 0.8;
+    }
+
+    // Floor
+    if (p.y > H - 5) {
+      p.y = H - 5;
+      p.ox = p.x + vx * 0.5; // friction
+    }
+    // Walls
+    if (p.x < 5) p.x = 5;
+    if (p.x > W - 5) p.x = W - 5;
+  }
+
+  // Constraint solving
+  for (let iter = 0; iter < iterations; iter++) {
+    for (const l of links) {
+      const dx = l.b.x - l.a.x;
+      const dy = l.b.y - l.a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 0.001) continue;
+
+      const diff = (l.dist - dist) / dist * 0.5;
+      const offX = dx * diff;
+      const offY = dy * diff;
+
+      if (!l.a.pinned) { l.a.x -= offX; l.a.y -= offY; }
+      if (!l.b.pinned) { l.b.x += offX; l.b.y += offY; }
+    }
+  }
+}
+
+// ── Rendering ────────────────────────────────────────────────────
+function draw() {
+  ctx.fillStyle = '#080810';
+  ctx.fillRect(0, 0, W, H);
+
+  // Links
+  ctx.lineWidth = 2;
+  for (const l of links) {
+    const dx = l.b.x - l.a.x;
+    const dy = l.b.y - l.a.y;
+    const stretch = Math.sqrt(dx * dx + dy * dy) / l.dist;
+    // Color by tension
+    const t = Math.min(1, Math.max(0, (stretch - 1) * 5));
+    const r = 60 + t * 195;
+    const g = 100 + (1 - t) * 80;
+    const b = 180 - t * 140;
+    ctx.strokeStyle = `rgb(${r | 0},${g | 0},${b | 0})`;
+
+    ctx.beginPath();
+    ctx.moveTo(l.a.x, l.a.y);
+    ctx.lineTo(l.b.x, l.b.y);
+    ctx.stroke();
+  }
+
+  // Points
+  for (const p of points) {
+    const r = p.pinned ? 5 : (p.mass > 1 ? 6 : 3);
+    ctx.fillStyle = p.pinned ? '#80b0ff' : (p.mass > 1 ? '#e0c040' : '#4060a0');
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ── Input ────────────────────────────────────────────────────────
+let dragging = null;
+let cutting = false;
+
+function findPoint(mx, my, radius = 15) {
+  let best = null, bestD = radius * radius;
+  for (const p of points) {
+    const d = (p.x - mx) ** 2 + (p.y - my) ** 2;
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best;
+}
+
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  if (e.button === 2) {
+    cutting = true;
+    cutAt(mx, my);
+    return;
+  }
+
+  const p = findPoint(mx, my);
+  if (p) {
+    dragging = p;
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+
+  if (dragging) {
+    dragging.x = mx;
+    dragging.y = my;
+    dragging.ox = mx;
+    dragging.oy = my;
+  }
+
+  if (cutting) {
+    cutAt(mx, my);
+  }
+});
+
+canvas.addEventListener('mouseup', () => { dragging = null; cutting = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+function cutAt(mx, my) {
+  const cutRadius = 15;
+  links = links.filter(l => {
+    // Distance from point to line segment
+    const dx = l.b.x - l.a.x;
+    const dy = l.b.y - l.a.y;
+    const len2 = dx * dx + dy * dy;
+    if (len2 < 0.01) return true;
+    let t = ((mx - l.a.x) * dx + (my - l.a.y) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const px = l.a.x + t * dx;
+    const py = l.a.y + t * dy;
+    const dist = Math.sqrt((mx - px) ** 2 + (my - py) ** 2);
+    return dist > cutRadius;
+  });
+}
+
+// Touch
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  const mx = t.clientX - rect.left;
+  const my = t.clientY - rect.top;
+  const p = findPoint(mx, my);
+  if (p) dragging = p;
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!dragging) return;
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  dragging.x = t.clientX - rect.left;
+  dragging.y = t.clientY - rect.top;
+  dragging.ox = dragging.x;
+  dragging.oy = dragging.y;
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { dragging = null; });
+
+// ── Keyboard ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === ' ') { e.preventDefault(); spawn(); }
+  if (e.key === 'c') clearAll();
+  if (e.key === 'p') togglePause();
+  if (e.key === 'w') { wind = !wind; document.getElementById('chkWind').checked = wind; }
+});
+
+function togglePause() {
+  paused = !paused;
+  const btn = document.getElementById('pauseBtn');
+  btn.textContent = paused ? 'Play (P)' : 'Pause (P)';
+  if (paused) btn.classList.add('active'); else btn.classList.remove('active');
+}
+
+// ── Loop ─────────────────────────────────────────────────────────
+let lastTime = performance.now();
+let fpsCounter = 0, fpsDisplay = 0, fpsTimer = 0;
+
+function loop(now) {
+  const dt = now - lastTime;
+  lastTime = now;
+  fpsTimer += dt;
+  fpsCounter++;
+  if (fpsTimer >= 1000) {
+    fpsDisplay = fpsCounter;
+    fpsCounter = 0;
+    fpsTimer -= 1000;
+  }
+
+  if (!paused) {
+    simulate();
+  }
+  draw();
+
+  document.getElementById('statPts').textContent = points.length;
+  document.getElementById('statLinks').textContent = links.length;
+  document.getElementById('statFps').textContent = fpsDisplay;
+
+  requestAnimationFrame(loop);
+}
+
+// Start with a rope
+spawn();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

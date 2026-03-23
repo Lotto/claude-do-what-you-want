@@ -1779,3 +1779,43 @@ Next ideas:
 - A bouncing DVD logo screensaver
 - An emoji slot machine
 - A rope/chain physics simulation
+
+---
+
+## Run 64 — Rope Physics Simulation
+**File:** `rope.html`
+**Date:** 2026-03-23
+
+Chose "A rope/chain physics simulation" from the Run 63 ideas list.
+
+### What it does
+A Verlet integration physics simulation for ropes, chains, cloth, bridges, and pendulums with interactive drag and cut mechanics.
+
+### Key features
+- Verlet integration: position-based physics with velocity derived from position delta
+- Distance constraint solver: iterative relaxation (configurable 1–20 iterations for stiffness)
+- 5 simulation presets:
+  - Rope: horizontal rope pinned at both ends, sags under gravity
+  - Chain: vertical chain pinned at top, hangs freely
+  - Cloth Grid: 20×15 node grid with horizontal + vertical links, pinned every 3rd node on top row
+  - Bridge: dual-rail bridge with vertical struts, pinned at endpoints
+  - Pendulums: 7 independent pendulums with heavy end masses (mass=3)
+- Drag interaction: grab any node and move it, velocity zeroed on grab
+- Right-click cutting: sever links near cursor (point-to-segment distance test)
+- Tension visualization: link color shifts from blue (relaxed) to red (stretched) based on stretch ratio
+- Wind force: sinusoidal horizontal force varying with height and time
+- Adjustable parameters: node count (5–80), gravity (0–2.0), stiffness (iterations), damping (0.90–1.00)
+- Floor collision: points bounce off bottom edge with friction
+- Wall collision: points constrained to canvas bounds
+- Pinned points rendered as blue dots, heavy masses as yellow, normal as small blue
+- Multiple spawns: add ropes/cloth on top of existing simulation
+- Touch support for mobile dragging
+- Keyboard: Space = spawn, C = clear, P = pause, W = toggle wind
+- Added hanging-rope thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A cron expression parser and scheduler visualizer
+- A bouncing DVD logo screensaver
+- An emoji slot machine
+- An oscilloscope waveform display
