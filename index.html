@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="kaleidoscope.html">
+    <canvas class="preview" id="kaleidoCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Kaleidoscope</div>
+      <div class="card-desc">Rotational symmetry drawing tool with 2–24 segments, mirror mode, 5 brush types (round, square, star, diamond, spray), 6 color palettes, glow effect, fade mode, undo history.</div>
+      <div class="card-tags">
+        <span class="tag">art</span>
+        <span class="tag">drawing</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 57</div>
+  </a>
+
   <a class="card" href="pathfind.html">
     <canvas class="preview" id="pathCanvas"></canvas>
     <div class="card-body">
@@ -1792,6 +1806,43 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Kaleidoscope preview (rotational symmetry pattern) ──────────
+{
+  const c = document.getElementById('kaleidoCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    const cx = w / 2, cy = h / 2;
+    ctx.fillStyle = '#080810';
+    ctx.fillRect(0, 0, w, h);
+    const segments = 8;
+    const angleStep = Math.PI * 2 / segments;
+    for (let i = 0; i < 60; i++) {
+      const t = i / 60;
+      const px = Math.cos(t * 5) * (10 + t * 30);
+      const py = Math.sin(t * 7) * (8 + t * 25);
+      const hue = t * 360;
+      ctx.fillStyle = `hsl(${hue},80%,60%)`;
+      ctx.globalAlpha = 0.8;
+      for (let s = 0; s < segments; s++) {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(s * angleStep);
+        ctx.beginPath();
+        ctx.arc(px, py, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.scale(1, -1);
+        ctx.beginPath();
+        ctx.arc(px, py, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+}
 
 // ── Pathfinding preview (grid with path) ────────────────────────
 (function() {

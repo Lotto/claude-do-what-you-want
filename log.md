@@ -1518,3 +1518,37 @@ Next ideas:
 - A cron expression parser and scheduler visualizer
 - A kaleidoscope drawing tool
 - A sand/powder simulation (falling sand game)
+
+---
+
+## Run 57 — Kaleidoscope Drawing Tool
+**File:** `kaleidoscope.html`
+**Date:** 2026-03-23
+
+Chose "A kaleidoscope drawing tool" from the Run 56 ideas list.
+
+### What it does
+An interactive kaleidoscope drawing canvas with rotational symmetry. Draw in any sector and strokes are replicated across all segments with optional mirror reflection.
+
+### Key features
+- 2–24 rotational symmetry segments with adjustable count
+- Mirror mode: reflects strokes across segment bisectors (doubles visual density)
+- 5 brush types: Round, Square, Star (5-point), Diamond, Spray (particle scatter)
+- 6 color modes: Fixed (color picker), Rainbow (cycling hue), Pastel, Fire (warm tones), Ocean (cool tones), Neon (hard color switching)
+- Glow effect: canvas shadowBlur creates soft luminous halos around strokes
+- Fade mode: semi-transparent background overlay slowly dissolves older strokes
+- Brush size (1–40), opacity (5–100%), scroll wheel for quick size adjustment
+- Stroke interpolation: intermediate points drawn along movement vector for smooth continuous lines
+- Undo history: 15 states stored via getImageData/putImageData
+- Guide lines: faint radial lines from center showing segment boundaries (hidden while drawing)
+- Touch support for mobile devices
+- PNG export
+- Keyboard shortcuts: C=clear, Z=undo, G=glow, M=mirror, F=fade, +/- = segments
+- Added rotational-symmetry-pattern thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A cron expression parser and scheduler visualizer
+- A sand/powder simulation (falling sand game)
+- A circuit logic gate simulator

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kaleidoscope</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+  input[type="range"] { width: 60px; accent-color: #4060a0; }
+  input[type="color"] { width: 28px; height: 20px; border: 1px solid #1a1a30; background: #0c0c18; cursor: pointer; border-radius: 3px; padding: 0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+
+  canvas { display: block; flex: 1; cursor: crosshair; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; }
+  .stat b { color: #505078; font-weight: normal; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Kaleidoscope</h1>
+  <div class="sep"></div>
+  <label>Segments: <input type="range" id="rSegs" min="2" max="24" value="8" oninput="segments=+this.value;document.getElementById('segVal').textContent=this.value"> <span id="segVal">8</span></label>
+  <label>Brush: <input type="range" id="rBrush" min="1" max="40" value="6" oninput="brushSize=+this.value"></label>
+  <label>Opacity: <input type="range" id="rOpacity" min="5" max="100" value="80" oninput="brushOpacity=this.value/100"></label>
+  <div class="sep"></div>
+  <label>Color: <input type="color" id="brushColor" value="#ff6090"></label>
+  <select id="selColorMode" onchange="colorMode=this.value">
+    <option value="fixed">Fixed</option>
+    <option value="rainbow" selected>Rainbow</option>
+    <option value="pastel">Pastel</option>
+    <option value="fire">Fire</option>
+    <option value="ocean">Ocean</option>
+    <option value="neon">Neon</option>
+  </select>
+  <div class="sep"></div>
+  <label><input type="checkbox" id="chkMirror" checked onchange="mirror=this.checked"> Mirror</label>
+  <label><input type="checkbox" id="chkGlow" onchange="glow=this.checked"> Glow</label>
+  <label><input type="checkbox" id="chkFade" onchange="fade=this.checked"> Fade</label>
+  <div class="sep"></div>
+  <button onclick="clearCanvas()">Clear (C)</button>
+  <button onclick="undo()">Undo (Z)</button>
+  <button onclick="exportPNG()">Export</button>
+  <div class="sep"></div>
+  <select id="selBrush" onchange="brushType=this.value">
+    <option value="round">Round</option>
+    <option value="square">Square</option>
+    <option value="star">Star</option>
+    <option value="diamond">Diamond</option>
+    <option value="spray">Spray</option>
+  </select>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="statusBar">
+  <span class="stat">Segments: <b id="statSegs">8</b></span>
+  <span class="stat">Strokes: <b id="statStrokes">0</b></span>
+  <span class="stat">Draw in any sector — mirrored across all segments | Scroll = brush size</span>
+</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H, cx, cy;
+
+function resize() {
+  // Save current image
+  const img = ctx.getImageData(0, 0, canvas.width || 1, canvas.height || 1);
+  W = canvas.width = canvas.clientWidth;
+  H = canvas.height = canvas.clientHeight;
+  cx = W / 2; cy = H / 2;
+  ctx.fillStyle = '#080810';
+  ctx.fillRect(0, 0, W, H);
+  if (img.width > 1) ctx.putImageData(img, 0, 0);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── State ────────────────────────────────────────────────────────
+let segments = 8;
+let brushSize = 6;
+let brushOpacity = 0.8;
+let colorMode = 'rainbow';
+let brushType = 'round';
+let mirror = true;
+let glow = false;
+let fade = false;
+let drawing = false;
+let lastPos = null;
+let hue = 0;
+let strokeCount = 0;
+let history = [];
+const MAX_HISTORY = 15;
+
+// ── Color modes ─────────────────────────────────────────────────
+function getColor() {
+  if (colorMode === 'fixed') return document.getElementById('brushColor').value;
+  hue = (hue + 0.5) % 360;
+  switch (colorMode) {
+    case 'rainbow': return `hsl(${hue},80%,60%)`;
+    case 'pastel': return `hsl(${hue},50%,75%)`;
+    case 'fire': return `hsl(${(hue * 0.3) % 60},90%,${50 + Math.sin(hue * 0.05) * 15}%)`;
+    case 'ocean': return `hsl(${180 + Math.sin(hue * 0.02) * 40},70%,${45 + Math.sin(hue * 0.03) * 20}%)`;
+    case 'neon': {
+      const neonHues = [320, 180, 280, 120, 60];
+      return `hsl(${neonHues[Math.floor(hue / 40) % neonHues.length]},100%,60%)`;
+    }
+  }
+  return '#ff6090';
+}
+
+// ── Drawing ─────────────────────────────────────────────────────
+function drawStroke(x1, y1, x2, y2) {
+  // Convert to polar relative to center
+  const color = getColor();
+  const angleStep = (Math.PI * 2) / segments;
+
+  for (let s = 0; s < segments; s++) {
+    const angle = s * angleStep;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(angle);
+
+    // Draw line segment
+    drawBrushLine(x1 - cx, y1 - cy, x2 - cx, y2 - cy, color);
+
+    // Mirror (reflect across the angle bisector)
+    if (mirror) {
+      ctx.scale(1, -1);
+      drawBrushLine(x1 - cx, y1 - cy, x2 - cx, y2 - cy, color);
+    }
+
+    ctx.restore();
+  }
+}
+
+function drawBrushLine(x1, y1, x2, y2, color) {
+  const dist = Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+  const steps = Math.max(1, Math.ceil(dist / (brushSize * 0.3)));
+
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const x = x1 + (x2 - x1) * t;
+    const y = y1 + (y2 - y1) * t;
+    drawBrush(x, y, color);
+  }
+}
+
+function drawBrush(x, y, color) {
+  ctx.globalAlpha = brushOpacity;
+
+  if (glow) {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = brushSize * 1.5;
+  } else {
+    ctx.shadowBlur = 0;
+  }
+
+  ctx.fillStyle = color;
+
+  switch (brushType) {
+    case 'round':
+      ctx.beginPath();
+      ctx.arc(x, y, brushSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+      break;
+
+    case 'square':
+      ctx.fillRect(x - brushSize / 2, y - brushSize / 2, brushSize, brushSize);
+      break;
+
+    case 'star': {
+      const r = brushSize / 2;
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const a1 = (i / 5) * Math.PI * 2 - Math.PI / 2;
+        const a2 = ((i + 0.5) / 5) * Math.PI * 2 - Math.PI / 2;
+        ctx.lineTo(x + Math.cos(a1) * r, y + Math.sin(a1) * r);
+        ctx.lineTo(x + Math.cos(a2) * r * 0.4, y + Math.sin(a2) * r * 0.4);
+      }
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+
+    case 'diamond': {
+      const r = brushSize / 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y - r);
+      ctx.lineTo(x + r * 0.6, y);
+      ctx.lineTo(x, y + r);
+      ctx.lineTo(x - r * 0.6, y);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
+
+    case 'spray': {
+      const count = brushSize * 2;
+      for (let i = 0; i < count; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.random() * brushSize;
+        ctx.fillRect(x + Math.cos(a) * d, y + Math.sin(a) * d, 1, 1);
+      }
+      break;
+    }
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+// ── Fade effect ─────────────────────────────────────────────────
+function applyFade() {
+  if (!fade) return;
+  ctx.fillStyle = 'rgba(8,8,16,0.01)';
+  ctx.fillRect(0, 0, W, H);
+}
+
+// ── Guide lines ─────────────────────────────────────────────────
+function drawGuides() {
+  if (drawing) return;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.strokeStyle = '#ffffff06';
+  ctx.lineWidth = 1;
+  const angleStep = (Math.PI * 2) / segments;
+  const r = Math.max(W, H);
+  for (let s = 0; s < segments; s++) {
+    const a = s * angleStep;
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ── History ─────────────────────────────────────────────────────
+function saveState() {
+  history.push(ctx.getImageData(0, 0, W, H));
+  if (history.length > MAX_HISTORY) history.shift();
+}
+
+function undo() {
+  if (history.length === 0) return;
+  ctx.putImageData(history.pop(), 0, 0);
+}
+
+function clearCanvas() {
+  saveState();
+  ctx.fillStyle = '#080810';
+  ctx.fillRect(0, 0, W, H);
+}
+
+function exportPNG() {
+  const a = document.createElement('a');
+  a.href = canvas.toDataURL('image/png');
+  a.download = 'kaleidoscope.png';
+  a.click();
+}
+
+// ── Input ───────────────────────────────────────────────────────
+canvas.addEventListener('mousedown', e => {
+  drawing = true;
+  saveState();
+  strokeCount++;
+  const rect = canvas.getBoundingClientRect();
+  lastPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  drawStroke(lastPos.x, lastPos.y, lastPos.x, lastPos.y);
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!drawing) return;
+  const rect = canvas.getBoundingClientRect();
+  const pos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  drawStroke(lastPos.x, lastPos.y, pos.x, pos.y);
+  lastPos = pos;
+});
+
+canvas.addEventListener('mouseup', () => { drawing = false; lastPos = null; });
+canvas.addEventListener('mouseleave', () => { drawing = false; lastPos = null; });
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  brushSize = Math.max(1, Math.min(40, brushSize + (e.deltaY > 0 ? -1 : 1)));
+  document.getElementById('rBrush').value = brushSize;
+});
+
+// Touch support
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  drawing = true;
+  saveState();
+  strokeCount++;
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  lastPos = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  drawStroke(lastPos.x, lastPos.y, lastPos.x, lastPos.y);
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!drawing) return;
+  const rect = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  const pos = { x: t.clientX - rect.left, y: t.clientY - rect.top };
+  drawStroke(lastPos.x, lastPos.y, pos.x, pos.y);
+  lastPos = pos;
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { drawing = false; lastPos = null; });
+
+// ── Keyboard ────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === 'c') clearCanvas();
+  if (e.key === 'z' || (e.ctrlKey && e.key === 'z')) { e.preventDefault(); undo(); }
+  if (e.key === '+' || e.key === '=') segments = Math.min(24, segments + 1);
+  if (e.key === '-') segments = Math.max(2, segments - 1);
+  if (e.key === 'g') { glow = !glow; document.getElementById('chkGlow').checked = glow; }
+  if (e.key === 'm') { mirror = !mirror; document.getElementById('chkMirror').checked = mirror; }
+  if (e.key === 'f') { fade = !fade; document.getElementById('chkFade').checked = fade; }
+  document.getElementById('rSegs').value = segments;
+  document.getElementById('segVal').textContent = segments;
+});
+
+// ── Loop ────────────────────────────────────────────────────────
+function loop() {
+  applyFade();
+  drawGuides();
+  document.getElementById('statSegs').textContent = segments;
+  document.getElementById('statStrokes').textContent = strokeCount;
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
