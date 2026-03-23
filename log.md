@@ -839,3 +839,35 @@ Next ideas:
 - A music visualizer with FFT analysis
 - A platformer game with procedural levels
 - A Boids flocking simulation
+
+---
+
+## 2026-03-23 — Run 38
+
+Built `boids.html`: Craig Reynolds boid flocking simulation.
+- Three classic steering forces: Separation, Alignment, Cohesion — each with adjustable strength
+- Spatial hash grid (cell size 80px) for O(n) neighbor queries instead of O(n²)
+- Generator-based neighbor iteration over 3×3 grid neighborhood
+- Predator agents: chase nearest boid, boids flee within 2× sight range
+- Mouse drag attracts nearby boids (radius 300px)
+- Toroidal wrapping boundaries
+- 3 visual styles: Triangles (velocity-oriented), Dots, Lines (velocity vectors)
+- Configurable trail fade (alpha 0–0.98) for motion blur effect
+- Speed clamping with minimum velocity floor (30% of max) to prevent stalling
+- 6 presets:
+  - Classic Flock: 200 boids, balanced forces
+  - Tight Swarm: 300 boids, high cohesion/alignment, low separation
+  - Loose Drift: 150 boids, high separation, low cohesion
+  - Predator: 200 boids + 2 predators
+  - Two Species: 120 blue + 120 orange boids
+  - Tornado: 400 boids with initial tangential velocity for vortex
+- Click=attract, shift+click=add predator, right-click=spawn 20, scroll=±10 boids
+- Keyboard: space=pause, c=clear
+- Added animated flock thumbnail to index.html
+
+Next ideas:
+- A reaction-diffusion GPU explorer
+- A noise-based wallpaper / screensaver generator
+- A music visualizer with FFT analysis
+- A platformer game with procedural levels
+- A Perlin noise terrain generator

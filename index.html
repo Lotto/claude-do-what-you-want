@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="boids.html">
+    <canvas class="preview" id="boidsCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Boids Flocking</div>
+      <div class="card-desc">Craig Reynolds boid flocking simulation. Separation, alignment, cohesion with spatial grid acceleration. Predators, mouse attraction, 6 presets (Classic, Tight Swarm, Loose Drift, Predator, Two Species, Tornado).</div>
+      <div class="card-tags">
+        <span class="tag">simulation</span>
+        <span class="tag">emergent</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 38</div>
+  </a>
+
   <a class="card" href="pixelart.html">
     <canvas class="preview" id="pixelCanvas"></canvas>
     <div class="card-body">
@@ -1525,6 +1539,48 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Boids preview (animated flock) ────────────────────────────────
+(function() {
+  const c = document.getElementById('boidsCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  const N = 60;
+  const bs = [];
+  for (let i = 0; i < N; i++) {
+    const a = Math.random()*Math.PI*2;
+    bs.push({x:Math.random()*W,y:Math.random()*H,vx:Math.cos(a)*1.5,vy:Math.sin(a)*1.5,h:180+Math.random()*40});
+  }
+  let f = 0;
+  function tick() {
+    ctx.fillStyle = 'rgba(2,2,6,0.15)';
+    ctx.fillRect(0,0,W,H);
+    for (const b of bs) {
+      let sx=0,sy=0,ax=0,ay=0,cx=0,cy=0,n=0;
+      for (const o of bs) {
+        if (o===b) continue;
+        const dx=o.x-b.x,dy=o.y-b.y,d=Math.hypot(dx,dy);
+        if (d>40||d===0) continue;
+        if (d<15){sx-=dx/d;sy-=dy/d;}
+        ax+=o.vx;ay+=o.vy;cx+=o.x;cy+=o.y;n++;
+      }
+      if(n>0){b.vx+=(ax/n-b.vx)*0.04;b.vy+=(ay/n-b.vy)*0.04;b.vx+=(cx/n-b.x)*0.0008;b.vy+=(cy/n-b.y)*0.0008;}
+      b.vx+=sx*0.1;b.vy+=sy*0.1;
+      const spd=Math.hypot(b.vx,b.vy);
+      if(spd>2){b.vx=b.vx/spd*2;b.vy=b.vy/spd*2;}
+      b.x+=b.vx;b.y+=b.vy;
+      if(b.x<0)b.x+=W;if(b.x>W)b.x-=W;if(b.y<0)b.y+=H;if(b.y>H)b.y-=H;
+      const angle=Math.atan2(b.vy,b.vx);
+      ctx.save();ctx.translate(b.x,b.y);ctx.rotate(angle);
+      ctx.beginPath();ctx.moveTo(4,0);ctx.lineTo(-2.5,-2);ctx.lineTo(-2.5,2);ctx.closePath();
+      ctx.fillStyle=`hsl(${b.h},65%,55%)`;ctx.fill();ctx.restore();
+    }
+    if(++f<200) requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
 })();
 
 // ── Pixel Art preview (tiny sprite) ───────────────────────────────

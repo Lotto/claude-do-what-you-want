@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Boids</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #020206; color: #a0a0b0; font: 11px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { padding: 7px 14px; background: #06060a; border-bottom: 1px solid #10101c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; }
+  canvas { display: block; flex: 1; cursor: crosshair; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; }
+  button:hover { background: #12122a; color: #a0a0c8; }
+  button.active { background: #1a3060; color: #80c0ff; border-color: #3060a0; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  input[type=range] { width: 65px; accent-color: #4060c0; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  #info { position: absolute; bottom: 8px; left: 12px; font-size: 10px; color: #1a1a30; pointer-events: none; }
+  #lblCount { font-size: 10px; color: #404060; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Boids</h1>
+  <div class="sep"></div>
+  <select id="selPreset">
+    <option value="-1">— Preset —</option>
+    <option value="0">Classic Flock</option>
+    <option value="1">Tight Swarm</option>
+    <option value="2">Loose Drift</option>
+    <option value="3">Predator</option>
+    <option value="4">Two Species</option>
+    <option value="5">Tornado</option>
+  </select>
+  <div class="sep"></div>
+  <label>Separation <input type="range" id="rngSep" min="0" max="4" step="0.1" value="1.5"></label>
+  <label>Alignment <input type="range" id="rngAli" min="0" max="2" step="0.05" value="0.8"></label>
+  <label>Cohesion <input type="range" id="rngCoh" min="0" max="2" step="0.05" value="0.6"></label>
+  <div class="sep"></div>
+  <label>Speed <input type="range" id="rngSpd" min="1" max="8" step="0.5" value="3.5"></label>
+  <label>Sight <input type="range" id="rngSight" min="20" max="150" step="5" value="60"></label>
+  <label>Trails <input type="range" id="rngTrail" min="0" max="0.98" step="0.01" value="0.88"></label>
+  <div class="sep"></div>
+  <select id="selStyle">
+    <option value="0">Triangles</option>
+    <option value="1">Dots</option>
+    <option value="2">Lines</option>
+  </select>
+  <button id="btnPause">Pause</button>
+  <button id="btnClear">Clear</button>
+  <span id="lblCount"></span>
+</div>
+<canvas id="c"></canvas>
+<div id="info">click=add flock · shift+click=add predator · scroll=count · space=pause · drag=attract</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  canvas.width = W = window.innerWidth;
+  canvas.height = H = window.innerHeight - canvas.getBoundingClientRect().top;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Boid state ───────────────────────────────────────────────────
+let boids = [];
+let predators = [];
+let paused = false;
+let mouseDown = false, mouseX = W/2, mouseY = H/2;
+
+// Parameters
+let sepForce = 1.5, aliForce = 0.8, cohForce = 0.6;
+let maxSpeed = 3.5, sightRange = 60, trailAlpha = 0.88;
+let drawStyle = 0;
+
+function Boid(x, y, hue) {
+  const a = Math.random() * Math.PI * 2;
+  return {
+    x, y,
+    vx: Math.cos(a) * maxSpeed * 0.5,
+    vy: Math.sin(a) * maxSpeed * 0.5,
+    hue: hue !== undefined ? hue : Math.random() * 360,
+    species: 0,
+  };
+}
+
+function Predator(x, y) {
+  const a = Math.random() * Math.PI * 2;
+  return {
+    x, y,
+    vx: Math.cos(a) * maxSpeed * 0.3,
+    vy: Math.sin(a) * maxSpeed * 0.3,
+    hue: 0,
+  };
+}
+
+function spawnFlock(x, y, count, hue) {
+  for (let i = 0; i < count; i++) {
+    boids.push(Boid(
+      x + (Math.random() - 0.5) * 60,
+      y + (Math.random() - 0.5) * 60,
+      hue !== undefined ? hue + (Math.random() - 0.5) * 20 : undefined
+    ));
+  }
+}
+
+// ── Spatial grid for O(n) neighbor queries ───────────────────────
+let gridCells, gridCols, gridRows;
+const GRID_SIZE = 80;
+
+function buildGrid(list) {
+  gridCols = Math.ceil(W / GRID_SIZE) + 1;
+  gridRows = Math.ceil(H / GRID_SIZE) + 1;
+  gridCells = new Array(gridCols * gridRows);
+  for (let i = 0; i < gridCells.length; i++) gridCells[i] = [];
+  for (const b of list) {
+    const gx = Math.max(0, Math.min(gridCols - 1, b.x / GRID_SIZE | 0));
+    const gy = Math.max(0, Math.min(gridRows - 1, b.y / GRID_SIZE | 0));
+    gridCells[gy * gridCols + gx].push(b);
+  }
+}
+
+function* neighbors(b, range) {
+  const r = range / GRID_SIZE;
+  const gx0 = Math.max(0, (b.x / GRID_SIZE | 0) - Math.ceil(r));
+  const gx1 = Math.min(gridCols - 1, (b.x / GRID_SIZE | 0) + Math.ceil(r));
+  const gy0 = Math.max(0, (b.y / GRID_SIZE | 0) - Math.ceil(r));
+  const gy1 = Math.min(gridRows - 1, (b.y / GRID_SIZE | 0) + Math.ceil(r));
+  for (let gy = gy0; gy <= gy1; gy++) {
+    for (let gx = gx0; gx <= gx1; gx++) {
+      const cell = gridCells[gy * gridCols + gx];
+      for (const o of cell) {
+        if (o !== b) yield o;
+      }
+    }
+  }
+}
+
+// ── Simulation ───────────────────────────────────────────────────
+function step() {
+  buildGrid(boids);
+
+  const sepR = sightRange * 0.4;
+
+  for (const b of boids) {
+    let sx = 0, sy = 0; // separation
+    let ax = 0, ay = 0, an = 0; // alignment
+    let cx = 0, cy = 0, cn = 0; // cohesion
+
+    for (const o of neighbors(b, sightRange)) {
+      const dx = o.x - b.x, dy = o.y - b.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > sightRange * sightRange || d2 === 0) continue;
+      const d = Math.sqrt(d2);
+
+      // Separation
+      if (d < sepR) {
+        sx -= dx / d;
+        sy -= dy / d;
+      }
+
+      // Alignment
+      ax += o.vx; ay += o.vy; an++;
+
+      // Cohesion
+      cx += o.x; cy += o.y; cn++;
+    }
+
+    // Apply forces
+    if (an > 0) {
+      ax /= an; ay /= an;
+      b.vx += (ax - b.vx) * aliForce * 0.05;
+      b.vy += (ay - b.vy) * aliForce * 0.05;
+    }
+    if (cn > 0) {
+      cx /= cn; cy /= cn;
+      b.vx += (cx - b.x) * cohForce * 0.001;
+      b.vy += (cy - b.y) * cohForce * 0.001;
+    }
+    b.vx += sx * sepForce * 0.08;
+    b.vy += sy * sepForce * 0.08;
+
+    // Flee from predators
+    for (const p of predators) {
+      const dx = b.x - p.x, dy = b.y - p.y;
+      const d2 = dx * dx + dy * dy;
+      const fleeR = sightRange * 2;
+      if (d2 < fleeR * fleeR && d2 > 0) {
+        const d = Math.sqrt(d2);
+        const strength = (1 - d / fleeR) * 3;
+        b.vx += (dx / d) * strength;
+        b.vy += (dy / d) * strength;
+      }
+    }
+
+    // Mouse attraction
+    if (mouseDown) {
+      const dx = mouseX - b.x, dy = mouseY - b.y;
+      const d = Math.hypot(dx, dy);
+      if (d > 10 && d < 300) {
+        b.vx += (dx / d) * 0.3;
+        b.vy += (dy / d) * 0.3;
+      }
+    }
+
+    // Clamp speed
+    const spd = Math.hypot(b.vx, b.vy);
+    if (spd > maxSpeed) {
+      b.vx = (b.vx / spd) * maxSpeed;
+      b.vy = (b.vy / spd) * maxSpeed;
+    }
+    if (spd < maxSpeed * 0.3) {
+      b.vx = (b.vx / (spd || 1)) * maxSpeed * 0.3;
+      b.vy = (b.vy / (spd || 1)) * maxSpeed * 0.3;
+    }
+
+    // Move
+    b.x += b.vx;
+    b.y += b.vy;
+
+    // Wrap
+    if (b.x < 0) b.x += W; if (b.x > W) b.x -= W;
+    if (b.y < 0) b.y += H; if (b.y > H) b.y -= H;
+  }
+
+  // Update predators (chase nearest boid)
+  for (const p of predators) {
+    let closest = null, minD = Infinity;
+    for (const b of boids) {
+      const d = Math.hypot(b.x - p.x, b.y - p.y);
+      if (d < minD) { minD = d; closest = b; }
+    }
+    if (closest && minD < 300) {
+      const dx = closest.x - p.x, dy = closest.y - p.y;
+      const d = Math.hypot(dx, dy);
+      p.vx += (dx / d) * 0.15;
+      p.vy += (dy / d) * 0.15;
+    }
+    const spd = Math.hypot(p.vx, p.vy);
+    const pMax = maxSpeed * 0.85;
+    if (spd > pMax) { p.vx = (p.vx / spd) * pMax; p.vy = (p.vy / spd) * pMax; }
+
+    p.x += p.vx; p.y += p.vy;
+    if (p.x < 0) p.x += W; if (p.x > W) p.x -= W;
+    if (p.y < 0) p.y += H; if (p.y > H) p.y -= H;
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────
+function render() {
+  // Trail fade
+  ctx.fillStyle = `rgba(2,2,6,${1 - trailAlpha})`;
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw boids
+  for (const b of boids) {
+    const angle = Math.atan2(b.vy, b.vx);
+    const spd = Math.hypot(b.vx, b.vy);
+    const bright = 40 + (spd / maxSpeed) * 30;
+
+    if (drawStyle === 0) {
+      // Triangles
+      const sz = 5;
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(sz, 0);
+      ctx.lineTo(-sz * 0.6, -sz * 0.45);
+      ctx.lineTo(-sz * 0.6, sz * 0.45);
+      ctx.closePath();
+      ctx.fillStyle = `hsl(${b.hue},65%,${bright}%)`;
+      ctx.fill();
+      ctx.restore();
+    } else if (drawStyle === 1) {
+      // Dots
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, 2, 0, Math.PI * 2);
+      ctx.fillStyle = `hsl(${b.hue},65%,${bright}%)`;
+      ctx.fill();
+    } else {
+      // Lines (velocity vector)
+      ctx.beginPath();
+      ctx.moveTo(b.x, b.y);
+      ctx.lineTo(b.x - b.vx * 3, b.y - b.vy * 3);
+      ctx.strokeStyle = `hsl(${b.hue},65%,${bright}%)`;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    }
+  }
+
+  // Draw predators
+  for (const p of predators) {
+    const angle = Math.atan2(p.vy, p.vx);
+    const sz = 9;
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.rotate(angle);
+    ctx.beginPath();
+    ctx.moveTo(sz, 0);
+    ctx.lineTo(-sz * 0.7, -sz * 0.6);
+    ctx.lineTo(-sz * 0.3, 0);
+    ctx.lineTo(-sz * 0.7, sz * 0.6);
+    ctx.closePath();
+    ctx.fillStyle = '#e04040';
+    ctx.fill();
+    ctx.restore();
+    // Danger aura
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, sightRange * 2, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(224,64,64,0.06)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Mouse attractor
+  if (mouseDown) {
+    ctx.beginPath();
+    ctx.arc(mouseX, mouseY, 8, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(100,160,255,0.3)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  document.getElementById('lblCount').textContent = `${boids.length} boids${predators.length ? ' + ' + predators.length + ' predators' : ''}`;
+}
+
+// ── Loop ─────────────────────────────────────────────────────────
+function loop() {
+  if (!paused) {
+    step();
+  }
+  render();
+  requestAnimationFrame(loop);
+}
+
+// ── Presets ───────────────────────────────────────────────────────
+const PRESETS = [
+  function classicFlock() {
+    boids = []; predators = [];
+    spawnFlock(W/2, H/2, 200);
+    sepForce=1.5; aliForce=0.8; cohForce=0.6; maxSpeed=3.5; sightRange=60;
+  },
+  function tightSwarm() {
+    boids = []; predators = [];
+    spawnFlock(W/2, H/2, 300, 200);
+    sepForce=0.8; aliForce=1.2; cohForce=1.5; maxSpeed=3; sightRange=50;
+  },
+  function looseDrift() {
+    boids = []; predators = [];
+    spawnFlock(W/2, H/2, 150, 120);
+    sepForce=2.5; aliForce=0.3; cohForce=0.2; maxSpeed=2; sightRange=80;
+  },
+  function predatorMode() {
+    boids = []; predators = [];
+    spawnFlock(W/2, H/2, 200);
+    predators.push(Predator(100, 100), Predator(W-100, H-100));
+    sepForce=1.5; aliForce=0.8; cohForce=0.6; maxSpeed=3.5; sightRange=60;
+  },
+  function twoSpecies() {
+    boids = []; predators = [];
+    spawnFlock(W*0.3, H/2, 120, 200); // blue flock
+    spawnFlock(W*0.7, H/2, 120, 30);  // orange flock
+    sepForce=1.8; aliForce=0.9; cohForce=0.7; maxSpeed=3.5; sightRange=55;
+  },
+  function tornado() {
+    boids = []; predators = [];
+    const cx = W/2, cy = H/2;
+    for (let i = 0; i < 400; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 20 + Math.random() * 200;
+      const b = Boid(cx + r*Math.cos(a), cy + r*Math.sin(a), (a/Math.PI*180+180)%360);
+      // Tangential velocity
+      const v = 2 + Math.random();
+      b.vx = -Math.sin(a) * v;
+      b.vy = Math.cos(a) * v;
+      boids.push(b);
+    }
+    sepForce=1.0; aliForce=1.5; cohForce=1.0; maxSpeed=4; sightRange=45;
+  },
+];
+
+function syncSliders() {
+  document.getElementById('rngSep').value = sepForce;
+  document.getElementById('rngAli').value = aliForce;
+  document.getElementById('rngCoh').value = cohForce;
+  document.getElementById('rngSpd').value = maxSpeed;
+  document.getElementById('rngSight').value = sightRange;
+}
+
+// ── Input ────────────────────────────────────────────────────────
+canvas.addEventListener('mousedown', e => {
+  if (e.shiftKey) {
+    predators.push(Predator(e.offsetX, e.offsetY));
+  } else if (e.button === 0) {
+    mouseDown = true;
+    mouseX = e.offsetX; mouseY = e.offsetY;
+  }
+  if (e.button === 2) {
+    spawnFlock(e.offsetX, e.offsetY, 20);
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  mouseX = e.offsetX; mouseY = e.offsetY;
+});
+
+canvas.addEventListener('mouseup', () => { mouseDown = false; });
+canvas.addEventListener('mouseleave', () => { mouseDown = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const count = e.deltaY < 0 ? 10 : -10;
+  if (count > 0) {
+    spawnFlock(e.offsetX, e.offsetY, count);
+  } else {
+    // Remove some boids near cursor
+    for (let i = 0; i < -count && boids.length > 0; i++) {
+      let closest = 0, minD = Infinity;
+      for (let j = 0; j < boids.length; j++) {
+        const d = Math.hypot(boids[j].x - e.offsetX, boids[j].y - e.offsetY);
+        if (d < minD) { minD = d; closest = j; }
+      }
+      boids.splice(closest, 1);
+    }
+  }
+}, { passive: false });
+
+// Touch
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  const r = canvas.getBoundingClientRect();
+  mouseDown = true;
+  mouseX = t.clientX - r.left;
+  mouseY = t.clientY - r.top;
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  const r = canvas.getBoundingClientRect();
+  mouseX = t.clientX - r.left;
+  mouseY = t.clientY - r.top;
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { mouseDown = false; });
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  if (e.key === ' ') {
+    paused = !paused;
+    document.getElementById('btnPause').textContent = paused ? 'Resume' : 'Pause';
+    e.preventDefault();
+  }
+  if (e.key === 'c') {
+    boids = []; predators = [];
+    ctx.fillStyle = '#020206'; ctx.fillRect(0, 0, W, H);
+  }
+});
+
+// ── Controls ─────────────────────────────────────────────────────
+document.getElementById('selPreset').addEventListener('change', e => {
+  const i = parseInt(e.target.value); if (i < 0) return;
+  ctx.fillStyle = '#020206'; ctx.fillRect(0, 0, W, H);
+  PRESETS[i]();
+  syncSliders();
+  e.target.value = '-1';
+});
+
+document.getElementById('rngSep').addEventListener('input', e => { sepForce = parseFloat(e.target.value); });
+document.getElementById('rngAli').addEventListener('input', e => { aliForce = parseFloat(e.target.value); });
+document.getElementById('rngCoh').addEventListener('input', e => { cohForce = parseFloat(e.target.value); });
+document.getElementById('rngSpd').addEventListener('input', e => { maxSpeed = parseFloat(e.target.value); });
+document.getElementById('rngSight').addEventListener('input', e => { sightRange = parseInt(e.target.value); });
+document.getElementById('rngTrail').addEventListener('input', e => { trailAlpha = parseFloat(e.target.value); });
+document.getElementById('selStyle').addEventListener('change', e => { drawStyle = parseInt(e.target.value); });
+document.getElementById('btnPause').addEventListener('click', () => {
+  paused = !paused;
+  document.getElementById('btnPause').textContent = paused ? 'Resume' : 'Pause';
+});
+document.getElementById('btnClear').addEventListener('click', () => {
+  boids = []; predators = [];
+  ctx.fillStyle = '#020206'; ctx.fillRect(0, 0, W, H);
+});
+
+// ── Init ─────────────────────────────────────────────────────────
+PRESETS[0]();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
