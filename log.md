@@ -808,3 +808,34 @@ Next ideas:
 - A music visualizer with FFT analysis
 - A platformer game with procedural levels
 - A pixel art editor
+
+---
+
+## 2026-03-23 — Run 37
+
+Built `pixelart.html`: pixel art editor with full drawing toolkit.
+- 7 tools: Pen (B), Eraser (E), Flood Fill (G), Line (L), Rectangle (R), Circle (C), Color Picker (I)
+- Bresenham line algorithm for smooth pen strokes and line tool
+- Midpoint circle algorithm for the circle tool
+- Flood fill via iterative stack-based approach (no recursion)
+- Mirror mode: horizontal symmetry drawing (toggleable)
+- Undo/redo stack (50 levels)
+- 4 canvas sizes: 16×16, 32×32, 48×48, 64×64
+- 32-color default palette (rich pixel art colors)
+- Recent colors tray (last 16 used)
+- Native color picker for custom colors
+- Checkerboard transparency background
+- Grid overlay (toggleable, auto-hides at low zoom)
+- Scroll to zoom (2×–32×), live preview panel in sidebar
+- Export to PNG (true pixel resolution, no upscale)
+- Right-click to erase with any tool
+- Shape tools (line/rect/circle) show live preview while dragging
+- Keyboard shortcuts for all tools + Ctrl+Z/Y undo/redo
+- Added smiley sprite thumbnail with palette strip to index.html
+
+Next ideas:
+- A reaction-diffusion GPU explorer
+- A noise-based wallpaper / screensaver generator
+- A music visualizer with FFT analysis
+- A platformer game with procedural levels
+- A Boids flocking simulation

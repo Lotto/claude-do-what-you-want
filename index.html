@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="pixelart.html">
+    <canvas class="preview" id="pixelCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Pixel Art Editor</div>
+      <div class="card-desc">Full-featured pixel art editor with pen, eraser, fill, line, rect, circle tools. Bresenham line algorithm, midpoint circle, flood fill. Mirror mode, undo/redo, 32-color palette, export PNG, 4 canvas sizes.</div>
+      <div class="card-tags">
+        <span class="tag">creative</span>
+        <span class="tag">editor</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 37</div>
+  </a>
+
   <a class="card" href="poetry.html">
     <canvas class="preview" id="poetryCanvas"></canvas>
     <div class="card-body">
@@ -1511,6 +1525,44 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Pixel Art preview (tiny sprite) ───────────────────────────────
+(function() {
+  const c = document.getElementById('pixelCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#020206';
+  ctx.fillRect(0, 0, W, H);
+  // Draw a small smiley sprite
+  const sprite = [
+    '..YYYY..',
+    '.YYYYYY.',
+    'YY.YY.YY',
+    'YYYYYYYY',
+    'YY.YY.YY',
+    'Y.YYYY.Y',
+    '.YYYYYY.',
+    '..YYYY..',
+  ];
+  const colors = {Y:'#ffda79','.':''};
+  const sz = Math.min(W,H)/10|0, ox=(W-8*sz)/2|0, oy=(H-8*sz)/2|0;
+  // Grid bg
+  ctx.strokeStyle='rgba(255,255,255,0.04)';ctx.lineWidth=0.5;
+  for(let i=0;i<=8;i++){
+    ctx.beginPath();ctx.moveTo(ox+i*sz,oy);ctx.lineTo(ox+i*sz,oy+8*sz);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(ox,oy+i*sz);ctx.lineTo(ox+8*sz,oy+i*sz);ctx.stroke();
+  }
+  for(let y=0;y<8;y++) for(let x=0;x<8;x++){
+    const ch=sprite[y][x];
+    if(colors[ch]){ctx.fillStyle=colors[ch];ctx.fillRect(ox+x*sz,oy+y*sz,sz,sz);}
+  }
+  // Palette strip at bottom
+  const pal=['#000','#e94560','#ffa502','#ffda79','#67e480','#1e90ff','#6c5ce7','#fff'];
+  const pw=W/pal.length;
+  pal.forEach((cl,i)=>{ctx.fillStyle=cl;ctx.fillRect(i*pw,H-6,pw,6);});
 })();
 
 // ── Poetry preview (text lines on dark bg) ────────────────────────
