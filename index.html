@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="regex.html">
+    <canvas class="preview" id="regexCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Regex Visualizer</div>
+      <div class="card-desc">Interactive regex tester with real-time highlighting, railroad-style syntax diagram, match details with capture groups. 10 presets, replace mode, 5 flags.</div>
+      <div class="card-tags">
+        <span class="tag">tool</span>
+        <span class="tag">regex</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 45</div>
+  </a>
+
   <a class="card" href="towerdefense.html">
     <canvas class="preview" id="tdCanvas"></canvas>
     <div class="card-body">
@@ -1623,6 +1637,55 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Regex Visualizer preview (railroad nodes) ───────────────────
+(function() {
+  const c = document.getElementById('regexCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#06060a';
+  ctx.fillRect(0, 0, W, H);
+  const cy = H / 2;
+  // Start node
+  ctx.fillStyle = '#3060a0';
+  ctx.beginPath(); ctx.arc(12, cy, 4, 0, Math.PI * 2); ctx.fill();
+  // Draw some token boxes
+  const nodes = [
+    {x:28,w:40,label:'\\w+',color:'#207060',bg:'#0e1a1a'},
+    {x:78,w:18,label:'@',color:'#303060',bg:'#0e0e1a'},
+    {x:106,w:40,label:'\\w+',color:'#207060',bg:'#0e1a1a'},
+    {x:156,w:14,label:'.',color:'#808020',bg:'#1a1a0e'},
+    {x:180,w:40,label:'\\w+',color:'#207060',bg:'#0e1a1a'},
+  ];
+  nodes.forEach(n => {
+    // connector
+    ctx.strokeStyle = '#202040'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(n.x-6, cy); ctx.lineTo(n.x, cy); ctx.stroke();
+    // box
+    ctx.fillStyle = n.bg; ctx.strokeStyle = n.color; ctx.lineWidth = 1;
+    ctx.fillRect(n.x, cy-10, n.w, 20); ctx.strokeRect(n.x, cy-10, n.w, 20);
+    // label
+    ctx.font = '9px "Courier New",monospace'; ctx.fillStyle = n.color;
+    ctx.textAlign = 'center'; ctx.fillText(n.label, n.x+n.w/2, cy+3);
+  });
+  // quantifier
+  ctx.font = '8px "Courier New",monospace'; ctx.fillStyle = '#ff8040';
+  ctx.textAlign = 'left';
+  ctx.fillText('+', 68, cy-10);
+  ctx.fillText('+', 146, cy-10);
+  ctx.fillText('+', 220, cy-10);
+  // End node
+  ctx.fillStyle = '#3060a0';
+  ctx.beginPath(); ctx.arc(W-12, cy, 4, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#06060a';
+  ctx.beginPath(); ctx.arc(W-12, cy, 2, 0, Math.PI * 2); ctx.fill();
+  // connector to end
+  ctx.strokeStyle = '#202040'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(220, cy); ctx.lineTo(W-16, cy); ctx.stroke();
+  ctx.textAlign = 'left';
 })();
 
 // ── Tower Defense preview (path with towers) ────────────────────

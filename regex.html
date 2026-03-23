@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Regex Visualizer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #020206; color: #a0a0b0; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { padding: 8px 14px; background: #06060a; border-bottom: 1px solid #10101c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; }
+  button:hover { background: #12122a; color: #a0a0c8; }
+  button.active { background: #1a3060; color: #80c0ff; border-color: #3060a0; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 4px; white-space: nowrap; cursor: pointer; }
+
+  #main { display: flex; flex: 1; overflow: hidden; }
+  #left { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #10101c; min-width: 0; }
+  #right { width: 320px; flex-shrink: 0; display: flex; flex-direction: column; overflow: hidden; }
+
+  .section-label { font-size: 10px; color: #404060; text-transform: uppercase; letter-spacing: 0.15em; padding: 8px 12px 4px; flex-shrink: 0; }
+
+  #regexInput { width: 100%; background: #08080e; border: none; border-bottom: 1px solid #10101c; color: #e0e0f0; font: 14px 'Courier New', monospace; padding: 10px 12px; outline: none; }
+  #regexInput:focus { background: #0a0a14; }
+  #regexInput.error { border-bottom-color: #802020; color: #ff6060; }
+  #flagsRow { display: flex; gap: 12px; padding: 6px 12px; background: #06060a; border-bottom: 1px solid #10101c; flex-shrink: 0; }
+  #errorMsg { color: #ff4040; font-size: 10px; padding: 0 12px; min-height: 0; overflow: hidden; transition: all 0.2s; flex-shrink: 0; }
+  #errorMsg.show { padding: 4px 12px; min-height: 18px; }
+
+  #testArea { flex: 1; background: #08080e; border: none; color: #c0c0d0; font: 13px 'Courier New', monospace; padding: 10px 12px; outline: none; resize: none; white-space: pre-wrap; overflow-y: auto; }
+
+  #highlighted { flex: 1; overflow-y: auto; padding: 10px 12px; font: 13px 'Courier New', monospace; white-space: pre-wrap; word-break: break-all; line-height: 1.6; }
+  .match { background: #1a3060; color: #80c0ff; border-radius: 2px; padding: 0 1px; }
+  .match-alt { background: #2a1a50; color: #b080ff; border-radius: 2px; padding: 0 1px; }
+  .group { border-bottom: 2px solid; padding-bottom: 1px; }
+  .g1 { border-color: #ff6080; }
+  .g2 { border-color: #60ff80; }
+  .g3 { border-color: #6080ff; }
+  .g4 { border-color: #ffb060; }
+  .g5 { border-color: #60ffd0; }
+
+  #matchList { flex: 1; overflow-y: auto; padding: 8px; }
+  .match-item { background: #0a0a14; border: 1px solid #141428; border-radius: 4px; padding: 8px 10px; margin-bottom: 6px; font-size: 11px; }
+  .match-item .match-header { color: #6080c0; font-size: 10px; margin-bottom: 4px; }
+  .match-item .match-text { color: #c0c0e0; word-break: break-all; }
+  .match-item .match-groups { margin-top: 4px; }
+  .match-item .group-entry { color: #808098; font-size: 10px; margin-top: 2px; }
+  .group-entry .gval { color: #a0a0c0; }
+
+  #vizPanel { height: 200px; flex-shrink: 0; border-top: 1px solid #10101c; overflow: auto; background: #06060a; }
+  canvas { display: block; }
+
+  #statsBar { padding: 4px 12px; background: #06060a; border-top: 1px solid #10101c; font-size: 10px; color: #404060; flex-shrink: 0; display: flex; gap: 16px; }
+  .stat { color: #505078; }
+  .stat b { color: #7070a0; font-weight: normal; }
+
+  #presetList { padding: 4px 8px; }
+  .preset-item { padding: 4px 8px; cursor: pointer; border-radius: 3px; font-size: 10px; color: #606080; }
+  .preset-item:hover { background: #10102a; color: #8080c0; }
+  .preset-item .pname { color: #7070a0; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Regex Visualizer</h1>
+  <div class="sep"></div>
+  <select id="selPreset">
+    <option value="-1">-- Presets --</option>
+    <option value="0">Email</option>
+    <option value="1">URL</option>
+    <option value="2">IPv4 Address</option>
+    <option value="3">Date (YYYY-MM-DD)</option>
+    <option value="4">Hex Color</option>
+    <option value="5">Phone Number</option>
+    <option value="6">HTML Tag</option>
+    <option value="7">Quoted String</option>
+    <option value="8">Integers</option>
+    <option value="9">Words (3+ letters)</option>
+  </select>
+  <div class="sep"></div>
+  <button id="btnReplace">Replace Mode</button>
+  <div class="sep"></div>
+  <span class="stat">Ctrl+Enter = apply</span>
+</div>
+
+<div id="main">
+  <div id="left">
+    <input type="text" id="regexInput" placeholder="Enter regex pattern..." value="(\w+)@(\w+)\.(\w+)" spellcheck="false" autocomplete="off">
+    <div id="flagsRow">
+      <label><input type="checkbox" id="flagG" checked> g (global)</label>
+      <label><input type="checkbox" id="flagI"> i (case insensitive)</label>
+      <label><input type="checkbox" id="flagM"> m (multiline)</label>
+      <label><input type="checkbox" id="flagS"> s (dotAll)</label>
+      <label><input type="checkbox" id="flagU"> u (unicode)</label>
+    </div>
+    <div id="errorMsg"></div>
+    <div id="replaceRow" style="display:none; padding: 6px 12px; background: #06060a; border-bottom: 1px solid #10101c;">
+      <input type="text" id="replaceInput" placeholder="Replace with... ($1, $2, etc.)" style="width:100%; background:#08080e; border:1px solid #141428; color:#c0e0c0; font:13px 'Courier New',monospace; padding:6px 8px; outline:none;" spellcheck="false">
+    </div>
+    <div style="display:flex; flex:1; overflow:hidden;">
+      <div style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+        <div class="section-label">Test String</div>
+        <textarea id="testArea" spellcheck="false">user@example.com sent a message to admin@site.org
+Contact: support@company.net or info@test.co.uk
+Invalid: @nouser or nodomain@</textarea>
+      </div>
+      <div style="flex:1; display:flex; flex-direction:column; overflow:hidden; border-left: 1px solid #10101c;">
+        <div class="section-label">Highlighted Matches</div>
+        <div id="highlighted"></div>
+      </div>
+    </div>
+    <div id="vizPanel">
+      <canvas id="vizCanvas"></canvas>
+    </div>
+    <div id="statsBar">
+      <span class="stat">Matches: <b id="statMatches">0</b></span>
+      <span class="stat">Groups: <b id="statGroups">0</b></span>
+      <span class="stat">Steps: <b id="statSteps">—</b></span>
+      <span class="stat" id="statReplace" style="display:none">Replace result copied</span>
+    </div>
+  </div>
+
+  <div id="right">
+    <div class="section-label">Match Details</div>
+    <div id="matchList"></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── State ────────────────────────────────────────────────────────
+const regexInput = document.getElementById('regexInput');
+const testArea = document.getElementById('testArea');
+const highlighted = document.getElementById('highlighted');
+const matchList = document.getElementById('matchList');
+const errorMsg = document.getElementById('errorMsg');
+const replaceInput = document.getElementById('replaceInput');
+const replaceRow = document.getElementById('replaceRow');
+const vizCanvas = document.getElementById('vizCanvas');
+const vizCtx = vizCanvas.getContext('2d');
+
+let replaceMode = false;
+let currentRegex = null;
+let currentMatches = [];
+
+// ── Presets ──────────────────────────────────────────────────────
+const PRESETS = [
+  { pattern: '[\\w.+-]+@[\\w-]+\\.[\\w.]+', flags: 'gi', test: 'user@example.com sent a message to admin@site.org\nContact: support@company.net or info@test.co.uk\nInvalid: @nouser or nodomain@', desc: 'Email addresses' },
+  { pattern: 'https?://[\\w.-]+(?:/[\\w./?%&=-]*)?', flags: 'gi', test: 'Visit https://example.com/path?q=1 or http://test.org\nAlso: https://sub.domain.co.uk/page\nNot a URL: ftp://other.com', desc: 'URLs' },
+  { pattern: '\\b(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\b', flags: 'g', test: 'Server IPs: 192.168.1.1 and 10.0.0.255\nPublic: 8.8.8.8 and 1.1.1.1\nInvalid: 999.999.999.999 or 256.1.2.3', desc: 'IPv4 addresses' },
+  { pattern: '(\\d{4})-(\\d{2})-(\\d{2})', flags: 'g', test: 'Created: 2024-01-15\nModified: 2024-12-31\nInvalid: 2024/01/15 or 24-01-15', desc: 'ISO dates' },
+  { pattern: '#([0-9a-fA-F]{3}){1,2}\\b', flags: 'gi', test: 'Colors: #fff #FF0000 #3a7bd5 #000\nBackground: #123456 border: #abc\nInvalid: #xyz #12345', desc: 'Hex colors' },
+  { pattern: '\\+?\\d{1,3}[-.\\s]?\\(?\\d{1,4}\\)?[-.\\s]?\\d{1,4}[-.\\s]?\\d{1,9}', flags: 'g', test: 'Call +1-555-123-4567 or (555) 987-6543\nIntl: +44 20 7946 0958\nShort: 555-1234', desc: 'Phone numbers' },
+  { pattern: '<(\\w+)(\\s[^>]*)?>([\\s\\S]*?)</\\1>', flags: 'gi', test: '<div class="main">Hello</div>\n<p>Paragraph</p>\n<span style="color:red">Text</span>\n<br/> <img src="x.png">', desc: 'HTML tags' },
+  { pattern: '(["\'])(?:(?!\\1).)*\\1', flags: 'g', test: 'She said "hello world" and \'goodbye\'\nConfig: key="value" name=\'test\'\nEscaped: "it\'s here"', desc: 'Quoted strings' },
+  { pattern: '-?\\d+', flags: 'g', test: 'Values: 42 -7 100 0 -999\nMixed: abc123def 3.14 -0\nBig: 1000000', desc: 'Integers' },
+  { pattern: '\\b[a-zA-Z]{3,}\\b', flags: 'g', test: 'The quick brown fox jumps over the lazy dog.\nA to Z in 26 letters.\nShort: I am OK.', desc: 'Words 3+ chars' },
+];
+
+// ── Build regex ─────────────────────────────────────────────────
+function getFlags() {
+  let f = '';
+  if (document.getElementById('flagG').checked) f += 'g';
+  if (document.getElementById('flagI').checked) f += 'i';
+  if (document.getElementById('flagM').checked) f += 'm';
+  if (document.getElementById('flagS').checked) f += 's';
+  if (document.getElementById('flagU').checked) f += 'u';
+  return f;
+}
+
+function setFlags(f) {
+  document.getElementById('flagG').checked = f.includes('g');
+  document.getElementById('flagI').checked = f.includes('i');
+  document.getElementById('flagM').checked = f.includes('m');
+  document.getElementById('flagS').checked = f.includes('s');
+  document.getElementById('flagU').checked = f.includes('u');
+}
+
+function buildRegex() {
+  const pattern = regexInput.value;
+  if (!pattern) {
+    currentRegex = null;
+    errorMsg.textContent = '';
+    errorMsg.className = '';
+    regexInput.classList.remove('error');
+    return null;
+  }
+  try {
+    const r = new RegExp(pattern, getFlags());
+    currentRegex = r;
+    errorMsg.textContent = '';
+    errorMsg.className = '';
+    regexInput.classList.remove('error');
+    return r;
+  } catch (e) {
+    currentRegex = null;
+    errorMsg.textContent = e.message;
+    errorMsg.className = 'show';
+    regexInput.classList.add('error');
+    return null;
+  }
+}
+
+// ── Execute & highlight ─────────────────────────────────────────
+function escapeHTML(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function run() {
+  const r = buildRegex();
+  const text = testArea.value;
+
+  if (!r || !text) {
+    highlighted.innerHTML = escapeHTML(text || '');
+    matchList.innerHTML = '';
+    updateStats(0, 0);
+    drawViz(null);
+    return;
+  }
+
+  // Find all matches
+  currentMatches = [];
+  const isGlobal = r.global;
+
+  if (isGlobal) {
+    let m;
+    const rCopy = new RegExp(r.source, r.flags);
+    while ((m = rCopy.exec(text)) !== null) {
+      currentMatches.push({ index: m.index, length: m[0].length, text: m[0], groups: [...m].slice(1) });
+      if (m[0].length === 0) rCopy.lastIndex++;
+      if (currentMatches.length > 5000) break;
+    }
+  } else {
+    const m = r.exec(text);
+    if (m) {
+      currentMatches.push({ index: m.index, length: m[0].length, text: m[0], groups: [...m].slice(1) });
+    }
+  }
+
+  // Build highlighted HTML
+  let html = '';
+  let last = 0;
+  currentMatches.forEach((m, i) => {
+    if (m.index > last) html += escapeHTML(text.slice(last, m.index));
+    const cls = i % 2 === 0 ? 'match' : 'match-alt';
+    html += `<span class="${cls}">${escapeHTML(m.text)}</span>`;
+    last = m.index + m.length;
+  });
+  if (last < text.length) html += escapeHTML(text.slice(last));
+  highlighted.innerHTML = html || escapeHTML(text);
+
+  // Replace mode
+  if (replaceMode && replaceInput.value) {
+    try {
+      const rr = new RegExp(r.source, r.flags);
+      const result = text.replace(rr, replaceInput.value);
+      highlighted.innerHTML += '\n\n<span style="color:#404060">── Replace Result ──</span>\n' + escapeHTML(result);
+    } catch(e) { /* ignore */ }
+  }
+
+  // Match list
+  let listHTML = '';
+  const groupCount = currentMatches.length > 0 ? currentMatches[0].groups.length : 0;
+  currentMatches.forEach((m, i) => {
+    listHTML += `<div class="match-item">`;
+    listHTML += `<div class="match-header">Match ${i + 1} at index ${m.index}–${m.index + m.length - 1} (${m.length} char${m.length !== 1 ? 's' : ''})</div>`;
+    listHTML += `<div class="match-text">${escapeHTML(m.text)}</div>`;
+    if (m.groups.length > 0) {
+      listHTML += `<div class="match-groups">`;
+      m.groups.forEach((g, gi) => {
+        const gc = ['g1','g2','g3','g4','g5'][gi % 5];
+        listHTML += `<div class="group-entry"><span class="${gc}">Group ${gi + 1}:</span> <span class="gval">${g !== undefined ? escapeHTML(g) : '(undefined)'}</span></div>`;
+      });
+      listHTML += `</div>`;
+    }
+    listHTML += `</div>`;
+  });
+  matchList.innerHTML = listHTML;
+
+  updateStats(currentMatches.length, groupCount);
+  drawViz(r);
+}
+
+function updateStats(matches, groups) {
+  document.getElementById('statMatches').textContent = matches;
+  document.getElementById('statGroups').textContent = groups;
+}
+
+// ── Regex visualization (railroad-style diagram) ────────────────
+const VIZ_H = 180;
+const NODE_H = 28;
+const NODE_PAD = 12;
+const GAP = 16;
+
+function drawViz(regex) {
+  if (!regex) {
+    vizCanvas.width = vizCanvas.parentElement.clientWidth;
+    vizCanvas.height = VIZ_H;
+    vizCtx.fillStyle = '#06060a';
+    vizCtx.fillRect(0, 0, vizCanvas.width, vizCanvas.height);
+    return;
+  }
+
+  const tokens = tokenize(regex.source);
+  const totalW = layoutTokens(tokens);
+
+  vizCanvas.width = Math.max(vizCanvas.parentElement.clientWidth, totalW + 80);
+  vizCanvas.height = VIZ_H;
+  vizCtx.fillStyle = '#06060a';
+  vizCtx.fillRect(0, 0, vizCanvas.width, vizCanvas.height);
+
+  const cy = VIZ_H / 2;
+  let x = 30;
+
+  // Start circle
+  vizCtx.fillStyle = '#3060a0';
+  vizCtx.beginPath(); vizCtx.arc(x, cy, 6, 0, Math.PI * 2); vizCtx.fill();
+  x += 16;
+
+  tokens.forEach(tok => {
+    // Connector line
+    vizCtx.strokeStyle = '#202040';
+    vizCtx.lineWidth = 2;
+    vizCtx.beginPath(); vizCtx.moveTo(x, cy); vizCtx.lineTo(x + GAP / 2, cy); vizCtx.stroke();
+    x += GAP / 2;
+
+    drawToken(tok, x, cy);
+    x += tok._w;
+
+    vizCtx.beginPath(); vizCtx.moveTo(x, cy); vizCtx.lineTo(x + GAP / 2, cy); vizCtx.stroke();
+    x += GAP / 2;
+  });
+
+  // End circle
+  vizCtx.fillStyle = '#3060a0';
+  vizCtx.beginPath(); vizCtx.arc(x + 6, cy, 6, 0, Math.PI * 2); vizCtx.fill();
+  vizCtx.fillStyle = '#06060a';
+  vizCtx.beginPath(); vizCtx.arc(x + 6, cy, 3, 0, Math.PI * 2); vizCtx.fill();
+}
+
+function tokenize(src) {
+  const tokens = [];
+  let i = 0;
+  while (i < src.length) {
+    const ch = src[i];
+
+    if (ch === '(') {
+      // Find matching close
+      let depth = 1, j = i + 1;
+      while (j < src.length && depth > 0) {
+        if (src[j] === '(' && src[j - 1] !== '\\') depth++;
+        if (src[j] === ')' && src[j - 1] !== '\\') depth--;
+        j++;
+      }
+      const inner = src.slice(i + 1, j - 1);
+      let label = 'Group';
+      let content = inner;
+      if (inner.startsWith('?:')) { label = 'Non-cap'; content = inner.slice(2); }
+      else if (inner.startsWith('?=')) { label = 'Lookahead'; content = inner.slice(2); }
+      else if (inner.startsWith('?!')) { label = '!Lookahead'; content = inner.slice(2); }
+      else if (inner.startsWith('?<=')) { label = 'Lookbehind'; content = inner.slice(3); }
+      else if (inner.startsWith('?<!')) { label = '!Lookbehind'; content = inner.slice(3); }
+
+      let quantifier = '';
+      if (j < src.length && '+*?{'.includes(src[j])) {
+        if (src[j] === '{') {
+          const end = src.indexOf('}', j);
+          quantifier = src.slice(j, end + 1);
+          j = end + 1;
+        } else {
+          quantifier = src[j];
+          j++;
+        }
+        if (j < src.length && src[j] === '?') { quantifier += '?'; j++; }
+      }
+
+      tokens.push({ type: 'group', label, content, quantifier });
+      i = j;
+    } else if (ch === '[') {
+      let j = i + 1;
+      if (j < src.length && src[j] === '^') j++;
+      while (j < src.length && src[j] !== ']') { if (src[j] === '\\') j++; j++; }
+      j++;
+      const set = src.slice(i, j);
+      let quantifier = '';
+      if (j < src.length && '+*?{'.includes(src[j])) {
+        if (src[j] === '{') {
+          const end = src.indexOf('}', j);
+          quantifier = src.slice(j, end + 1);
+          j = end + 1;
+        } else {
+          quantifier = src[j]; j++;
+        }
+        if (j < src.length && src[j] === '?') { quantifier += '?'; j++; }
+      }
+      tokens.push({ type: 'charset', text: set, quantifier });
+      i = j;
+    } else if (ch === '\\') {
+      let esc = src.slice(i, i + 2);
+      let j = i + 2;
+      let quantifier = '';
+      if (j < src.length && '+*?{'.includes(src[j])) {
+        if (src[j] === '{') {
+          const end = src.indexOf('}', j);
+          quantifier = src.slice(j, end + 1);
+          j = end + 1;
+        } else {
+          quantifier = src[j]; j++;
+        }
+        if (j < src.length && src[j] === '?') { quantifier += '?'; j++; }
+      }
+      const META = { '\\d': 'digit', '\\D': '!digit', '\\w': 'word', '\\W': '!word', '\\s': 'space', '\\S': '!space', '\\b': 'boundary', '\\B': '!boundary' };
+      tokens.push({ type: 'escape', text: META[esc] || esc, quantifier });
+      i = j;
+    } else if (ch === '|') {
+      tokens.push({ type: 'alt' });
+      i++;
+    } else if (ch === '^') {
+      tokens.push({ type: 'anchor', text: 'start' });
+      i++;
+    } else if (ch === '$') {
+      tokens.push({ type: 'anchor', text: 'end' });
+      i++;
+    } else if (ch === '.') {
+      let j = i + 1, quantifier = '';
+      if (j < src.length && '+*?{'.includes(src[j])) {
+        if (src[j] === '{') {
+          const end = src.indexOf('}', j);
+          quantifier = src.slice(j, end + 1);
+          j = end + 1;
+        } else {
+          quantifier = src[j]; j++;
+        }
+        if (j < src.length && src[j] === '?') { quantifier += '?'; j++; }
+      }
+      tokens.push({ type: 'dot', quantifier });
+      i = j;
+    } else {
+      // Literal — collect consecutive literals
+      let j = i;
+      while (j < src.length && !'(|)[\\^$.+*?{'.includes(src[j])) j++;
+      let text = src.slice(i, j);
+      // Check if last char has quantifier
+      let quantifier = '';
+      if (j < src.length && '+*?{'.includes(src[j])) {
+        if (text.length > 1) {
+          // Split: all but last as one token, last with quantifier
+          tokens.push({ type: 'literal', text: text.slice(0, -1), quantifier: '' });
+          text = text.slice(-1);
+        }
+        if (src[j] === '{') {
+          const end = src.indexOf('}', j);
+          quantifier = src.slice(j, end + 1);
+          j = end + 1;
+        } else {
+          quantifier = src[j]; j++;
+        }
+        if (j < src.length && src[j] === '?') { quantifier += '?'; j++; }
+      }
+      tokens.push({ type: 'literal', text, quantifier });
+      i = j;
+    }
+  }
+  return tokens;
+}
+
+function measureText(text, size) {
+  vizCtx.font = `${size}px 'Courier New', monospace`;
+  return vizCtx.measureText(text).width;
+}
+
+function layoutTokens(tokens) {
+  let total = 0;
+  tokens.forEach(tok => {
+    let w;
+    switch (tok.type) {
+      case 'group':
+        w = Math.max(measureText(tok.content, 11), measureText(tok.label, 9)) + NODE_PAD * 2 + 8;
+        break;
+      case 'charset':
+        w = measureText(tok.text, 11) + NODE_PAD * 2;
+        break;
+      case 'escape':
+      case 'literal':
+        w = measureText(tok.text, 12) + NODE_PAD * 2;
+        break;
+      case 'dot':
+        w = measureText('any', 11) + NODE_PAD * 2;
+        break;
+      case 'anchor':
+        w = measureText(tok.text, 10) + NODE_PAD;
+        break;
+      case 'alt':
+        w = 20;
+        break;
+      default:
+        w = 30;
+    }
+    if (tok.quantifier) w += measureText(tok.quantifier, 10) + 4;
+    tok._w = w;
+    total += w + GAP;
+  });
+  return total;
+}
+
+function drawToken(tok, x, cy) {
+  const w = tok._w - (tok.quantifier ? measureText(tok.quantifier, 10) + 4 : 0);
+  const h = NODE_H;
+
+  switch (tok.type) {
+    case 'group': {
+      // Rounded rect
+      const r = 6;
+      vizCtx.fillStyle = '#121230';
+      vizCtx.strokeStyle = '#3050a0';
+      vizCtx.lineWidth = 1.5;
+      roundRect(x, cy - h / 2 - 6, w, h + 12, r, true, true);
+      // Label
+      vizCtx.font = '9px "Courier New", monospace';
+      vizCtx.fillStyle = '#5070b0';
+      vizCtx.textAlign = 'center';
+      vizCtx.fillText(tok.label, x + w / 2, cy - h / 2 + 2);
+      // Content
+      vizCtx.font = '11px "Courier New", monospace';
+      vizCtx.fillStyle = '#a0b0e0';
+      vizCtx.fillText(tok.content, x + w / 2, cy + 6);
+      break;
+    }
+    case 'charset': {
+      vizCtx.fillStyle = '#1a1a10';
+      vizCtx.strokeStyle = '#806020';
+      vizCtx.lineWidth = 1.5;
+      roundRect(x, cy - h / 2, w, h, 4, true, true);
+      vizCtx.font = '11px "Courier New", monospace';
+      vizCtx.fillStyle = '#d0b060';
+      vizCtx.textAlign = 'center';
+      vizCtx.fillText(tok.text, x + w / 2, cy + 4);
+      break;
+    }
+    case 'escape': {
+      vizCtx.fillStyle = '#0e1a1a';
+      vizCtx.strokeStyle = '#207060';
+      vizCtx.lineWidth = 1.5;
+      roundRect(x, cy - h / 2, w, h, 4, true, true);
+      vizCtx.font = '12px "Courier New", monospace';
+      vizCtx.fillStyle = '#60c0a0';
+      vizCtx.textAlign = 'center';
+      vizCtx.fillText(tok.text, x + w / 2, cy + 4);
+      break;
+    }
+    case 'literal': {
+      vizCtx.fillStyle = '#0e0e1a';
+      vizCtx.strokeStyle = '#303060';
+      vizCtx.lineWidth = 1;
+      roundRect(x, cy - h / 2, w, h, 4, true, true);
+      vizCtx.font = '12px "Courier New", monospace';
+      vizCtx.fillStyle = '#a0a0d0';
+      vizCtx.textAlign = 'center';
+      vizCtx.fillText(tok.text, x + w / 2, cy + 4);
+      break;
+    }
+    case 'dot': {
+      vizCtx.fillStyle = '#1a1a0e';
+      vizCtx.strokeStyle = '#808020';
+      vizCtx.lineWidth = 1.5;
+      roundRect(x, cy - h / 2, w, h, 4, true, true);
+      vizCtx.font = '11px "Courier New", monospace';
+      vizCtx.fillStyle = '#c0c060';
+      vizCtx.textAlign = 'center';
+      vizCtx.fillText('any', x + w / 2, cy + 4);
+      break;
+    }
+    case 'anchor': {
+      vizCtx.fillStyle = '#60405090';
+      vizCtx.beginPath();
+      vizCtx.moveTo(x + w / 2, cy - 10);
+      vizCtx.lineTo(x + w - 2, cy);
+      vizCtx.lineTo(x + w / 2, cy + 10);
+      vizCtx.lineTo(x + 2, cy);
+      vizCtx.closePath();
+      vizCtx.fill();
+      vizCtx.font = '10px "Courier New", monospace';
+      vizCtx.fillStyle = '#c080a0';
+      vizCtx.textAlign = 'center';
+      vizCtx.fillText(tok.text, x + w / 2, cy + 4);
+      break;
+    }
+    case 'alt': {
+      vizCtx.strokeStyle = '#604080';
+      vizCtx.lineWidth = 2;
+      vizCtx.beginPath();
+      vizCtx.moveTo(x + 4, cy - 12);
+      vizCtx.lineTo(x + 10, cy);
+      vizCtx.lineTo(x + 4, cy + 12);
+      vizCtx.stroke();
+      vizCtx.beginPath();
+      vizCtx.moveTo(x + 16, cy - 12);
+      vizCtx.lineTo(x + 10, cy);
+      vizCtx.lineTo(x + 16, cy + 12);
+      vizCtx.stroke();
+      break;
+    }
+  }
+
+  // Quantifier label
+  if (tok.quantifier) {
+    vizCtx.font = '10px "Courier New", monospace';
+    vizCtx.fillStyle = '#ff8040';
+    vizCtx.textAlign = 'left';
+    vizCtx.fillText(tok.quantifier, x + w + 2, cy - h / 2 + 2);
+  }
+
+  vizCtx.textAlign = 'left';
+}
+
+function roundRect(x, y, w, h, r, fill, stroke) {
+  vizCtx.beginPath();
+  vizCtx.moveTo(x + r, y);
+  vizCtx.lineTo(x + w - r, y);
+  vizCtx.quadraticCurveTo(x + w, y, x + w, y + r);
+  vizCtx.lineTo(x + w, y + h - r);
+  vizCtx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  vizCtx.lineTo(x + r, y + h);
+  vizCtx.quadraticCurveTo(x, y + h, x, y + h - r);
+  vizCtx.lineTo(x, y + r);
+  vizCtx.quadraticCurveTo(x, y, x + r, y);
+  vizCtx.closePath();
+  if (fill) vizCtx.fill();
+  if (stroke) vizCtx.stroke();
+}
+
+// ── Event handlers ──────────────────────────────────────────────
+let debounceTimer;
+function scheduleRun() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(run, 80);
+}
+
+regexInput.addEventListener('input', scheduleRun);
+testArea.addEventListener('input', scheduleRun);
+replaceInput.addEventListener('input', scheduleRun);
+['flagG', 'flagI', 'flagM', 'flagS', 'flagU'].forEach(id => {
+  document.getElementById(id).addEventListener('change', scheduleRun);
+});
+
+document.getElementById('btnReplace').addEventListener('click', function() {
+  replaceMode = !replaceMode;
+  this.classList.toggle('active', replaceMode);
+  replaceRow.style.display = replaceMode ? 'block' : 'none';
+  document.getElementById('statReplace').style.display = replaceMode ? '' : 'none';
+  run();
+});
+
+document.getElementById('selPreset').addEventListener('change', function() {
+  const i = parseInt(this.value);
+  if (i < 0) return;
+  const p = PRESETS[i];
+  regexInput.value = p.pattern;
+  testArea.value = p.test;
+  setFlags(p.flags);
+  this.value = '-1';
+  run();
+});
+
+// ── Keyboard shortcuts ──────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    run();
+  }
+});
+
+// ── Resize viz on window resize ─────────────────────────────────
+window.addEventListener('resize', () => {
+  if (currentRegex) drawViz(currentRegex);
+});
+
+// ── Init ────────────────────────────────────────────────────────
+run();
+</script>
+</body>
+</html>

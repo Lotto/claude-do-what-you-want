@@ -1053,3 +1053,31 @@ Next ideas:
 - A Perlin noise terrain generator (3D with elevation shading)
 - A Conway's Game of Life pattern library
 - A music sequencer / drum machine
+
+---
+
+## 2026-03-23 — Run 45
+
+Built `regex.html`: interactive regex visualizer and tester with real-time matching and railroad diagram.
+- Dual-pane layout: test string input (left) with highlighted matches (right), match details sidebar
+- Real-time regex compilation with error display on invalid patterns
+- Match highlighting with alternating colors for adjacent matches (blue/purple)
+- Capture group display: up to 5 color-coded groups per match with index positions
+- Railroad-style syntax diagram (bottom panel):
+  - Tokenizer parses regex source into: groups, character sets, escapes, literals, dots, anchors, alternation
+  - Each token type rendered with distinct color: groups (blue), charsets (gold), escapes (teal), literals (gray), dots (yellow), anchors (pink diamond), alternation (purple chevrons)
+  - Quantifiers shown in orange above their token
+  - Start/end nodes as filled/hollow circles connected by lines
+- 10 presets: Email, URL, IPv4, Date, Hex Color, Phone, HTML Tag, Quoted String, Integers, Words
+- 5 regex flags: g (global), i (case insensitive), m (multiline), s (dotAll), u (unicode)
+- Replace mode: toggle to show replacement results using $1/$2 back-references
+- 80ms debounced input for smooth real-time updates
+- Stats bar: match count, group count
+- Added railroad-diagram thumbnail to index.html
+
+Next ideas:
+- A Mandelbrot/Julia set fractal explorer with zoom
+- A markdown editor with live preview
+- A color palette generator
+- A CSS gradient builder
+- A sound synthesizer with ADSR envelope
