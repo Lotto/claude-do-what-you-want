@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="hexgame.html">
+    <canvas class="preview" id="hexCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Hex Conquest</div>
+      <div class="card-desc">Turn-based hex territory strategy game vs AI. Claim adjacent hexes, reinforce positions, attack enemies. Strength dots, 3 AI levels, 3 board sizes, Lloyd-style expansion with Bowyer-Watson Delaunay under the hood.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">strategy</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 33</div>
+  </a>
+
   <a class="card" href="wave.html">
     <canvas class="preview" id="waveCanvas"></canvas>
     <div class="card-body">
@@ -1455,6 +1469,40 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Hex Conquest preview (static hex grid) ────────────────────────
+(function() {
+  const c = document.getElementById('hexCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#020206';
+  ctx.fillRect(0, 0, W, H);
+  const sz = 12, ox = W/2, oy = H/2, R = 4;
+  function drawH(cx, cy, s, fill, stroke) {
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI/180*(60*i);
+      const x = cx+s*Math.cos(a), y = cy+s*Math.sin(a);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.closePath();
+    if(fill){ctx.fillStyle=fill;ctx.fill();}
+    if(stroke){ctx.strokeStyle=stroke;ctx.lineWidth=0.5;ctx.stroke();}
+  }
+  for (let q=-R;q<=R;q++) for (let r=-R;r<=R;r++) {
+    if(Math.abs(-q-r)>R) continue;
+    const px=sz*(3/2*q)+ox, py=sz*(Math.sqrt(3)/2*q+Math.sqrt(3)*r)+oy;
+    // Random owner for preview
+    const rng=(Math.sin(q*17.3+r*31.7)*43758.5453)%1;
+    let fill='#0a0a14';
+    if(rng>0.7) fill=`hsl(210,70%,${30+rng*20|0}%)`;
+    else if(rng>0.5) fill=`hsl(0,65%,${30+rng*20|0}%)`;
+    else if(rng>0.42) fill=`hsl(45,30%,22%)`;
+    drawH(px,py,sz*0.9,fill,'#141428');
+  }
 })();
 
 // ── Wave preview (concentric ripples) ─────────────────────────────

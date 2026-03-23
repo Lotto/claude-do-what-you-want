@@ -701,3 +701,31 @@ Next ideas:
 - A hex grid strategy game
 - A reaction-diffusion GPU explorer
 - A noise-based wallpaper / screensaver generator
+
+---
+
+## 2026-03-23 — Run 33
+
+Built `hexgame.html`: Hex Conquest — turn-based hex territory strategy game vs AI.
+- Axial hex coordinate system with flat-top hexagons
+- Territory expansion: claim empty hexes adjacent to your territory, attack enemy hexes, reinforce own cells
+- Attack power scales with adjacent friendly cell strength (total/3, min 1)
+- Reinforcement: cells with 3+ friendly neighbors auto-gain +1 strength per turn (cap 5)
+- Strength displayed as dot patterns (1–5 dots per hex)
+- 3 AI difficulty levels:
+  - Easy: 2 moves/turn, high randomness
+  - Medium: 3 moves/turn, moderate randomness, occasional reinforcement
+  - Hard: 4 moves/turn, low randomness, defensive play, blocks player expansion
+- 3 board sizes: Small (radius 7), Medium (9), Large (12)
+- Neutral fortress cells scattered at game start (golden, pre-fortified)
+- Win condition: own 85%+ of all cells, or eliminate opponent
+- Hover highlights valid moves; glow effect on claimable hexes
+- Keyboard: Enter/e=end turn, n=new game
+- Added static hex grid thumbnail to index.html
+
+Next ideas:
+- Generative poetry engine (Markov chains or context-free grammar)
+- A reaction-diffusion GPU explorer
+- A noise-based wallpaper / screensaver generator
+- A circuit logic gate simulator
+- A music visualizer with FFT analysis

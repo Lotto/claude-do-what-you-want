@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hex Conquest</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #020206; color: #a0a0b0; font: 11px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { padding: 7px 14px; background: #06060a; border-bottom: 1px solid #10101c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; }
+  canvas { display: block; flex: 1; cursor: pointer; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; }
+  button:hover { background: #12122a; color: #a0a0c8; }
+  button.active { background: #1a3060; color: #80c0ff; border-color: #3060a0; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  #status { font-size: 11px; color: #80a0d0; }
+  #scores { font-size: 10px; color: #606080; }
+  #info { position: absolute; bottom: 8px; left: 12px; font-size: 10px; color: #1a1a30; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Hex Conquest</h1>
+  <div class="sep"></div>
+  <select id="selSize">
+    <option value="7">Small (7)</option>
+    <option value="9" selected>Medium (9)</option>
+    <option value="12">Large (12)</option>
+  </select>
+  <select id="selAI">
+    <option value="easy">Easy AI</option>
+    <option value="medium" selected>Medium AI</option>
+    <option value="hard">Hard AI</option>
+  </select>
+  <button id="btnNew">New Game</button>
+  <div class="sep"></div>
+  <button id="btnEndTurn">End Turn</button>
+  <div class="sep"></div>
+  <span id="status">Your turn — click a hex adjacent to your territory</span>
+  <span id="scores"></span>
+</div>
+<canvas id="c"></canvas>
+<div id="info">click=claim hex · blue=you · red=AI · brighter=stronger</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  canvas.width = W = window.innerWidth;
+  canvas.height = H = window.innerHeight - canvas.getBoundingClientRect().top;
+  recalcLayout();
+  render();
+}
+
+// ── Hex grid (offset coordinates, flat-top) ─────────────────────
+let GRID_R = 9; // radius of hex board (number of rings)
+let cells = []; // {q, r, owner: 0=none/1=player/2=ai, strength: 1-5}
+let hexSize, offsetX, offsetY;
+let turn = 1; // 1=player, 2=ai
+let gameOver = false;
+let aiLevel = 'medium';
+let playerMoves = 0, maxMoves = 3;
+let hoverCell = null;
+
+// Axial hex directions
+const DIRS = [[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]];
+
+function initGame() {
+  cells = [];
+  gameOver = false;
+  turn = 1;
+  playerMoves = 0;
+
+  // Generate hex grid (axial coordinates within radius)
+  for (let q = -GRID_R; q <= GRID_R; q++) {
+    for (let r = -GRID_R; r <= GRID_R; r++) {
+      const s = -q - r;
+      if (Math.abs(s) <= GRID_R) {
+        cells.push({ q, r, owner: 0, strength: 0 });
+      }
+    }
+  }
+
+  // Place starting positions
+  // Player starts bottom-left area, AI top-right area
+  const pStart = findCell(-GRID_R + 1, GRID_R - 1) || findCell(-GRID_R + 1, GRID_R - 2);
+  const aStart = findCell(GRID_R - 1, -GRID_R + 1) || findCell(GRID_R - 1, -GRID_R + 2);
+
+  if (pStart) { pStart.owner = 1; pStart.strength = 3; }
+  if (aStart) { aStart.owner = 2; aStart.strength = 3; }
+
+  // Give each player a couple extra starting cells
+  if (pStart) expandStart(pStart, 1);
+  if (aStart) expandStart(aStart, 2);
+
+  // Scatter some neutral fortified cells
+  const neutralCount = Math.floor(cells.length * 0.08);
+  const empty = cells.filter(c => c.owner === 0);
+  for (let i = 0; i < neutralCount && empty.length > 0; i++) {
+    const idx = Math.random() * empty.length | 0;
+    empty[idx].strength = 1 + (Math.random() * 2 | 0);
+    empty[idx].owner = 3; // neutral fortress
+    empty.splice(idx, 1);
+  }
+
+  recalcLayout();
+  updateUI();
+}
+
+function expandStart(center, owner) {
+  const neighbors = getNeighbors(center);
+  const shuffled = neighbors.sort(() => Math.random() - 0.5);
+  for (let i = 0; i < Math.min(2, shuffled.length); i++) {
+    if (shuffled[i].owner === 0) {
+      shuffled[i].owner = owner;
+      shuffled[i].strength = 1 + (Math.random() * 2 | 0);
+    }
+  }
+}
+
+function findCell(q, r) {
+  return cells.find(c => c.q === q && c.r === r);
+}
+
+function getNeighbors(cell) {
+  const result = [];
+  for (const [dq, dr] of DIRS) {
+    const n = findCell(cell.q + dq, cell.r + dr);
+    if (n) result.push(n);
+  }
+  return result;
+}
+
+function isAdjacentTo(cell, owner) {
+  return getNeighbors(cell).some(n => n.owner === owner);
+}
+
+// ── Layout ───────────────────────────────────────────────────────
+function recalcLayout() {
+  // Flat-top hex: width = 2*size, height = sqrt(3)*size
+  const maxW = (W - 40) / ((GRID_R * 2 + 1) * 1.55);
+  const maxH = (H - 40) / ((GRID_R * 2 + 1) * 1.8);
+  hexSize = Math.min(maxW, maxH, 28);
+  offsetX = W / 2;
+  offsetY = H / 2;
+}
+
+function hexToPixel(q, r) {
+  const x = hexSize * (3/2 * q);
+  const y = hexSize * (Math.sqrt(3)/2 * q + Math.sqrt(3) * r);
+  return [x + offsetX, y + offsetY];
+}
+
+function pixelToHex(px, py) {
+  const x = px - offsetX, y = py - offsetY;
+  const q = (2/3 * x) / hexSize;
+  const r = (-1/3 * x + Math.sqrt(3)/3 * y) / hexSize;
+  // Round to nearest hex
+  return axialRound(q, r);
+}
+
+function axialRound(q, r) {
+  const s = -q - r;
+  let rq = Math.round(q), rr = Math.round(r), rs = Math.round(s);
+  const dq = Math.abs(rq - q), dr = Math.abs(rr - r), ds = Math.abs(rs - s);
+  if (dq > dr && dq > ds) rq = -rr - rs;
+  else if (dr > ds) rr = -rq - rs;
+  return [rq, rr];
+}
+
+// ── Game logic ───────────────────────────────────────────────────
+function canClaim(cell, owner) {
+  if (gameOver) return false;
+  if (cell.owner === owner) return false; // already own it
+  if (!isAdjacentTo(cell, owner)) return false; // must be adjacent
+  return true;
+}
+
+function claimCell(cell, owner) {
+  if (cell.owner === 0) {
+    // Empty: just take it
+    cell.owner = owner;
+    cell.strength = 1;
+    return true;
+  }
+  if (cell.owner === owner) {
+    // Reinforce
+    if (cell.strength < 5) { cell.strength++; return true; }
+    return false;
+  }
+  // Attack: reduce strength
+  const attackPower = getAttackPower(cell, owner);
+  cell.strength -= attackPower;
+  if (cell.strength <= 0) {
+    cell.owner = owner;
+    cell.strength = 1;
+  }
+  return true;
+}
+
+function getAttackPower(target, attacker) {
+  // Count adjacent friendly cells and their total strength
+  const friends = getNeighbors(target).filter(n => n.owner === attacker);
+  const totalStrength = friends.reduce((s, n) => s + n.strength, 0);
+  return Math.max(1, Math.ceil(totalStrength / 3));
+}
+
+function reinforceOwned(owner) {
+  // Each turn, owned cells adjacent to 2+ friendly cells gain +1 strength (cap 5)
+  const owned = cells.filter(c => c.owner === owner);
+  for (const c of owned) {
+    const friendCount = getNeighbors(c).filter(n => n.owner === owner).length;
+    if (friendCount >= 3 && c.strength < 5) c.strength++;
+  }
+}
+
+function checkWin() {
+  const p1 = cells.filter(c => c.owner === 1).length;
+  const p2 = cells.filter(c => c.owner === 2).length;
+  const total = cells.length;
+
+  if (p1 === 0) { endGame(2); return; }
+  if (p2 === 0) { endGame(1); return; }
+  if (p1 + p2 >= total * 0.85) {
+    endGame(p1 > p2 ? 1 : p2 > p1 ? 2 : 0);
+  }
+}
+
+function endGame(winner) {
+  gameOver = true;
+  const msg = winner === 1 ? 'You win!' : winner === 2 ? 'AI wins!' : 'Draw!';
+  document.getElementById('status').textContent = msg;
+  document.getElementById('status').style.color = winner === 1 ? '#60c0ff' : winner === 2 ? '#ff6060' : '#a0a0a0';
+}
+
+function endTurn() {
+  if (gameOver) return;
+  if (turn === 1) {
+    reinforceOwned(1);
+    turn = 2;
+    playerMoves = 0;
+    updateUI();
+    render();
+    setTimeout(aiTurn, 400);
+  }
+}
+
+// ── AI ───────────────────────────────────────────────────────────
+function aiTurn() {
+  if (gameOver) return;
+  const moves = aiLevel === 'easy' ? 2 : aiLevel === 'medium' ? 3 : 4;
+
+  for (let m = 0; m < moves; m++) {
+    if (gameOver) break;
+    const candidates = [];
+
+    for (const cell of cells) {
+      if (!canClaim(cell, 2)) continue;
+      let score = 0;
+
+      if (cell.owner === 0) {
+        score = 10; // empty cell
+        // Prefer cells near enemy for aggression
+        if (isAdjacentTo(cell, 1)) score += 5;
+      } else if (cell.owner === 1) {
+        // Attack player
+        score = 20 - cell.strength * 3;
+        const ap = getAttackPower(cell, 2);
+        if (ap >= cell.strength) score += 15; // can capture
+      } else if (cell.owner === 3) {
+        // Neutral fortress
+        score = 8 - cell.strength * 2;
+      }
+
+      // Strategic: prefer cells that connect our territory
+      const friendlyNeighbors = getNeighbors(cell).filter(n => n.owner === 2).length;
+      score += friendlyNeighbors * 2;
+
+      // Hard AI: also consider defense
+      if (aiLevel === 'hard') {
+        // Defend weak border cells
+        if (cell.owner === 2 && cell.strength < 3 && isAdjacentTo(cell, 1)) {
+          score += 12;
+        }
+        // Block player expansion paths
+        const playerNeighbors = getNeighbors(cell).filter(n => n.owner === 1).length;
+        if (cell.owner === 0 && playerNeighbors >= 2) score += 8;
+      }
+
+      if (aiLevel === 'easy') score += Math.random() * 15; // randomness
+      else if (aiLevel === 'medium') score += Math.random() * 5;
+      else score += Math.random() * 2;
+
+      candidates.push({ cell, score });
+    }
+
+    if (candidates.length === 0) break;
+    candidates.sort((a, b) => b.score - a.score);
+
+    // Sometimes reinforce instead
+    if (aiLevel !== 'easy' && Math.random() < 0.3) {
+      const weak = cells.filter(c => c.owner === 2 && c.strength < 4 && isAdjacentTo(c, 1));
+      if (weak.length > 0) {
+        const pick = weak[Math.random() * weak.length | 0];
+        pick.strength = Math.min(5, pick.strength + 1);
+        continue;
+      }
+    }
+
+    claimCell(candidates[0].cell, 2);
+  }
+
+  reinforceOwned(2);
+  checkWin();
+  turn = 1;
+  playerMoves = 0;
+  updateUI();
+  render();
+}
+
+// ── Render ────────────────────────────────────────────────────────
+function drawHex(cx, cy, size, fill, stroke, lineW) {
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const angle = Math.PI / 180 * (60 * i);
+    const x = cx + size * Math.cos(angle);
+    const y = cy + size * Math.sin(angle);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.closePath();
+  if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lineW || 1; ctx.stroke(); }
+}
+
+function cellColor(cell) {
+  const s = cell.strength;
+  if (cell.owner === 1) {
+    // Player: blue shades
+    const l = 25 + s * 10;
+    return `hsl(210, 70%, ${l}%)`;
+  }
+  if (cell.owner === 2) {
+    // AI: red shades
+    const l = 25 + s * 10;
+    return `hsl(0, 65%, ${l}%)`;
+  }
+  if (cell.owner === 3) {
+    // Neutral fortress
+    const l = 18 + s * 5;
+    return `hsl(45, 30%, ${l}%)`;
+  }
+  return '#0a0a14';
+}
+
+function render() {
+  ctx.fillStyle = '#020206';
+  ctx.fillRect(0, 0, W, H);
+
+  // Highlight valid moves
+  const validMoves = new Set();
+  if (turn === 1 && !gameOver) {
+    for (const c of cells) {
+      if (canClaim(c, 1)) validMoves.add(c);
+    }
+  }
+
+  for (const cell of cells) {
+    const [px, py] = hexToPixel(cell.q, cell.r);
+    const fill = cellColor(cell);
+    const isValid = validMoves.has(cell);
+    const isHover = hoverCell === cell;
+
+    // Glow for valid moves
+    if (isValid) {
+      ctx.save();
+      ctx.shadowColor = 'rgba(80,140,255,0.3)';
+      ctx.shadowBlur = 8;
+      drawHex(px, py, hexSize * 0.92, fill, null, 0);
+      ctx.restore();
+    }
+
+    drawHex(px, py, hexSize * 0.92, fill, '#141428', 1);
+
+    // Hover highlight
+    if (isHover && isValid) {
+      drawHex(px, py, hexSize * 0.92, 'rgba(80,140,255,0.2)', '#4080d0', 2);
+    }
+
+    // Strength dots
+    if (cell.strength > 0 && cell.owner > 0) {
+      const dotR = Math.max(1.5, hexSize * 0.06);
+      const dotColor = cell.owner === 1 ? '#a0d0ff' : cell.owner === 2 ? '#ffa0a0' : '#d0c080';
+      ctx.fillStyle = dotColor;
+
+      if (cell.strength <= 3) {
+        // Draw dots in a row
+        const spacing = dotR * 3;
+        const startX = px - (cell.strength - 1) * spacing / 2;
+        for (let i = 0; i < cell.strength; i++) {
+          ctx.beginPath();
+          ctx.arc(startX + i * spacing, py, dotR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        // Draw in a pattern
+        const positions = cell.strength === 4
+          ? [[-1,-1],[1,-1],[-1,1],[1,1]]
+          : [[-1,-1],[1,-1],[0,0],[-1,1],[1,1]];
+        for (const [dx, dy] of positions) {
+          ctx.beginPath();
+          ctx.arc(px + dx * dotR * 2, py + dy * dotR * 2, dotR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+
+    // Valid move indicator
+    if (isValid && cell.owner === 0 && !isHover) {
+      ctx.fillStyle = 'rgba(80,140,255,0.15)';
+      ctx.beginPath();
+      ctx.arc(px, py, hexSize * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+function updateUI() {
+  const p1 = cells.filter(c => c.owner === 1).length;
+  const p2 = cells.filter(c => c.owner === 2).length;
+  document.getElementById('scores').textContent = `  Blue: ${p1}  Red: ${p2}  (${playerMoves}/${maxMoves} moves)`;
+
+  if (!gameOver) {
+    if (turn === 1) {
+      document.getElementById('status').textContent = `Your turn — claim ${maxMoves - playerMoves} more hex(es)`;
+      document.getElementById('status').style.color = '#80a0d0';
+    } else {
+      document.getElementById('status').textContent = 'AI thinking...';
+      document.getElementById('status').style.color = '#d08080';
+    }
+  }
+}
+
+// ── Input ────────────────────────────────────────────────────────
+canvas.addEventListener('click', e => {
+  if (turn !== 1 || gameOver) return;
+  const [q, r] = pixelToHex(e.offsetX, e.offsetY);
+  const cell = findCell(q, r);
+  if (!cell) return;
+
+  // Allow reinforcing own cells
+  if (cell.owner === 1 && cell.strength < 5) {
+    cell.strength++;
+    playerMoves++;
+    checkWin();
+    if (playerMoves >= maxMoves) endTurn();
+    else updateUI();
+    render();
+    return;
+  }
+
+  if (!canClaim(cell, 1)) return;
+  claimCell(cell, 1);
+  playerMoves++;
+  checkWin();
+  if (playerMoves >= maxMoves) endTurn();
+  else updateUI();
+  render();
+});
+
+canvas.addEventListener('mousemove', e => {
+  const [q, r] = pixelToHex(e.offsetX, e.offsetY);
+  const cell = findCell(q, r);
+  if (cell !== hoverCell) {
+    hoverCell = cell;
+    render();
+  }
+});
+
+canvas.addEventListener('mouseleave', () => { hoverCell = null; render(); });
+
+// ── Controls ─────────────────────────────────────────────────────
+document.getElementById('selSize').addEventListener('change', e => {
+  GRID_R = parseInt(e.target.value);
+  maxMoves = GRID_R <= 7 ? 2 : GRID_R <= 9 ? 3 : 4;
+  initGame();
+  render();
+});
+document.getElementById('selAI').addEventListener('change', e => { aiLevel = e.target.value; });
+document.getElementById('btnNew').addEventListener('click', () => { initGame(); render(); });
+document.getElementById('btnEndTurn').addEventListener('click', endTurn);
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' || e.key === 'e') endTurn();
+  if (e.key === 'n') { initGame(); render(); }
+});
+
+// ── Init ─────────────────────────────────────────────────────────
+resize();
+window.addEventListener('resize', resize);
+initGame();
+render();
+</script>
+</body>
+</html>
