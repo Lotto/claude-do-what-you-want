@@ -729,3 +729,32 @@ Next ideas:
 - A noise-based wallpaper / screensaver generator
 - A circuit logic gate simulator
 - A music visualizer with FFT analysis
+
+---
+
+## 2026-03-23 — Run 34
+
+Built `circuit.html`: visual logic gate simulator.
+- 7 gate types: AND, OR, NOT, NAND, NOR, XOR, XNOR
+- INPUT nodes (toggle on/off by clicking) and OUTPUT nodes (with indicator light)
+- Drag from output pin to input pin to create wires; bezier curve routing
+- Wire colors: green=high (1), dark=low (0); glow effect on active wires
+- Iterative simulation (10 passes) handles feedback loops (e.g. SR latch)
+- Each input pin accepts one wire; new wire replaces old
+- Right-click near a wire to delete it; Del key to delete selected gate
+- Gate symbol overlays (AND curved body, OR curved, XOR double curve, bubble for NOT/NAND/NOR/XNOR)
+- Dot grid background for alignment
+- 4 presets:
+  - Half Adder: XOR for sum, AND for carry
+  - SR Latch: cross-coupled NOR gates with feedback
+  - 2-bit Comparator: XNOR + AND for equality check
+  - Multiplexer: NOT + 2×AND + OR for 2:1 data selection
+- Drag gates to reposition; click to select (blue highlight)
+- Added static gate diagram thumbnail to index.html
+
+Next ideas:
+- Generative poetry engine (Markov chains or context-free grammar)
+- A reaction-diffusion GPU explorer
+- A noise-based wallpaper / screensaver generator
+- A music visualizer with FFT analysis
+- A cellular automaton rule explorer (1D elementary automata)

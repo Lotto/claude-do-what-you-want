@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="circuit.html">
+    <canvas class="preview" id="circuitCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Logic Circuit</div>
+      <div class="card-desc">Visual logic gate simulator. 7 gate types (AND, OR, NOT, NAND, NOR, XOR, XNOR) plus I/O nodes. Drag pins to wire, click inputs to toggle. 4 presets: Half Adder, SR Latch, 2-bit Comparator, Multiplexer.</div>
+      <div class="card-tags">
+        <span class="tag">simulation</span>
+        <span class="tag">logic</span>
+        <span class="tag">interactive</span>
+      </div>
+    </div>
+    <div class="run-label">Run 34</div>
+  </a>
+
   <a class="card" href="hexgame.html">
     <canvas class="preview" id="hexCanvas"></canvas>
     <div class="card-body">
@@ -1469,6 +1483,61 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Circuit preview (static gate diagram) ─────────────────────────
+(function() {
+  const c = document.getElementById('circuitCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#020206';
+  ctx.fillRect(0, 0, W, H);
+  // Draw grid
+  ctx.strokeStyle = '#08080f';
+  ctx.lineWidth = 0.5;
+  for (let x=0;x<W;x+=15){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for (let y=0;y<H;y+=15){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  // Draw some gates
+  function box(x,y,w,h,label,sel){
+    ctx.fillStyle='#0a0a18';ctx.strokeStyle=sel?'#4080d0':'#222240';ctx.lineWidth=1;
+    ctx.fillRect(x,y,w,h);ctx.strokeRect(x,y,w,h);
+    ctx.fillStyle='#808098';ctx.font='bold 7px Courier New';ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText(label,x+w/2,y+h/2);
+  }
+  function pin(x,y,on){
+    ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);
+    ctx.fillStyle=on?'#40c070':'#1a1a30';ctx.fill();
+    ctx.strokeStyle='#333350';ctx.lineWidth=0.5;ctx.stroke();
+  }
+  function wire(x1,y1,x2,y2,on){
+    const mx=(x1+x2)/2;
+    ctx.strokeStyle=on?'#40c070':'#303050';ctx.lineWidth=on?1.5:1;
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.bezierCurveTo(mx,y1,mx,y2,x2,y2);ctx.stroke();
+  }
+  const gw=45,gh=30;
+  // Half adder layout
+  const bx=W/2-22, by=H/2;
+  box(bx-80,by-28,gw,gh,'XOR',false);
+  box(bx-80,by+8,gw,gh,'AND',false);
+  // I/O
+  ctx.fillStyle='#0c0c16';ctx.strokeStyle='#222240';
+  [by-20,by+16].forEach((y,i)=>{
+    ctx.beginPath();ctx.arc(bx-110,y,10,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle=i?'#60d080':'#606080';ctx.font='bold 7px Courier New';ctx.textAlign='center';
+    ctx.fillText(i?'1':'0',bx-110,y);ctx.fillStyle='#0c0c16';
+  });
+  [by-13,by+23].forEach((y,i)=>{
+    ctx.beginPath();ctx.arc(bx+50,y,10,0,Math.PI*2);ctx.fill();ctx.stroke();
+    ctx.fillStyle=i?'#606080':'#60d080';ctx.font='bold 7px Courier New';ctx.textAlign='center';
+    ctx.fillText(i?'0':'1',bx+50,y);ctx.fillStyle='#0c0c16';
+  });
+  wire(bx-100,by-20,bx-80,by-20,false); wire(bx-100,by+16,bx-80,by-10,true);
+  wire(bx-100,by-20,bx-80,by+16,false); wire(bx-100,by+16,bx-80,by+26,true);
+  wire(bx-35,by-13,bx+40,by-13,true); wire(bx-35,by+23,bx+40,by+23,false);
+  pin(bx-80,by-20,false);pin(bx-80,by-10,true);pin(bx-35,by-13,true);
+  pin(bx-80,by+16,false);pin(bx-80,by+26,true);pin(bx-35,by+23,false);
 })();
 
 // ── Hex Conquest preview (static hex grid) ────────────────────────

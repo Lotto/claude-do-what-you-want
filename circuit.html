@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logic Circuit</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #020206; color: #a0a0b0; font: 11px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { padding: 7px 14px; background: #06060a; border-bottom: 1px solid #10101c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; }
+  canvas { display: block; flex: 1; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; }
+  button:hover { background: #12122a; color: #a0a0c8; }
+  button.active { background: #1a3060; color: #80c0ff; border-color: #3060a0; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  #info { position: absolute; bottom: 8px; left: 12px; font-size: 10px; color: #1a1a30; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Logic Circuit</h1>
+  <div class="sep"></div>
+  <select id="selGate">
+    <option value="AND">AND</option>
+    <option value="OR">OR</option>
+    <option value="NOT">NOT</option>
+    <option value="NAND">NAND</option>
+    <option value="NOR">NOR</option>
+    <option value="XOR">XOR</option>
+    <option value="XNOR">XNOR</option>
+    <option value="INPUT">INPUT</option>
+    <option value="OUTPUT">OUTPUT</option>
+  </select>
+  <button id="btnAdd">Add Gate</button>
+  <div class="sep"></div>
+  <select id="selPreset">
+    <option value="-1">— Preset —</option>
+    <option value="0">Half Adder</option>
+    <option value="1">SR Latch</option>
+    <option value="2">2-bit Comparator</option>
+    <option value="3">Multiplexer</option>
+  </select>
+  <div class="sep"></div>
+  <button id="btnClear">Clear</button>
+  <button id="btnDelete">Delete (Del)</button>
+  <span id="lblInfo" style="font-size:10px;color:#404060"></span>
+</div>
+<canvas id="c"></canvas>
+<div id="info">click gate=select · drag gate=move · drag pin→pin=wire · click INPUT=toggle · Del=delete selected</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  canvas.width = W = window.innerWidth;
+  canvas.height = H = window.innerHeight - canvas.getBoundingClientRect().top;
+  render();
+}
+
+// ── Gate definitions ─────────────────────────────────────────────
+const GATE_W = 70, GATE_H = 50, PIN_R = 5;
+
+const GATE_DEFS = {
+  AND:  { inputs: 2, outputs: 1, fn: (a,b) => [a&b] },
+  OR:   { inputs: 2, outputs: 1, fn: (a,b) => [a|b] },
+  NOT:  { inputs: 1, outputs: 1, fn: (a) => [a?0:1] },
+  NAND: { inputs: 2, outputs: 1, fn: (a,b) => [(a&b)?0:1] },
+  NOR:  { inputs: 2, outputs: 1, fn: (a,b) => [(a|b)?0:1] },
+  XOR:  { inputs: 2, outputs: 1, fn: (a,b) => [a^b] },
+  XNOR: { inputs: 2, outputs: 1, fn: (a,b) => [(a^b)?0:1] },
+  INPUT:  { inputs: 0, outputs: 1, fn: function() { return [this.value]; } },
+  OUTPUT: { inputs: 1, outputs: 0, fn: () => [] },
+};
+
+// ── State ────────────────────────────────────────────────────────
+let gates = [];    // {id, type, x, y, value(for INPUT), inputVals[], outputVals[]}
+let wires = [];    // {from: {gateId, pinIdx}, to: {gateId, pinIdx}}
+let nextId = 1;
+let selected = null; // gate id
+let dragging = null; // {gateId, offX, offY} or null
+let wiring = null;   // {fromGateId, fromPinIdx, fromIsOutput, mx, my}
+
+function createGate(type, x, y) {
+  const def = GATE_DEFS[type];
+  const g = {
+    id: nextId++, type, x, y,
+    value: 0, // for INPUT gates
+    inputVals: new Array(def.inputs).fill(0),
+    outputVals: new Array(def.outputs).fill(0),
+  };
+  gates.push(g);
+  return g;
+}
+
+function deleteGate(id) {
+  gates = gates.filter(g => g.id !== id);
+  wires = wires.filter(w => w.from.gateId !== id && w.to.gateId !== id);
+  if (selected === id) selected = null;
+}
+
+// ── Pin positions ────────────────────────────────────────────────
+function inputPinPos(gate, idx) {
+  const def = GATE_DEFS[gate.type];
+  const n = def.inputs;
+  if (n === 0) return null;
+  const spacing = GATE_H / (n + 1);
+  return { x: gate.x, y: gate.y - GATE_H/2 + spacing * (idx + 1) };
+}
+
+function outputPinPos(gate, idx) {
+  const def = GATE_DEFS[gate.type];
+  const n = def.outputs;
+  if (n === 0) return null;
+  const spacing = GATE_H / (n + 1);
+  return { x: gate.x + GATE_W, y: gate.y - GATE_H/2 + spacing * (idx + 1) };
+}
+
+// ── Simulation ───────────────────────────────────────────────────
+function simulate() {
+  // Reset all inputs
+  for (const g of gates) {
+    const def = GATE_DEFS[g.type];
+    g.inputVals = new Array(def.inputs).fill(0);
+  }
+
+  // Propagate wires (iterative, handles feedback loops up to 10 iterations)
+  for (let iter = 0; iter < 10; iter++) {
+    // Set input values from wires
+    for (const w of wires) {
+      const srcGate = gates.find(g => g.id === w.from.gateId);
+      const dstGate = gates.find(g => g.id === w.to.gateId);
+      if (!srcGate || !dstGate) continue;
+      dstGate.inputVals[w.to.pinIdx] = srcGate.outputVals[w.from.pinIdx];
+    }
+
+    // Evaluate all gates
+    for (const g of gates) {
+      const def = GATE_DEFS[g.type];
+      const fn = def.fn.bind(g);
+      g.outputVals = fn(...g.inputVals);
+    }
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────
+function render() {
+  if (!W) return;
+  ctx.fillStyle = '#020206';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw grid
+  ctx.strokeStyle = '#08080f';
+  ctx.lineWidth = 0.5;
+  const gridSize = 20;
+  for (let x = 0; x < W; x += gridSize) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += gridSize) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  simulate();
+
+  // Draw wires
+  for (const w of wires) {
+    const srcGate = gates.find(g => g.id === w.from.gateId);
+    const dstGate = gates.find(g => g.id === w.to.gateId);
+    if (!srcGate || !dstGate) continue;
+    const from = outputPinPos(srcGate, w.from.pinIdx);
+    const to = inputPinPos(dstGate, w.to.pinIdx);
+    if (!from || !to) continue;
+
+    const val = srcGate.outputVals[w.from.pinIdx];
+    drawWire(from.x, from.y, to.x, to.y, val);
+  }
+
+  // Draw wiring in progress
+  if (wiring) {
+    const gate = gates.find(g => g.id === wiring.fromGateId);
+    if (gate) {
+      const pos = wiring.fromIsOutput
+        ? outputPinPos(gate, wiring.fromPinIdx)
+        : inputPinPos(gate, wiring.fromPinIdx);
+      if (pos) {
+        ctx.strokeStyle = 'rgba(100,160,255,0.5)';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.moveTo(pos.x, pos.y); ctx.lineTo(wiring.mx, wiring.my); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+  }
+
+  // Draw gates
+  for (const g of gates) {
+    drawGate(g);
+  }
+
+  document.getElementById('lblInfo').textContent = `${gates.length} gates, ${wires.length} wires`;
+}
+
+function drawWire(x1, y1, x2, y2, val) {
+  const midX = (x1 + x2) / 2;
+  ctx.strokeStyle = val ? '#40c070' : '#303050';
+  ctx.lineWidth = val ? 2.5 : 1.5;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.bezierCurveTo(midX, y1, midX, y2, x2, y2);
+  ctx.stroke();
+
+  // Glow for active wires
+  if (val) {
+    ctx.strokeStyle = 'rgba(64,192,112,0.15)';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.bezierCurveTo(midX, y1, midX, y2, x2, y2);
+    ctx.stroke();
+  }
+}
+
+function drawGate(g) {
+  const def = GATE_DEFS[g.type];
+  const x = g.x, y = g.y - GATE_H/2;
+  const isSelected = selected === g.id;
+
+  // Shadow/glow for selected
+  if (isSelected) {
+    ctx.shadowColor = 'rgba(80,140,255,0.4)';
+    ctx.shadowBlur = 12;
+  }
+
+  // Body
+  ctx.fillStyle = g.type === 'INPUT' ? (g.value ? '#1a3020' : '#0c0c16')
+    : g.type === 'OUTPUT' ? '#0c0c16'
+    : '#0a0a18';
+  ctx.strokeStyle = isSelected ? '#4080d0' : '#222240';
+  ctx.lineWidth = isSelected ? 2 : 1;
+
+  if (g.type === 'INPUT' || g.type === 'OUTPUT') {
+    // Rounded rect for I/O
+    roundRect(x, y, GATE_W, GATE_H, 8);
+    ctx.fill(); ctx.stroke();
+  } else {
+    // Standard gate shape
+    ctx.beginPath();
+    ctx.rect(x, y, GATE_W, GATE_H);
+    ctx.fill(); ctx.stroke();
+
+    // Gate symbol shape overlay
+    drawGateSymbol(g, x, y);
+  }
+
+  ctx.shadowColor = 'transparent';
+  ctx.shadowBlur = 0;
+
+  // Label
+  ctx.fillStyle = g.type === 'INPUT' ? (g.value ? '#60d080' : '#606080') : '#808098';
+  ctx.font = 'bold 10px Courier New';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  if (g.type === 'INPUT') {
+    ctx.fillText(g.value ? '1' : '0', x + GATE_W/2, y + GATE_H/2);
+  } else if (g.type === 'OUTPUT') {
+    const val = g.inputVals[0];
+    ctx.fillStyle = val ? '#60d080' : '#606080';
+    ctx.fillText(val ? '1' : '0', x + GATE_W/2, y + GATE_H/2);
+    // Output indicator light
+    ctx.beginPath();
+    ctx.arc(x + GATE_W/2, y - 6, 4, 0, Math.PI * 2);
+    ctx.fillStyle = val ? '#40c070' : '#1a1a28';
+    ctx.fill();
+    ctx.strokeStyle = val ? '#60e090' : '#2a2a40';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  } else {
+    ctx.fillText(g.type, x + GATE_W/2, y + GATE_H/2);
+  }
+
+  // Draw pins
+  // Inputs (left side)
+  for (let i = 0; i < def.inputs; i++) {
+    const p = inputPinPos(g, i);
+    const val = g.inputVals[i];
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PIN_R, 0, Math.PI * 2);
+    ctx.fillStyle = val ? '#40c070' : '#1a1a30';
+    ctx.fill();
+    ctx.strokeStyle = '#333350';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // Outputs (right side)
+  for (let i = 0; i < def.outputs; i++) {
+    const p = outputPinPos(g, i);
+    const val = g.outputVals[i];
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, PIN_R, 0, Math.PI * 2);
+    ctx.fillStyle = val ? '#40c070' : '#1a1a30';
+    ctx.fill();
+    ctx.strokeStyle = '#333350';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+function drawGateSymbol(g, x, y) {
+  ctx.strokeStyle = '#2a2a48';
+  ctx.lineWidth = 0.5;
+  const cx = x + GATE_W/2, cy = y + GATE_H/2;
+
+  // Small symbolic shape inside the gate
+  switch (g.type) {
+    case 'AND': case 'NAND':
+      ctx.beginPath();
+      ctx.moveTo(cx-12, cy-10); ctx.lineTo(cx-12, cy+10);
+      ctx.lineTo(cx, cy+10); ctx.arc(cx, cy, 10, Math.PI/2, -Math.PI/2, true);
+      ctx.closePath(); ctx.stroke();
+      if (g.type === 'NAND') { ctx.beginPath(); ctx.arc(cx+13, cy, 3, 0, Math.PI*2); ctx.stroke(); }
+      break;
+    case 'OR': case 'NOR':
+      ctx.beginPath();
+      ctx.moveTo(cx-14, cy-10); ctx.quadraticCurveTo(cx-6, cy, cx-14, cy+10);
+      ctx.quadraticCurveTo(cx+2, cy+10, cx+10, cy);
+      ctx.quadraticCurveTo(cx+2, cy-10, cx-14, cy-10);
+      ctx.stroke();
+      if (g.type === 'NOR') { ctx.beginPath(); ctx.arc(cx+13, cy, 3, 0, Math.PI*2); ctx.stroke(); }
+      break;
+    case 'XOR': case 'XNOR':
+      ctx.beginPath();
+      ctx.moveTo(cx-14, cy-10); ctx.quadraticCurveTo(cx-6, cy, cx-14, cy+10);
+      ctx.quadraticCurveTo(cx+2, cy+10, cx+10, cy);
+      ctx.quadraticCurveTo(cx+2, cy-10, cx-14, cy-10);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx-17, cy-10); ctx.quadraticCurveTo(cx-9, cy, cx-17, cy+10);
+      ctx.stroke();
+      if (g.type === 'XNOR') { ctx.beginPath(); ctx.arc(cx+13, cy, 3, 0, Math.PI*2); ctx.stroke(); }
+      break;
+  }
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y); ctx.arcTo(x+w, y, x+w, y+r, r);
+  ctx.lineTo(x+w, y+h-r); ctx.arcTo(x+w, y+h, x+w-r, y+h, r);
+  ctx.lineTo(x+r, y+h); ctx.arcTo(x, y+h, x, y+h-r, r);
+  ctx.lineTo(x, y+r); ctx.arcTo(x, y, x+r, y, r);
+  ctx.closePath();
+}
+
+// ── Hit testing ──────────────────────────────────────────────────
+function hitGate(mx, my) {
+  for (let i = gates.length - 1; i >= 0; i--) {
+    const g = gates[i];
+    if (mx >= g.x && mx <= g.x + GATE_W && my >= g.y - GATE_H/2 && my <= g.y + GATE_H/2) {
+      return g;
+    }
+  }
+  return null;
+}
+
+function hitPin(mx, my) {
+  for (const g of gates) {
+    const def = GATE_DEFS[g.type];
+    for (let i = 0; i < def.inputs; i++) {
+      const p = inputPinPos(g, i);
+      if (Math.hypot(mx - p.x, my - p.y) < PIN_R + 4) {
+        return { gateId: g.id, pinIdx: i, isOutput: false };
+      }
+    }
+    for (let i = 0; i < def.outputs; i++) {
+      const p = outputPinPos(g, i);
+      if (Math.hypot(mx - p.x, my - p.y) < PIN_R + 4) {
+        return { gateId: g.id, pinIdx: i, isOutput: true };
+      }
+    }
+  }
+  return null;
+}
+
+// ── Input ────────────────────────────────────────────────────────
+let mouseDown = false;
+
+canvas.addEventListener('mousedown', e => {
+  const mx = e.offsetX, my = e.offsetY;
+  mouseDown = true;
+
+  // Check pin hit first (for wiring)
+  const pin = hitPin(mx, my);
+  if (pin) {
+    wiring = { fromGateId: pin.gateId, fromPinIdx: pin.pinIdx, fromIsOutput: pin.isOutput, mx, my };
+    return;
+  }
+
+  const gate = hitGate(mx, my);
+  if (gate) {
+    // Toggle INPUT
+    if (gate.type === 'INPUT' && e.detail === 1) {
+      gate.value = gate.value ? 0 : 1;
+      selected = gate.id;
+      render();
+      return;
+    }
+    selected = gate.id;
+    dragging = { gateId: gate.id, offX: mx - gate.x, offY: my - gate.y };
+    render();
+  } else {
+    selected = null;
+    render();
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  const mx = e.offsetX, my = e.offsetY;
+
+  if (wiring) {
+    wiring.mx = mx;
+    wiring.my = my;
+    render();
+    return;
+  }
+
+  if (dragging) {
+    const gate = gates.find(g => g.id === dragging.gateId);
+    if (gate) {
+      gate.x = mx - dragging.offX;
+      gate.y = my - dragging.offY;
+      render();
+    }
+  }
+});
+
+canvas.addEventListener('mouseup', e => {
+  mouseDown = false;
+  const mx = e.offsetX, my = e.offsetY;
+
+  if (wiring) {
+    const pin = hitPin(mx, my);
+    if (pin && pin.gateId !== wiring.fromGateId) {
+      // Determine direction: output → input
+      let fromPin, toPin;
+      if (wiring.fromIsOutput && !pin.isOutput) {
+        fromPin = { gateId: wiring.fromGateId, pinIdx: wiring.fromPinIdx };
+        toPin = { gateId: pin.gateId, pinIdx: pin.pinIdx };
+      } else if (!wiring.fromIsOutput && pin.isOutput) {
+        fromPin = { gateId: pin.gateId, pinIdx: pin.pinIdx };
+        toPin = { gateId: wiring.fromGateId, pinIdx: wiring.fromPinIdx };
+      }
+
+      if (fromPin && toPin) {
+        // Remove existing wire to this input pin
+        wires = wires.filter(w => !(w.to.gateId === toPin.gateId && w.to.pinIdx === toPin.pinIdx));
+        // Check no duplicate
+        const exists = wires.some(w =>
+          w.from.gateId === fromPin.gateId && w.from.pinIdx === fromPin.pinIdx &&
+          w.to.gateId === toPin.gateId && w.to.pinIdx === toPin.pinIdx
+        );
+        if (!exists) {
+          wires.push({ from: fromPin, to: toPin });
+        }
+      }
+    }
+    wiring = null;
+    render();
+    return;
+  }
+
+  dragging = null;
+});
+
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  // Right-click: delete wire near cursor
+  const mx = e.offsetX, my = e.offsetY;
+  let closest = -1, minD = 20;
+  for (let i = 0; i < wires.length; i++) {
+    const w = wires[i];
+    const srcGate = gates.find(g => g.id === w.from.gateId);
+    const dstGate = gates.find(g => g.id === w.to.gateId);
+    if (!srcGate || !dstGate) continue;
+    const from = outputPinPos(srcGate, w.from.pinIdx);
+    const to = inputPinPos(dstGate, w.to.pinIdx);
+    if (!from || !to) continue;
+    // Approximate: distance to midpoint
+    const midX = (from.x + to.x) / 2, midY = (from.y + to.y) / 2;
+    const d = Math.hypot(mx - midX, my - midY);
+    if (d < minD) { minD = d; closest = i; }
+    // Also check distance to line segments
+    const d2 = distToSegment(mx, my, from.x, from.y, to.x, to.y);
+    if (d2 < minD) { minD = d2; closest = i; }
+  }
+  if (closest >= 0) {
+    wires.splice(closest, 1);
+    render();
+  }
+});
+
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len2 = dx*dx + dy*dy;
+  if (len2 === 0) return Math.hypot(px-x1, py-y1);
+  let t = ((px-x1)*dx + (py-y1)*dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t*dx), py - (y1 + t*dy));
+}
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (selected !== null) { deleteGate(selected); render(); }
+  }
+});
+
+// ── Presets ───────────────────────────────────────────────────────
+const PRESETS = [
+  function halfAdder() {
+    gates = []; wires = []; nextId = 1;
+    const cx = W/2 - 100, cy = H/2;
+    const a = createGate('INPUT', cx - 160, cy - 40);
+    const b = createGate('INPUT', cx - 160, cy + 40);
+    const xorG = createGate('XOR', cx, cy - 40);
+    const andG = createGate('AND', cx, cy + 40);
+    const sum = createGate('OUTPUT', cx + 160, cy - 40);
+    const carry = createGate('OUTPUT', cx + 160, cy + 40);
+    wires.push(
+      { from: {gateId:a.id, pinIdx:0}, to: {gateId:xorG.id, pinIdx:0} },
+      { from: {gateId:b.id, pinIdx:0}, to: {gateId:xorG.id, pinIdx:1} },
+      { from: {gateId:a.id, pinIdx:0}, to: {gateId:andG.id, pinIdx:0} },
+      { from: {gateId:b.id, pinIdx:0}, to: {gateId:andG.id, pinIdx:1} },
+      { from: {gateId:xorG.id, pinIdx:0}, to: {gateId:sum.id, pinIdx:0} },
+      { from: {gateId:andG.id, pinIdx:0}, to: {gateId:carry.id, pinIdx:0} },
+    );
+  },
+  function srLatch() {
+    gates = []; wires = []; nextId = 1;
+    const cx = W/2 - 60, cy = H/2;
+    const s = createGate('INPUT', cx - 180, cy - 50);
+    const r = createGate('INPUT', cx - 180, cy + 50);
+    const nor1 = createGate('NOR', cx - 30, cy - 50);
+    const nor2 = createGate('NOR', cx - 30, cy + 50);
+    const q = createGate('OUTPUT', cx + 130, cy - 50);
+    const qn = createGate('OUTPUT', cx + 130, cy + 50);
+    wires.push(
+      { from: {gateId:s.id, pinIdx:0}, to: {gateId:nor1.id, pinIdx:0} },
+      { from: {gateId:r.id, pinIdx:0}, to: {gateId:nor2.id, pinIdx:1} },
+      { from: {gateId:nor1.id, pinIdx:0}, to: {gateId:nor2.id, pinIdx:0} },
+      { from: {gateId:nor2.id, pinIdx:0}, to: {gateId:nor1.id, pinIdx:1} },
+      { from: {gateId:nor1.id, pinIdx:0}, to: {gateId:q.id, pinIdx:0} },
+      { from: {gateId:nor2.id, pinIdx:0}, to: {gateId:qn.id, pinIdx:0} },
+    );
+    s.value = 1; // Set the latch initially
+  },
+  function comparator() {
+    gates = []; wires = []; nextId = 1;
+    const cx = W/2 - 80, cy = H/2;
+    const a0 = createGate('INPUT', cx - 200, cy - 80);
+    const b0 = createGate('INPUT', cx - 200, cy - 20);
+    const a1 = createGate('INPUT', cx - 200, cy + 30);
+    const b1 = createGate('INPUT', cx - 200, cy + 90);
+    const xnor0 = createGate('XNOR', cx - 40, cy - 50);
+    const xnor1 = createGate('XNOR', cx - 40, cy + 60);
+    const andEq = createGate('AND', cx + 100, cy);
+    const eq = createGate('OUTPUT', cx + 240, cy);
+    wires.push(
+      { from: {gateId:a0.id, pinIdx:0}, to: {gateId:xnor0.id, pinIdx:0} },
+      { from: {gateId:b0.id, pinIdx:0}, to: {gateId:xnor0.id, pinIdx:1} },
+      { from: {gateId:a1.id, pinIdx:0}, to: {gateId:xnor1.id, pinIdx:0} },
+      { from: {gateId:b1.id, pinIdx:0}, to: {gateId:xnor1.id, pinIdx:1} },
+      { from: {gateId:xnor0.id, pinIdx:0}, to: {gateId:andEq.id, pinIdx:0} },
+      { from: {gateId:xnor1.id, pinIdx:0}, to: {gateId:andEq.id, pinIdx:1} },
+      { from: {gateId:andEq.id, pinIdx:0}, to: {gateId:eq.id, pinIdx:0} },
+    );
+  },
+  function mux() {
+    gates = []; wires = []; nextId = 1;
+    const cx = W/2 - 80, cy = H/2;
+    const d0 = createGate('INPUT', cx - 220, cy - 70);
+    const d1 = createGate('INPUT', cx - 220, cy);
+    const sel = createGate('INPUT', cx - 220, cy + 70);
+    const notS = createGate('NOT', cx - 80, cy + 70);
+    const and0 = createGate('AND', cx + 20, cy - 50);
+    const and1 = createGate('AND', cx + 20, cy + 30);
+    const orG = createGate('OR', cx + 150, cy);
+    const out = createGate('OUTPUT', cx + 280, cy);
+    wires.push(
+      { from: {gateId:sel.id, pinIdx:0}, to: {gateId:notS.id, pinIdx:0} },
+      { from: {gateId:d0.id, pinIdx:0}, to: {gateId:and0.id, pinIdx:0} },
+      { from: {gateId:notS.id, pinIdx:0}, to: {gateId:and0.id, pinIdx:1} },
+      { from: {gateId:d1.id, pinIdx:0}, to: {gateId:and1.id, pinIdx:0} },
+      { from: {gateId:sel.id, pinIdx:0}, to: {gateId:and1.id, pinIdx:1} },
+      { from: {gateId:and0.id, pinIdx:0}, to: {gateId:orG.id, pinIdx:0} },
+      { from: {gateId:and1.id, pinIdx:0}, to: {gateId:orG.id, pinIdx:1} },
+      { from: {gateId:orG.id, pinIdx:0}, to: {gateId:out.id, pinIdx:0} },
+    );
+  },
+];
+
+// ── Controls ─────────────────────────────────────────────────────
+document.getElementById('btnAdd').addEventListener('click', () => {
+  const type = document.getElementById('selGate').value;
+  createGate(type, W/2 - GATE_W/2 + (Math.random()-0.5)*100, H/2 + (Math.random()-0.5)*80);
+  render();
+});
+
+document.getElementById('selPreset').addEventListener('change', e => {
+  const i = parseInt(e.target.value); if (i < 0) return;
+  PRESETS[i]();
+  render();
+  e.target.value = '-1';
+});
+
+document.getElementById('btnClear').addEventListener('click', () => {
+  gates = []; wires = []; selected = null; nextId = 1; render();
+});
+
+document.getElementById('btnDelete').addEventListener('click', () => {
+  if (selected !== null) { deleteGate(selected); render(); }
+});
+
+// ── Init ─────────────────────────────────────────────────────────
+resize();
+window.addEventListener('resize', resize);
+PRESETS[0](); // Start with half adder
+render();
+</script>
+</body>
+</html>
