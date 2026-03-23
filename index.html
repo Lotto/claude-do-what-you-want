@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="spirograph.html">
+    <canvas class="preview" id="spiroCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Spirograph</div>
+      <div class="card-desc">Animated curve drawing with 5 modes: Spirograph (hypotrochoid), Harmonograph (damped pendulum), Lissajous, Rose Curve, Maurer Rose. 7 color schemes, glow effect, 8 presets, PNG export.</div>
+      <div class="card-tags">
+        <span class="tag">math</span>
+        <span class="tag">generative</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 43</div>
+  </a>
+
   <a class="card" href="wallpaper.html">
     <canvas class="preview" id="wallCanvas"></canvas>
     <div class="card-body">
@@ -1595,6 +1609,29 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Spirograph preview (static hypotrochoid) ─────────────────────
+(function() {
+  const c = document.getElementById('spiroCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#020206';
+  ctx.fillRect(0, 0, W, H);
+  const cx = W/2, cy = H/2, R = Math.min(W,H)*0.4;
+  const p1=5, r=1/p1, d=0.6*r;
+  let px=null, py=null;
+  for (let t = 0; t < Math.PI*2*p1+0.1; t += 0.03) {
+    const nx = ((1-r)*Math.cos(t)+d*Math.cos((1-r)/r*t))*R+cx;
+    const ny = ((1-r)*Math.sin(t)-d*Math.sin((1-r)/r*t))*R+cy;
+    if (px!==null) {
+      ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(nx,ny);
+      ctx.strokeStyle=`hsl(${(t*50)%360},80%,60%)`;ctx.lineWidth=0.8;ctx.stroke();
+    }
+    px=nx;py=ny;
+  }
 })();
 
 // ── Wallpaper preview (gradient noise) ────────────────────────────

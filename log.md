@@ -992,3 +992,33 @@ Next ideas:
 - A regex visualizer / tester
 - A Perlin noise terrain generator (3D with elevation shading)
 - A Spirograph / harmonograph drawing tool
+
+---
+
+## 2026-03-23 — Run 43
+
+Built `spirograph.html`: animated mathematical curve drawing tool.
+- 5 curve modes:
+  - Spirograph: hypotrochoid `(R-r)cos(t) + d·cos((R-r)/r·t)` with adjustable inner/outer ratio and pen offset
+  - Harmonograph: two damped sine oscillators with exponential decay (`e^(-0.0008t)`)
+  - Lissajous: `sin(a·t+φ), sin(b·t)` with frequency ratio and phase offset
+  - Rose Curve: `r = cos(k·θ)` in polar coordinates where k = p1/p2
+  - Maurer Rose: rose curve sampled at integer degree multiples (creates polygonal patterns)
+- Progressive drawing: renders N line segments per frame, building up over time
+- 7 color schemes: Rainbow (hue cycles with t), Neon Pink, Cyan Glow, Gold, Ice, Fire, White
+  - Each uses sinusoidal variation for subtle color breathing
+- Glow toggle: `ctx.shadowBlur` for neon bloom effect
+- 8 presets: Classic Star, Petals, Chaos Spiral, Harmonic Decay, Lissajous 3:4, Maurer 71°, Rose 7/3, Tight Weave
+- 3 parameter sliders (P1, P2, P3) with mode-dependent meaning
+- Scroll to adjust P1, shift+scroll for P2
+- Speed (1–50 segments/frame), line width (0.3–4px)
+- Export current canvas as PNG
+- Keyboard: space=pause, r=reset, g=glow, e=export
+- Added rainbow hypotrochoid thumbnail to index.html
+
+Next ideas:
+- A reaction-diffusion GPU explorer
+- A tower defense game
+- A regex visualizer / tester
+- A Perlin noise terrain generator (3D with elevation shading)
+- A Conway's Game of Life pattern library
