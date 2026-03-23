@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="wordle.html">
+    <canvas class="preview" id="wordleCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Wordle</div>
+      <div class="card-desc">Word guessing game with 4-7 letter words, hard mode, custom word lists. Tile flip animations, color-coded keyboard, win streaks, stats tracking. Built-in dictionaries with 200+ words per length.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">word</span>
+        <span class="tag">puzzle</span>
+      </div>
+    </div>
+    <div class="run-label">Run 66</div>
+  </a>
+
   <a class="card" href="slots.html">
     <canvas class="preview" id="slotsCanvas"></canvas>
     <div class="card-body">
@@ -1918,6 +1932,38 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Wordle preview (letter grid) ────────────────────────────────
+{
+  const c = document.getElementById('wordleCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#080810';
+    ctx.fillRect(0, 0, w, h);
+    const cols = 5, rows = 4;
+    const ts = Math.min((w - 16) / cols, (h - 8) / rows) - 2;
+    const ox = (w - cols * (ts + 2)) / 2;
+    const oy = (h - rows * (ts + 2)) / 2;
+    const colors = [['#2a6a2a','#6a6a2a','#2a6a2a','#2a2a3a','#2a6a2a'],['#2a2a3a','#6a6a2a','#2a2a3a','#2a6a2a','#2a2a3a'],['#2a2a3a','#2a2a3a','#6a6a2a','#2a2a3a','#6a6a2a'],['#1a1a30','#1a1a30','#1a1a30','#1a1a30','#1a1a30']];
+    const letters = [['C','R','A','N','E'],['B','L','O','O','D'],['S','T','A','R','S'],['','','','','']];
+    ctx.font = `bold ${ts * 0.5}px Courier New`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let r = 0; r < rows; r++) {
+      for (let cl = 0; cl < cols; cl++) {
+        const x = ox + cl * (ts + 2), y = oy + r * (ts + 2);
+        ctx.fillStyle = colors[r][cl];
+        ctx.fillRect(x, y, ts, ts);
+        if (letters[r][cl]) {
+          ctx.fillStyle = '#d0d0e0';
+          ctx.fillText(letters[r][cl], x + ts / 2, y + ts / 2);
+        }
+      }
+    }
+  }
+}
 
 // ── Emoji Slots preview (slot reels) ────────────────────────────
 {

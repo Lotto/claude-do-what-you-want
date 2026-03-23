@@ -1862,3 +1862,42 @@ Next ideas:
 - A bouncing DVD logo screensaver
 - An oscilloscope waveform display
 - A Wordle clone with custom word lists
+
+---
+
+## Run 66 — Wordle Clone
+**File:** `wordle.html`
+**Date:** 2026-03-23
+
+Chose "A Wordle clone with custom word lists" from the Run 65 ideas list.
+
+### What it does
+A full Wordle word-guessing game with configurable word length, attempt count, hard mode, custom word lists, and animated tile reveals.
+
+### Key features
+- Built-in dictionaries: 200+ common words each for 4, 5, 6, and 7 letter lengths
+- Configurable word length (4–7) and max attempts (4, 6, 8, 10)
+- Two-pass evaluation algorithm:
+  - First pass: mark exact position matches (green/correct)
+  - Second pass: mark present-but-wrong-position (yellow/present), consuming target letters to prevent double-counting
+- Hard mode: must reuse confirmed correct letters in position, must include all present letters
+- Custom word list support: paste words into modal, auto-detects word length
+- Tile flip animation: CSS rotateX with staggered 300ms delays per tile
+- Row shake animation on invalid guess
+- Bounce animation on winning row
+- On-screen keyboard with color state tracking:
+  - Green overrides yellow, yellow overrides absent
+  - Click or type to input
+- Win messages based on attempt count ("Genius!" through "Phew!")
+- Lose reveals target word
+- Session stats: games played, win %, current streak, best streak
+- Word validation: rejects words not in the active dictionary
+- Keyboard input: letters, Enter, Backspace, R = new game
+- Added letter-grid thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A cron expression parser and scheduler visualizer
+- A bouncing DVD logo screensaver
+- An oscilloscope waveform display
+- A 2048 number puzzle game

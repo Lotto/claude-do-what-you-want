@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wordle</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+
+  #main { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 16px; overflow: auto; }
+
+  #board { display: flex; flex-direction: column; gap: 6px; }
+  .row { display: flex; gap: 6px; }
+  .tile { width: 56px; height: 56px; border: 2px solid #1a1a30; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: #d0d0e0; text-transform: uppercase; transition: transform 0.3s, background 0.3s, border-color 0.3s; }
+  .tile.filled { border-color: #3a3a60; animation: popIn 0.1s ease; }
+  .tile.correct { background: #2a6a2a; border-color: #3a8a3a; }
+  .tile.present { background: #6a6a2a; border-color: #8a8a3a; }
+  .tile.absent { background: #2a2a3a; border-color: #3a3a4a; }
+  .tile.reveal { animation: flip 0.5s ease; }
+  @keyframes popIn { 0% { transform: scale(0.9); } 100% { transform: scale(1); } }
+  @keyframes flip { 0% { transform: rotateX(0); } 50% { transform: rotateX(90deg); } 100% { transform: rotateX(0); } }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+  .row.shake { animation: shake 0.3s ease; }
+  @keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-12px); } }
+
+  #keyboard { display: flex; flex-direction: column; gap: 4px; align-items: center; }
+  .kb-row { display: flex; gap: 4px; }
+  .key { min-width: 36px; height: 44px; border: none; border-radius: 4px; background: #1a1a30; color: #a0a0c0; font: bold 13px 'Courier New', monospace; cursor: pointer; display: flex; align-items: center; justify-content: center; text-transform: uppercase; transition: background 0.2s; }
+  .key:hover { background: #2a2a50; }
+  .key.wide { min-width: 56px; font-size: 11px; }
+  .key.correct { background: #2a6a2a; color: #c0f0c0; }
+  .key.present { background: #6a6a2a; color: #f0f0c0; }
+  .key.absent { background: #15151f; color: #404060; }
+
+  #message { min-height: 28px; font-size: 14px; color: #c0c0d8; text-align: center; }
+  #message.win { color: #50c050; }
+  #message.lose { color: #c05050; }
+
+  #stats { display: flex; gap: 24px; justify-content: center; margin-top: 8px; }
+  .stat-box { text-align: center; }
+  .stat-box .stat-num { font-size: 20px; color: #8080b0; }
+  .stat-box .stat-label { font-size: 9px; color: #404060; text-transform: uppercase; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; }
+  .stat b { color: #505078; font-weight: normal; }
+
+  #customModal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+  #customModal.show { display: flex; }
+  #customBox { background: #0c0c1a; border: 1px solid #2a2a50; border-radius: 8px; padding: 24px; width: 320px; }
+  #customBox h3 { font-size: 12px; color: #808098; font-weight: normal; margin-bottom: 8px; }
+  #customBox textarea { width: 100%; height: 120px; background: #080810; border: 1px solid #1a1a30; color: #a0a0b8; font: 11px 'Courier New', monospace; padding: 8px; border-radius: 4px; resize: vertical; }
+  #customBox .btn-row { display: flex; gap: 8px; margin-top: 8px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Wordle</h1>
+  <div class="sep"></div>
+  <select id="selWordLen" onchange="wordLength=+this.value;newGame()">
+    <option value="4">4 letters</option>
+    <option value="5" selected>5 letters</option>
+    <option value="6">6 letters</option>
+    <option value="7">7 letters</option>
+  </select>
+  <select id="selAttempts" onchange="maxAttempts=+this.value;newGame()">
+    <option value="4">4 tries</option>
+    <option value="6" selected>6 tries</option>
+    <option value="8">8 tries</option>
+    <option value="10">10 tries</option>
+  </select>
+  <div class="sep"></div>
+  <label><input type="checkbox" id="chkHard" onchange="hardMode=this.checked"> Hard Mode</label>
+  <div class="sep"></div>
+  <button onclick="newGame()">New Game (R)</button>
+  <button onclick="showCustom()">Custom Words</button>
+</div>
+
+<div id="main">
+  <div id="board"></div>
+  <div id="message">&nbsp;</div>
+  <div id="keyboard"></div>
+  <div id="stats">
+    <div class="stat-box"><div class="stat-num" id="sPlayed">0</div><div class="stat-label">Played</div></div>
+    <div class="stat-box"><div class="stat-num" id="sWinPct">0</div><div class="stat-label">Win %</div></div>
+    <div class="stat-box"><div class="stat-num" id="sStreak">0</div><div class="stat-label">Streak</div></div>
+    <div class="stat-box"><div class="stat-num" id="sMaxStreak">0</div><div class="stat-label">Best</div></div>
+  </div>
+</div>
+
+<div id="customModal">
+  <div id="customBox">
+    <h3>Custom Word List (one word per line)</h3>
+    <textarea id="customWords" placeholder="Enter words here...&#10;apple&#10;brave&#10;crane"></textarea>
+    <div class="btn-row">
+      <button onclick="closeCustom()">Cancel</button>
+      <button onclick="applyCustom()">Apply & New Game</button>
+    </div>
+  </div>
+</div>
+
+<div id="statusBar">
+  <span class="stat">Type letters to guess | Enter to submit | Backspace to delete</span>
+</div>
+
+<script>
+'use strict';
+
+// ── Word lists ──────────────────────────────────────────────────
+const wordLists = {
+  4: 'able,also,area,army,away,back,ball,band,bank,base,bath,bear,beat,been,bell,best,bill,bird,blow,blue,boat,body,bomb,bond,bone,book,born,boss,both,burn,busy,cafe,cage,cake,call,calm,came,camp,card,care,case,cash,cast,cell,char,chat,chip,city,claim,club,coal,coat,code,cold,come,cook,cool,copy,core,cost,crew,crop,cure,cute,dame,dare,dark,data,date,dead,deal,dear,debt,deep,deny,diet,dirt,disc,dish,disk,does,done,door,dose,down,draw,drew,drop,drug,drum,dual,duke,dump,dust,duty,each,earn,ease,east,easy,edge,edit,else,even,ever,evil,exam,exec,exit,face,fact,fail,fair,fall,fame,farm,fast,fate,fear,feed,feel,feet,fell,felt,file,fill,film,find,fine,fire,firm,fish,five,flag,flat,fled,flew,flip,flow,folk,food,fool,foot,ford,fore,form,fort,foul,four,free,from,fuel,full,fund,gain,game,gang,gate,gave,gear,gift,girl,give,glad,goal,goes,gold,golf,gone,good,grab,gray,grew,grin,grip,grow,gulf,guru,guys,hair,half,hall,hand,hang,hard,harm,hate,have,head,heal,hear,heat,heel,held,hell,help,here,hero,hide,high,hill,hint,hire,hold,hole,holy,home,hope,horn,host,hour,huge,hung,hunt,hurt,idea,inch,into,iron,isle,item,jack,jean,jobs,join,joke,jump,jury,just,keen,keep,kent,kept,kick,kill,kind,king,knee,knew,knit,knot,know,lack,lady,laid,lake,lamp,land,lane,last,late,lead,left,lend,less,life,lift,like,lime,line,link,lion,list,live,load,loan,lock,logo,long,look,lord,lose,loss,lost,lots,love,luck,lung,made,mail,main,make,male,mall,many,mark,mass,mate,mayo,meal,mean,meat,meet,memo,menu,mere,mess,mice,mild,mile,milk,mill,mind,mine,mint,miss,mode,mood,moon,more,most,move,much,must,myth,nail,name,navy,near,neat,neck,need,news,next,nice,nine,node,none,norm,nose,note,noun,odds,okay,once,only,onto,open,oral,ours,over,pace,pack,page,paid,pain,pair,pale,palm,pane,papa,park,part,pass,past,path,peak,peer,pick,pile,pine,pink,pipe,plan,play,plea,plot,plug,plus,poem,poet,pole,poll,polo,pond,pool,poor,pope,pork,port,pose,post,pour,pray,pull,pump,punk,pure,push,quit,race,rage,raid,rail,rain,rank,rare,rate,read,real,rear,rely,rent,rest,rice,rich,ride,ring,rise,risk,road,rock,rode,role,roll,roof,room,root,rope,rose,ruin,rule,rush,ruth,safe,sage,said,sake,sale,salt,same,sand,sang,save,seal,seat,seed,seek,seem,seen,self,sell,send,sent,sept,sexy,shed,ship,shoe,shop,shot,show,shut,sick,side,sigh,sign,silk,sing,sink,site,size,skin,slip,slow,snap,snow,soak,soft,soil,sold,sole,some,song,soon,sort,soul,spin,spot,star,stay,stem,step,stir,stop,such,suit,sure,swim,tail,take,tale,talk,tall,tank,tape,task,taxi,team,tear,teen,tell,tend,tent,term,test,text,than,that,them,then,they,thin,this,thus,tide,tidy,tied,tier,till,time,tiny,tire,toll,tone,tony,took,tool,tops,tore,torn,tour,town,trap,tree,trim,trio,trip,true,tube,tuck,tune,turn,twin,type,ugly,undo,unit,unto,upon,urge,used,user,vain,vale,vary,vast,verb,very,vice,view,vine,visa,vote,wade,wage,wait,wake,walk,wall,ward,warm,warn,wash,wave,weak,wear,week,well,went,were,west,what,when,whom,wide,wife,wild,will,wind,wine,wing,wire,wise,wish,with,wood,word,wore,work,worm,worn,wrap,yard,year,yoga,your,zero,zone,zoom',
+  5: 'about,above,abuse,actor,acute,admit,adopt,adult,after,again,agent,agree,ahead,alarm,album,alert,alien,align,alike,alive,alley,allow,alone,along,alter,among,angel,anger,angle,angry,ankle,apart,apple,apply,arena,argue,arise,armor,array,aside,asset,atlas,avoid,award,aware,awful,bacon,badge,badly,baker,basic,basis,beach,begun,being,belly,below,bench,berry,birth,black,blade,blame,bland,blank,blast,blaze,bleed,blend,bless,blind,block,blond,blood,bloom,blown,board,bones,bonus,boost,booth,bound,brain,brand,brave,bread,break,breed,brick,bride,brief,bring,broad,broke,brook,brown,brush,buddy,build,built,bunch,burst,buyer,cabin,candy,carry,catch,cause,chain,chair,chaos,charm,chart,chase,cheap,check,cheek,cheer,chess,chest,chief,child,china,choir,chose,chunk,civic,civil,claim,clash,class,clean,clear,clerk,click,cliff,climb,cling,clock,clone,close,cloth,cloud,coach,coast,could,count,court,cover,crack,craft,crane,crash,crazy,cream,crime,cross,crowd,crown,cruel,crush,curve,cycle,daily,dance,debut,delay,dense,depot,depth,derby,devil,dirty,donor,doubt,dough,draft,drain,drama,drank,drawn,dream,dress,dried,drift,drill,drink,drive,drops,drove,drunk,dryer,dying,eager,early,earth,eight,elite,empty,enemy,enjoy,enter,entry,equal,error,essay,event,every,exact,exert,exile,exist,extra,faint,fairy,faith,false,fancy,fatal,fault,feast,fence,fever,fiber,field,fifty,fight,final,first,fixed,flame,flash,flesh,float,flood,floor,flour,fluid,flush,focus,force,forge,forth,forum,found,frame,frank,fraud,fresh,front,frost,froze,fruit,fully,funny,genre,ghost,giant,given,glass,globe,gloom,glory,glove,going,grace,grade,grain,grand,grant,grape,graph,grasp,grass,grave,gravel,great,green,greet,grief,grill,grind,groan,gross,group,grove,grown,guard,guess,guide,guilt,given,habit,happy,harsh,haven,heart,heavy,hedge,hello,hence,herbs,honor,horse,hotel,house,human,humor,hurry,ideal,image,imply,index,indie,inner,input,irony,issue,ivory,jewel,joint,jones,judge,juice,knock,known,label,labor,large,laser,later,laugh,layer,learn,lease,least,leave,legal,level,light,limit,linen,liver,lobby,local,lodge,logic,login,loose,lover,lower,loyal,lucky,lunar,lunch,lying,magic,major,maker,manor,march,match,mayor,media,mercy,merit,metal,meter,might,minor,minus,model,money,month,moral,motor,mount,mouse,mouth,movie,music,naive,nerve,never,newly,night,noble,noise,north,notch,noted,novel,nurse,occur,ocean,offer,often,olive,onset,opera,orbit,order,organ,other,ought,outer,owner,oxide,ozone,paint,panel,panic,paper,party,pasta,patch,pause,peace,peach,pearl,penny,phase,phone,photo,piano,piece,pilot,pitch,pixel,pizza,place,plain,plane,plant,plate,plaza,plead,pleas,plumb,point,polar,porch,poser,pound,power,press,price,pride,prime,prince,print,prior,probe,prone,proof,proud,prove,proxy,pulse,punch,pupil,purse,queen,quest,queue,quick,quiet,quota,quote,radar,radio,raise,rally,ranch,range,rapid,ratio,reach,react,ready,realm,rebel,refer,reign,relax,relay,renew,repay,reply,rider,ridge,rifle,right,rigid,risky,rival,river,robin,robot,rocky,roman,rouge,rough,round,route,royal,rugby,ruler,rural,sadly,saint,salad,salon,sandy,sauce,scale,scene,scope,score,scout,screw,seize,sense,serve,setup,seven,shade,shaft,shake,shall,shame,shape,share,shark,sharp,shave,shelf,shell,shift,shine,shirt,shock,shoot,shore,short,shout,shrug,sight,sigma,since,sixty,sized,skill,skull,slash,slate,slave,sleep,slice,slide,slope,small,smart,smell,smile,smith,smoke,snake,solar,solid,solve,sorry,sound,south,space,spare,spark,speak,speed,spell,spend,spent,spill,spine,spite,split,spoke,spoon,sport,spray,squad,stack,staff,stage,stain,stake,stall,stamp,stand,stare,start,state,stays,steal,steam,steel,steep,steer,steps,stern,stick,stiff,still,stock,stole,stone,stood,store,storm,story,stove,strip,stuck,study,stuff,style,sugar,suite,super,surge,swamp,swear,sweep,sweet,swept,swift,swing,sword,sworn,stuck,taken,taste,teach,tears,tempo,tense,terms,theft,theme,there,thick,thief,thing,think,third,those,three,threw,throw,thumb,tiger,tight,timer,tired,title,today,token,total,touch,tough,tower,toxic,trace,track,trade,trail,train,trait,trash,treat,trend,trial,tribe,trick,troop,truck,truly,trump,trunk,trust,truth,tumor,twist,ultra,uncle,under,union,unite,unity,until,upper,upset,urban,usage,usual,utter,valid,value,vapor,vault,venue,verse,video,vigor,vinyl,viral,virus,visit,vital,vivid,vocal,vodka,voice,voter,waist,waste,watch,water,weary,weave,wedge,weigh,weird,whale,wheat,wheel,where,which,while,white,whole,whose,wider,witch,woman,women,world,worry,worse,worst,worth,would,wound,wrath,wrong,wrote,yacht,yield,young,yours,youth',
+  6: 'absorb,accept,access,across,acting,action,active,actual,afford,agenda,agreed,almost,always,amount,annual,answer,anyway,appear,around,arrive,aspect,assert,assign,assist,assume,attack,attend,august,author,barely,beauty,became,become,before,behalf,behind,belong,beside,better,beyond,bitter,blanket,bloody,bother,bottom,bought,branch,breach,breath,bridge,bright,broken,bronze,brutal,bucket,budget,bundle,burden,bureau,button,camera,cancel,carbon,career,castle,casual,caught,caused,center,change,charge,chosen,circle,cities,clever,client,closer,closet,coffee,column,combat,comedy,coming,commit,common,comply,copper,corner,costly,cotton,county,couple,course,cousin,create,credit,crisis,custom,damage,dancer,danger,deadly,dealer,debate,decade,decent,defeat,defend,define,degree,demand,denial,deploy,desert,design,desire,detail,detect,device,dinner,direct,divine,domain,double,driven,driver,during,earned,easily,eating,editor,effect,effort,eighth,either,emerge,employ,enable,ending,energy,engage,engine,enough,ensure,entire,entity,equity,errors,escape,estate,ethnic,evolve,exceed,except,excuse,exempt,expand,expect,expert,export,extend,extent,fabric,fairly,fallen,family,famous,father,fellow,female,figure,filing,filter,finger,firmly,fiscal,flight,flower,flying,follow,forced,forest,forget,formal,format,former,fossil,foster,fourth,frozen,gained,galaxy,garden,gather,gender,gentle,gently,gifted,global,golden,govern,gotten,govern,ground,growth,guests,guitar,handle,happen,hardly,hatred,headed,health,heaven,height,helped,hereby,hidden,holder,honest,hoping,horror,houses,hunger,hybrid,ignore,import,impose,income,indeed,indoor,inform,injury,inland,insect,insert,inside,insist,intact,intend,intent,invest,island,itself,jacket,jersey,joined,jungle,junior,knight,ladder,landed,laptop,lately,launch,lawyer,leader,league,leaves,legacy,length,lesson,letter,lifted,likely,linear,liquid,listen,little,lively,living,locate,lonely,longer,lowest,luxury,mainly,making,manage,manner,margin,marine,marked,market,master,matter,medium,member,memory,mental,mentor,merely,method,middle,mighty,miller,minute,mirror,mobile,modern,modest,modify,moment,mostly,mother,motion,moving,murder,muscle,museum,mutual,myself,namely,narrow,nation,native,nature,nearby,nearly,needle,nicely,nobody,normal,notice,notion,novice,number,object,obtain,occupy,offend,office,offset,online,opener,oppose,option,orange,origin,outfit,outlet,output,parcel,parent,partly,patron,pepper,period,permit,phrase,pillar,planet,player,please,pledge,plenty,pocket,poetry,police,policy,polite,poorly,poster,potato,powder,prayer,prefer,premix,pretty,prince,prison,profit,prompt,proper,proven,public,purple,pursue,racial,random,rather,rating,reader,really,reason,recall,recent,record,reduce,reform,refuse,regard,regime,region,relate,relief,remain,remote,remove,rental,repair,repeat,report,rescue,resign,resist,resort,result,retain,retire,return,reveal,review,reward,rhythm,ribbon,rising,robust,rocket,rotate,ruling,runner,sacred,safety,sailor,salary,sample,scheme,school,screen,script,search,season,second,secret,secure,seeing,select,seller,senior,sensor,serial,series,served,server,settle,severe,shadow,shaped,shared,shelve,shield,shower,signal,silent,silver,simple,simply,singer,single,sister,sketch,slight,slowly,smooth,soccer,social,solely,sought,source,speech,sphere,spirit,spread,spring,square,stable,status,steady,stereo,sticky,strain,strand,stream,street,stress,strict,strike,string,stroke,strong,struck,studio,submit,subtle,sudden,suffer,summer,summit,superb,supply,surely,survey,switch,symbol,syntax,talent,target,temple,tenant,tender,tennis,terror,thanks,theirs,thirty,though,thread,threat,throne,thrown,ticket,timber,tissue,toward,travel,treaty,tribal,tricky,trophy,tunnel,twelve,twenty,typing,unique,unlock,unlike,update,uphold,urgent,useful,vacant,valley,varied,vendor,verbal,versus,viable,victim,viewer,virgin,vision,visual,volume,walker,warmly,wealth,weapon,weekly,weight,wholly,widely,window,winter,wisdom,within,wonder,wooden,worker,worthy,writer,yellow',
+  7: 'ability,absence,academy,account,achieve,acquire,adapted,address,adopted,advance,adverse,adviser,airport,already,amazing,amnesty,analyst,ancient,another,anxiety,anybody,anytime,applied,arrival,article,assault,attempt,attract,auction,authors,average,backing,balance,banking,barrier,battery,because,bedroom,believe,beneath,benefit,besides,between,billion,bombing,borough,brother,brought,builder,cabinet,capable,capital,capture,careful,carrier,caution,central,certain,chamber,chapter,charity,cheaper,checked,chicken,chronic,circuit,citizen,claimed,classic,climate,closely,closing,clothes,cluster,coastal,collect,college,combine,comfort,command,comment,compact,company,compare,compel,complex,concept,concern,conduct,confirm,connect,consent,consist,contact,contain,content,context,continu,convert,correct,council,counter,country,creator,cricket,crucial,crystal,culture,current,customs,cutting,damaged,dealing,decided,decline,default,defence,deficit,defined,deliver,density,deposit,derived,descent,despite,destroy,details,devoted,digital,diploma,discuss,disease,dismiss,display,distant,diverse,divided,doesn,doorway,drawing,dressed,dropped,crucial,earning,eastern,ecology,economy,edition,element,embrace,emotion,emperor,employs,enabled,endless,enforce,engaged,English,enhance,enjoyed,enquiry,essence,ethical,evening,evident,examine,example,excited,execute,exhibit,existed,expense,expired,explain,exploit,explore,exposed,express,extends,extinct,extract,extreme,factory,faculty,failing,failure,fantasy,fashion,feature,federal,feeding,fiction,fighter,fifteen,finally,finance,finding,fishing,fitness,formula,fortune,forward,founder,freedom,further,gallery,gateway,general,genetic,genuine,getting,ghastly,gleaned,glimpse,graphic,gravity,greater,greatly,growing,habitat,halfway,handful,happily,harmony,harvest,heading,healthy,hearing,heavily,helpful,herself,highway,himself,history,holding,holiday,horizon,hostile,housing,however,hundred,hunting,husband,illegal,imagine,imagery,imaging,immense,implied,imposed,improve,include,indexes,induced,insight,inspect,instead,intense,interim,interns,invalid,invoice,involve,Iranian,journal,journey,justice,justify,kitchen,kingdom,lacking,landing,largely,lasting,lateral,leading,learned,leather,lengthy,liberal,license,limited,listing,literal,locally,logical,longest,looking,loyalty,luggage,machine,mandate,mansion,married,massage,massive,matters,meaning,measure,medical,meeting,mention,message,methods,militia,million,mineral,minimal,minimum,miracle,missing,mission,mistake,mixture,modular,monitor,monthly,morning,mounted,mystery,musical,mystery,nations,natural,neither,network,neutral,notable,nothing,nowhere,nuclear,nursery,obesity,objects,obliged,obvious,offense,officer,ongoing,opening,operate,opinion,opposed,organic,origins,outcome,outdoor,outlook,overall,overlap,oversee,package,painful,painted,partial,partner,passage,passing,passion,passive,patient,pattern,payment,penalty,pending,pension,percent,perfect,perhaps,persona,picture,pioneer,plastic,players,pleased,pledged,pointed,politic,polling,popular,portion,poverty,precise,predict,premier,premium,prepare,present,preview,primary,printer,privacy,private,problem,proceed,process,produce,product,profile,program,project,promise,promote,protect,protein,protest,provide,publish,pursuit,qualify,quarter,quickly,quietly,radical,readily,realize,receipt,receive,recover,recruit,reduced,reflect,refugee,refusal,related,relying,remains,removal,renewed,replace,reports,request,require,reserve,resolve,respect,respond,restore,results,revenue,reverse,revised,revival,rigidly,roughly,routine,running,rushing,satisfy,scandal,scatter,scholar,science,scratch,section,segment,serious,session,setting,settled,seventh,several,shelter,shocked,shortly,silence,similar,skilled,smoking,society,soldier,somehow,sorting,speaker,special,species,sponsor,station,storage,strange,student,subject,succeed,success,suggest,summary,support,supreme,surface,surgeon,surplus,survive,suspect,suspend,tabular,tactics,teacher,telling,tension,textile,therapy,thereby,thought,through,tobacco,tonight,totally,tourism,tourist,towards,traffic,trainer,transit,trouble,trusted,turning,typical,unicode,unified,unknown,unusual,updated,upright,utility,vaccine,variety,vehicle,venture,version,veteran,victory,viewing,village,vintage,violent,virtual,visible,visitor,waiting,walking,wanting,warning,warrant,weapons,weather,website,wedding,weekend,welcome,welfare,western,whoever,willing,winning,without,witness,working,worried,wrapper,writing,written,younger',
+};
+
+let wordLength = 5;
+let maxAttempts = 6;
+let hardMode = false;
+let customWordList = null;
+
+let target = '';
+let guesses = [];
+let currentGuess = '';
+let gameOver = false;
+let currentRow = 0;
+
+// Stats
+let played = 0, wins = 0, streak = 0, maxStreak = 0;
+
+// ── Game ─────────────────────────────────────────────────────────
+function getWordList() {
+  if (customWordList && customWordList.length > 0) return customWordList;
+  const raw = wordLists[wordLength] || wordLists[5];
+  return raw.split(',').filter(w => w.length === wordLength);
+}
+
+function newGame() {
+  const words = getWordList();
+  target = words[Math.random() * words.length | 0].toLowerCase();
+  guesses = [];
+  currentGuess = '';
+  gameOver = false;
+  currentRow = 0;
+  buildBoard();
+  buildKeyboard();
+  document.getElementById('message').textContent = '\u00a0';
+  document.getElementById('message').className = '';
+}
+
+function buildBoard() {
+  const board = document.getElementById('board');
+  board.innerHTML = '';
+  for (let r = 0; r < maxAttempts; r++) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.id = `row${r}`;
+    for (let c = 0; c < wordLength; c++) {
+      const tile = document.createElement('div');
+      tile.className = 'tile';
+      tile.id = `tile${r}_${c}`;
+      row.appendChild(tile);
+    }
+    board.appendChild(row);
+  }
+}
+
+function buildKeyboard() {
+  const kb = document.getElementById('keyboard');
+  kb.innerHTML = '';
+  const rows = ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'];
+  rows.forEach((row, ri) => {
+    const kbRow = document.createElement('div');
+    kbRow.className = 'kb-row';
+    if (ri === 2) {
+      const enter = document.createElement('button');
+      enter.className = 'key wide';
+      enter.textContent = 'Enter';
+      enter.onclick = submitGuess;
+      kbRow.appendChild(enter);
+    }
+    for (const ch of row) {
+      const key = document.createElement('button');
+      key.className = 'key';
+      key.id = `key_${ch}`;
+      key.textContent = ch;
+      key.onclick = () => addLetter(ch);
+      kbRow.appendChild(key);
+    }
+    if (ri === 2) {
+      const del = document.createElement('button');
+      del.className = 'key wide';
+      del.textContent = '⌫';
+      del.onclick = deleteLetter;
+      kbRow.appendChild(del);
+    }
+    kb.appendChild(kbRow);
+  });
+}
+
+function addLetter(ch) {
+  if (gameOver || currentGuess.length >= wordLength) return;
+  currentGuess += ch;
+  updateCurrentRow();
+}
+
+function deleteLetter() {
+  if (gameOver || currentGuess.length === 0) return;
+  currentGuess = currentGuess.slice(0, -1);
+  updateCurrentRow();
+}
+
+function updateCurrentRow() {
+  for (let c = 0; c < wordLength; c++) {
+    const tile = document.getElementById(`tile${currentRow}_${c}`);
+    if (c < currentGuess.length) {
+      tile.textContent = currentGuess[c];
+      tile.classList.add('filled');
+    } else {
+      tile.textContent = '';
+      tile.classList.remove('filled');
+    }
+  }
+}
+
+function submitGuess() {
+  if (gameOver) return;
+  if (currentGuess.length !== wordLength) {
+    shakeRow(currentRow);
+    showMessage('Not enough letters');
+    return;
+  }
+
+  // Check if valid word (in our list)
+  const words = getWordList();
+  if (!words.includes(currentGuess)) {
+    shakeRow(currentRow);
+    showMessage('Not in word list');
+    return;
+  }
+
+  // Hard mode checks
+  if (hardMode && guesses.length > 0) {
+    const lastResult = evaluateGuess(guesses[guesses.length - 1]);
+    for (let i = 0; i < wordLength; i++) {
+      if (lastResult[i] === 'correct' && currentGuess[i] !== guesses[guesses.length - 1][i]) {
+        shakeRow(currentRow);
+        showMessage(`Position ${i + 1} must be ${guesses[guesses.length - 1][i].toUpperCase()}`);
+        return;
+      }
+    }
+    for (let i = 0; i < wordLength; i++) {
+      if (lastResult[i] === 'present' && !currentGuess.includes(guesses[guesses.length - 1][i])) {
+        shakeRow(currentRow);
+        showMessage(`Must include ${guesses[guesses.length - 1][i].toUpperCase()}`);
+        return;
+      }
+    }
+  }
+
+  const result = evaluateGuess(currentGuess);
+  revealRow(currentRow, result);
+  guesses.push(currentGuess);
+
+  const won = result.every(r => r === 'correct');
+  if (won) {
+    gameOver = true;
+    played++; wins++; streak++;
+    if (streak > maxStreak) maxStreak = streak;
+    setTimeout(() => {
+      showMessage(['Genius!', 'Magnificent!', 'Impressive!', 'Splendid!', 'Great!', 'Phew!'][Math.min(currentRow, 5)], 'win');
+      bounceRow(currentRow);
+    }, wordLength * 300 + 200);
+  } else if (currentRow >= maxAttempts - 1) {
+    gameOver = true;
+    played++; streak = 0;
+    setTimeout(() => showMessage(target.toUpperCase(), 'lose'), wordLength * 300 + 200);
+  }
+
+  currentRow++;
+  currentGuess = '';
+  updateStats();
+}
+
+function evaluateGuess(guess) {
+  const result = new Array(wordLength).fill('absent');
+  const targetArr = target.split('');
+  const guessArr = guess.split('');
+
+  // First pass: correct
+  for (let i = 0; i < wordLength; i++) {
+    if (guessArr[i] === targetArr[i]) {
+      result[i] = 'correct';
+      targetArr[i] = null;
+      guessArr[i] = null;
+    }
+  }
+  // Second pass: present
+  for (let i = 0; i < wordLength; i++) {
+    if (guessArr[i] === null) continue;
+    const idx = targetArr.indexOf(guessArr[i]);
+    if (idx >= 0) {
+      result[i] = 'present';
+      targetArr[idx] = null;
+    }
+  }
+  return result;
+}
+
+function revealRow(row, result) {
+  for (let c = 0; c < wordLength; c++) {
+    const tile = document.getElementById(`tile${row}_${c}`);
+    setTimeout(() => {
+      tile.classList.add('reveal', result[c]);
+    }, c * 300);
+
+    // Update keyboard
+    const ch = guesses.length > 0 ? currentGuess[c] : tile.textContent;
+    setTimeout(() => {
+      const key = document.getElementById(`key_${ch}`);
+      if (!key) return;
+      if (result[c] === 'correct') {
+        key.className = 'key correct';
+      } else if (result[c] === 'present' && !key.classList.contains('correct')) {
+        key.className = 'key present';
+      } else if (!key.classList.contains('correct') && !key.classList.contains('present')) {
+        key.className = 'key absent';
+      }
+    }, c * 300 + 250);
+  }
+}
+
+function shakeRow(row) {
+  const el = document.getElementById(`row${row}`);
+  el.classList.add('shake');
+  setTimeout(() => el.classList.remove('shake'), 300);
+}
+
+function bounceRow(row) {
+  for (let c = 0; c < wordLength; c++) {
+    const tile = document.getElementById(`tile${row}_${c}`);
+    setTimeout(() => {
+      tile.style.animation = 'bounce 0.4s ease';
+    }, c * 100);
+  }
+}
+
+function showMessage(text, cls = '') {
+  const el = document.getElementById('message');
+  el.textContent = text;
+  el.className = cls;
+}
+
+function updateStats() {
+  document.getElementById('sPlayed').textContent = played;
+  document.getElementById('sWinPct').textContent = played > 0 ? Math.round(wins / played * 100) : 0;
+  document.getElementById('sStreak').textContent = streak;
+  document.getElementById('sMaxStreak').textContent = maxStreak;
+}
+
+// ── Custom words ─────────────────────────────────────────────────
+function showCustom() {
+  document.getElementById('customModal').classList.add('show');
+}
+function closeCustom() {
+  document.getElementById('customModal').classList.remove('show');
+}
+function applyCustom() {
+  const text = document.getElementById('customWords').value.trim();
+  if (text) {
+    const words = text.split(/\s+/).map(w => w.toLowerCase().replace(/[^a-z]/g, '')).filter(w => w.length > 0);
+    if (words.length > 0) {
+      const len = words[0].length;
+      customWordList = words.filter(w => w.length === len);
+      wordLength = len;
+      document.getElementById('selWordLen').value = len;
+    }
+  } else {
+    customWordList = null;
+  }
+  closeCustom();
+  newGame();
+}
+
+// ── Keyboard input ───────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+  if (e.key === 'Enter') submitGuess();
+  else if (e.key === 'Backspace') deleteLetter();
+  else if (e.key === 'r' && !e.ctrlKey) newGame();
+  else if (/^[a-z]$/i.test(e.key)) addLetter(e.key.toLowerCase());
+});
+
+newGame();
+</script>
+</body>
+</html>
