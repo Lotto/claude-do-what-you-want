@@ -1901,3 +1901,41 @@ Next ideas:
 - A bouncing DVD logo screensaver
 - An oscilloscope waveform display
 - A 2048 number puzzle game
+
+---
+
+## Run 67 — 2048 Number Puzzle
+**File:** `2048.html`
+**Date:** 2026-03-23
+
+Chose "A 2048 number puzzle game" from the Run 66 ideas list.
+
+### What it does
+The classic 2048 sliding tile puzzle where you merge matching numbers to reach the goal tile, with configurable grid size and goal.
+
+### Key features
+- Grid sizes: 3×3, 4×4 (default), 5×5, 6×6
+- Goal tiles: 512, 1024, 2048 (default), 4096, 8192
+- Tile movement: slides all tiles in direction, merges equal adjacent tiles
+  - Merge tracking prevents double-merges in a single move
+  - 90% chance of spawning 2, 10% chance of 4
+- Smooth CSS transitions: tiles animate sliding (0.12s ease)
+- Tile appear animation (scale from 0) and merge pop animation (scale bounce)
+- 13 distinct tile colors from 2 through 8192+ (dark blue through gold to pink)
+- Dynamic font sizing based on digit count and cell size
+- Responsive board sizing (adapts to window, max 500px)
+- Undo: restores previous grid state and score (one level)
+- Score tracking: current score, best score (session), move count, max tile
+- Win detection: overlay with "You Win!" and option to continue playing
+- Lose detection: no empty cells and no adjacent matches
+- Continue mode: keep playing after reaching goal
+- Input: arrow keys, WASD, swipe gestures (touch)
+- Keyboard: R = new game, Z = undo
+- Added number-grid thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A cron expression parser and scheduler visualizer
+- A bouncing DVD logo screensaver
+- An oscilloscope waveform display
+- An isometric cube world builder

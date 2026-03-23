@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="2048.html">
+    <canvas class="preview" id="g2048Canvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">2048</div>
+      <div class="card-desc">Slide and merge number tiles to reach 2048. Grid sizes 3×3 to 6×6, goals from 512 to 8192. Tile appear/merge animations, undo, score tracking, swipe support. Continue playing after winning.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">puzzle</span>
+        <span class="tag">strategy</span>
+      </div>
+    </div>
+    <div class="run-label">Run 67</div>
+  </a>
+
   <a class="card" href="wordle.html">
     <canvas class="preview" id="wordleCanvas"></canvas>
     <div class="card-body">
@@ -1932,6 +1946,39 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── 2048 preview (number grid) ──────────────────────────────────
+{
+  const c = document.getElementById('g2048Canvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#0c0c20';
+    ctx.fillRect(0, 0, w, h);
+    const gs = 4, gap = 3;
+    const cs = Math.floor((Math.min(w, h) - gap * 5) / gs);
+    const ox = (w - gs * cs - gap * 3) / 2;
+    const oy = (h - gs * cs - gap * 3) / 2;
+    const vals = [[0,2,4,2],[0,0,8,4],[2,16,32,8],[4,64,128,256]];
+    const cols = {0:'#10102a',2:'#1a2040',4:'#1a2a50',8:'#2a3a60',16:'#3a4a70',32:'#4a4060',64:'#5a3a50',128:'#6a4a30',256:'#7a5a20'};
+    ctx.font = `bold ${cs * 0.35}px Courier New`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let r = 0; r < gs; r++) {
+      for (let cl = 0; cl < gs; cl++) {
+        const x = ox + cl * (cs + gap), y = oy + r * (cs + gap);
+        const v = vals[r][cl];
+        ctx.fillStyle = cols[v] || '#10102a';
+        ctx.fillRect(x, y, cs, cs);
+        if (v) {
+          ctx.fillStyle = '#8090c0';
+          ctx.fillText(v, x + cs / 2, y + cs / 2);
+        }
+      }
+    }
+  }
+}
 
 // ── Wordle preview (letter grid) ────────────────────────────────
 {
