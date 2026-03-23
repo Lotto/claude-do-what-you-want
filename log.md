@@ -1819,3 +1819,46 @@ Next ideas:
 - A bouncing DVD logo screensaver
 - An emoji slot machine
 - An oscilloscope waveform display
+
+---
+
+## Run 65 — Emoji Slot Machine
+**File:** `slots.html`
+**Date:** 2026-03-23
+
+Chose "An emoji slot machine" from the Run 64 ideas list.
+
+### What it does
+A 5-reel emoji slot machine with animated spinning reels, multiple themes, a pay table, balance tracking, and sound effects.
+
+### Key features
+- 5 spinning reels with 30-symbol strips each, 3 visible rows per reel
+- Staggered reel stops: each reel stops 400ms after the previous for suspense
+- Smooth animation: fast spin phase then eased deceleration to target
+- 5 themes: Classic Fruit (🍒🍋🔔⭐💎7️⃣), Animals, Space, Food, Gems
+  - Each theme has a unique jackpot symbol weighted rarer
+- Pay table with 7 win tiers:
+  - Jackpot (5x jackpot symbol): 100x bet
+  - Five of a kind: 50x, Four of a kind: 15x
+  - Full house (3+2): 10x, Three of a kind: 5x
+  - Two pair: 2x, Pair: 1x (push/return bet)
+- Bet selection: $5, $10, $25, $50, $100
+- Balance tracking with color-coded display (green/yellow/red)
+- Auto-spin mode: continuous spinning until toggled off or balance runs out
+- Web Audio API sound effects:
+  - Click sound on each reel stop
+  - Ascending tones on win
+  - Extended fanfare on jackpot
+- Sparkle particle effects on jackpot wins (emoji confetti)
+- CSS reel design: gradient fade at top/bottom edges, gold center payline
+- Reel strips with symbol weighting (jackpot symbol 15% probability)
+- Stats: spin count, win count, biggest win
+- Keyboard: Space = spin
+- Added slot-reels thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A cron expression parser and scheduler visualizer
+- A bouncing DVD logo screensaver
+- An oscilloscope waveform display
+- A Wordle clone with custom word lists

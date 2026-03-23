@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="slots.html">
+    <canvas class="preview" id="slotsCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Emoji Slots</div>
+      <div class="card-desc">5-reel emoji slot machine with 5 themes (fruit, animals, space, food, gems). Staggered reel stops, pay table (pair through jackpot), auto-spin, balance tracking, Web Audio sound effects.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">emoji</span>
+        <span class="tag">animation</span>
+      </div>
+    </div>
+    <div class="run-label">Run 65</div>
+  </a>
+
   <a class="card" href="rope.html">
     <canvas class="preview" id="ropeCanvas"></canvas>
     <div class="card-body">
@@ -1904,6 +1918,39 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Emoji Slots preview (slot reels) ────────────────────────────
+{
+  const c = document.getElementById('slotsCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#10102a';
+    ctx.fillRect(0, 0, w, h);
+    // Draw 5 reel slots
+    const emojis = ['🍒','🍋','🍊','🍇','⭐'];
+    const rw = (w - 20) / 5;
+    for (let i = 0; i < 5; i++) {
+      const x = 10 + i * rw;
+      ctx.fillStyle = '#06060f';
+      ctx.fillRect(x + 2, 8, rw - 4, h - 16);
+      ctx.strokeStyle = '#1a1a40';
+      ctx.strokeRect(x + 2, 8, rw - 4, h - 16);
+      ctx.font = `${Math.min(rw - 8, 20)}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(emojis[i], x + rw / 2, h / 2);
+    }
+    // Center line
+    ctx.strokeStyle = 'rgba(192,160,64,0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(8, h / 2);
+    ctx.lineTo(w - 8, h / 2);
+    ctx.stroke();
+  }
+}
 
 // ── Rope Physics preview (hanging rope) ─────────────────────────
 {

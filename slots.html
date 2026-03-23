@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emoji Slots</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+
+  #main { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 20px; }
+
+  #machine { background: linear-gradient(180deg, #10102a 0%, #0c0c20 100%); border: 2px solid #1a1a40; border-radius: 16px; padding: 32px 40px; text-align: center; box-shadow: 0 0 40px rgba(20,20,60,0.5); position: relative; }
+
+  #machine-title { font-size: 20px; color: #c0a040; text-shadow: 0 0 10px rgba(192,160,64,0.3); margin-bottom: 20px; letter-spacing: 0.3em; }
+
+  #reels { display: flex; gap: 8px; margin-bottom: 24px; justify-content: center; }
+  .reel { width: 90px; height: 240px; background: #06060f; border: 2px solid #1a1a40; border-radius: 8px; overflow: hidden; position: relative; }
+  .reel-strip { position: absolute; left: 0; right: 0; transition: top 0.1s linear; display: flex; flex-direction: column; align-items: center; }
+  .reel-strip .emoji { font-size: 48px; height: 80px; line-height: 80px; width: 90px; text-align: center; user-select: none; }
+
+  /* Center line */
+  .reel::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: rgba(192,160,64,0.3); transform: translateY(-1px); z-index: 5; pointer-events: none; }
+  .reel::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(6,6,15,0.9) 0%, transparent 25%, transparent 75%, rgba(6,6,15,0.9) 100%); pointer-events: none; z-index: 4; }
+
+  #winLine { display: flex; gap: 8px; justify-content: center; margin-bottom: 16px; min-height: 24px; }
+  #winLine .win-emoji { font-size: 20px; }
+  #winText { color: #c0a040; font-size: 14px; min-height: 20px; text-shadow: 0 0 6px rgba(192,160,64,0.3); }
+  #winText.jackpot { color: #ffd040; font-size: 18px; animation: pulse 0.5s ease infinite alternate; }
+  @keyframes pulse { from { text-shadow: 0 0 6px rgba(255,208,64,0.3); } to { text-shadow: 0 0 20px rgba(255,208,64,0.6); } }
+
+  #controls { display: flex; gap: 12px; align-items: center; justify-content: center; flex-wrap: wrap; }
+  #spinBtn { background: linear-gradient(180deg, #c0a030, #906820); border: 2px solid #d0b040; color: #1a1008; padding: 10px 40px; font: bold 16px 'Courier New', monospace; border-radius: 8px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.1em; }
+  #spinBtn:hover { background: linear-gradient(180deg, #d0b040, #a07830); }
+  #spinBtn:active { transform: scale(0.97); }
+  #spinBtn:disabled { background: #303040; border-color: #404060; color: #606080; cursor: default; transform: none; }
+
+  .bet-btn { background: #0c0c20; border: 1px solid #2a2a50; color: #8080b0; padding: 6px 14px; font: 12px 'Courier New', monospace; cursor: pointer; border-radius: 6px; }
+  .bet-btn:hover { background: #14142a; }
+  .bet-btn.active { background: #1a2a50; border-color: #4060a0; color: #a0c0ff; }
+
+  #balance { font-size: 18px; color: #60c060; }
+  #bet-display { font-size: 14px; color: #8080b0; }
+
+  #paytable { background: #0a0a18; border: 1px solid #1a1a30; border-radius: 8px; padding: 12px 16px; font-size: 10px; color: #404060; max-width: 500px; }
+  #paytable h3 { font-size: 10px; color: #606080; font-weight: normal; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 6px; }
+  .pay-row { display: flex; justify-content: space-between; padding: 2px 0; }
+  .pay-row .pay-icons { font-size: 14px; }
+  .pay-row .pay-val { color: #60a060; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; }
+  .stat b { color: #505078; font-weight: normal; }
+
+  .sparkle { position: absolute; pointer-events: none; font-size: 16px; animation: sparkleAnim 1s ease-out forwards; z-index: 20; }
+  @keyframes sparkleAnim { 0% { opacity:1; transform: translateY(0) scale(1); } 100% { opacity:0; transform: translateY(-60px) scale(0.5); } }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Emoji Slots</h1>
+  <div class="sep"></div>
+  <select id="selTheme" onchange="setTheme(this.value)">
+    <option value="classic">Classic Fruit</option>
+    <option value="animals">Animals</option>
+    <option value="space">Space</option>
+    <option value="food">Food</option>
+    <option value="gems">Gems</option>
+  </select>
+  <div class="sep"></div>
+  <button onclick="resetBalance()">Reset ($1000)</button>
+  <div class="sep"></div>
+  <label><input type="checkbox" id="chkAuto" onchange="autoSpin=this.checked"> Auto-Spin</label>
+  <label><input type="checkbox" id="chkSound" checked onchange="soundOn=this.checked"> Sound</label>
+</div>
+
+<div id="main">
+  <div id="machine">
+    <div id="machine-title">EMOJI SLOTS</div>
+    <div id="reels"></div>
+    <div id="winLine"></div>
+    <div id="winText">&nbsp;</div>
+    <div id="controls">
+      <div>
+        <div id="bet-display">Bet: $<span id="betVal">10</span></div>
+        <div style="display:flex;gap:4px;margin-top:4px">
+          <button class="bet-btn" onclick="setBet(5)">$5</button>
+          <button class="bet-btn active" onclick="setBet(10)">$10</button>
+          <button class="bet-btn" onclick="setBet(25)">$25</button>
+          <button class="bet-btn" onclick="setBet(50)">$50</button>
+          <button class="bet-btn" onclick="setBet(100)">$100</button>
+        </div>
+      </div>
+      <button id="spinBtn" onclick="spin()">SPIN</button>
+      <div id="balance">$1000</div>
+    </div>
+  </div>
+
+  <div id="paytable">
+    <h3>Pay Table</h3>
+    <div id="payRows"></div>
+  </div>
+</div>
+
+<div id="statusBar">
+  <span class="stat">Spins: <b id="statSpins">0</b></span>
+  <span class="stat">Wins: <b id="statWins">0</b></span>
+  <span class="stat">Biggest: <b id="statBig">$0</b></span>
+  <span class="stat">Press Space to spin | Bet and match 3 to win</span>
+</div>
+
+<script>
+'use strict';
+
+const REEL_COUNT = 5;
+const VISIBLE = 3; // visible emoji per reel
+const EMOJI_H = 80;
+const STRIP_LEN = 30; // symbols per reel strip
+
+const themes = {
+  classic: { symbols: ['🍒','🍋','🍊','🍇','🍉','🔔','⭐','💎','7️⃣'], jackpot: '7️⃣' },
+  animals: { symbols: ['🐱','🐶','🦊','🐼','🦁','🐸','🦋','🦄','🐉'], jackpot: '🐉' },
+  space:   { symbols: ['🚀','🌍','🌙','⭐','☄️','🛸','🪐','👽','🌌'], jackpot: '🌌' },
+  food:    { symbols: ['🍕','🍔','🌮','🍣','🍩','🎂','🍦','🧁','👨‍🍳'], jackpot: '👨‍🍳' },
+  gems:    { symbols: ['💎','💍','👑','🏆','💰','🪙','📿','🔮','🌟'], jackpot: '🌟' },
+};
+
+let currentTheme = 'classic';
+let symbols = themes.classic.symbols;
+let balance = 1000;
+let bet = 10;
+let spinning = false;
+let autoSpin = false;
+let soundOn = true;
+let spinCount = 0;
+let winCount = 0;
+let biggestWin = 0;
+let reelStrips = [];
+let reelPositions = [];
+let reelTargets = [];
+let reelStopped = [];
+let animId = null;
+
+// Audio context for simple sounds
+let audioCtx;
+function playTone(freq, dur, type = 'sine', vol = 0.1) {
+  if (!soundOn) return;
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.value = vol;
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + dur);
+}
+
+function playSpinSound() { playTone(200, 0.05, 'square', 0.05); }
+function playStopSound() { playTone(400, 0.1, 'sine', 0.08); }
+function playWinSound() {
+  [523, 659, 784].forEach((f, i) => setTimeout(() => playTone(f, 0.2, 'sine', 0.1), i * 100));
+}
+function playJackpotSound() {
+  [523, 659, 784, 1047, 1319].forEach((f, i) => setTimeout(() => playTone(f, 0.3, 'sine', 0.12), i * 120));
+}
+
+// ── Setup reels ──────────────────────────────────────────────────
+function buildReels() {
+  const container = document.getElementById('reels');
+  container.innerHTML = '';
+  reelStrips = [];
+  reelPositions = [];
+  reelTargets = [];
+  reelStopped = [];
+
+  for (let r = 0; r < REEL_COUNT; r++) {
+    // Generate random strip
+    const strip = [];
+    for (let i = 0; i < STRIP_LEN; i++) {
+      // Weight rarer symbols less
+      const idx = Math.random() < 0.15 ? symbols.length - 1 : (Math.random() * (symbols.length - 1)) | 0;
+      strip.push(symbols[idx]);
+    }
+    reelStrips.push(strip);
+    reelPositions.push(0);
+    reelTargets.push(0);
+    reelStopped.push(true);
+
+    const reel = document.createElement('div');
+    reel.className = 'reel';
+    const stripEl = document.createElement('div');
+    stripEl.className = 'reel-strip';
+    stripEl.id = `strip${r}`;
+
+    // Render symbols (double for wrapping)
+    for (let i = 0; i < STRIP_LEN * 2; i++) {
+      const em = document.createElement('div');
+      em.className = 'emoji';
+      em.textContent = strip[i % STRIP_LEN];
+      stripEl.appendChild(em);
+    }
+
+    reel.appendChild(stripEl);
+    container.appendChild(reel);
+  }
+}
+
+function setTheme(name) {
+  currentTheme = name;
+  symbols = themes[name].symbols;
+  buildReels();
+  updatePaytable();
+}
+
+// ── Spin ─────────────────────────────────────────────────────────
+function spin() {
+  if (spinning) return;
+  if (balance < bet) {
+    document.getElementById('winText').textContent = 'Not enough balance!';
+    return;
+  }
+
+  spinning = true;
+  balance -= bet;
+  spinCount++;
+  updateBalance();
+  document.getElementById('spinBtn').disabled = true;
+  document.getElementById('winText').textContent = '';
+  document.getElementById('winText').className = '';
+  document.getElementById('winLine').innerHTML = '';
+
+  // Set targets: each reel spins a random amount
+  for (let r = 0; r < REEL_COUNT; r++) {
+    reelStopped[r] = false;
+    // Spin at least 2 full strips + random offset
+    const extra = (Math.random() * STRIP_LEN) | 0;
+    reelTargets[r] = reelPositions[r] + STRIP_LEN * (2 + r * 0.5) + extra;
+  }
+
+  // Stagger stops
+  for (let r = 0; r < REEL_COUNT; r++) {
+    setTimeout(() => {
+      // Snap to nearest symbol
+      reelTargets[r] = Math.round(reelTargets[r]);
+      reelStopped[r] = true;
+      playStopSound();
+
+      if (r === REEL_COUNT - 1) {
+        setTimeout(evaluateResult, 200);
+      }
+    }, 800 + r * 400);
+  }
+
+  animate();
+}
+
+function animate() {
+  let allStopped = true;
+
+  for (let r = 0; r < REEL_COUNT; r++) {
+    if (!reelStopped[r]) {
+      // Spin fast
+      reelPositions[r] += 0.4;
+      allStopped = false;
+    } else {
+      // Ease to target
+      const diff = reelTargets[r] - reelPositions[r];
+      if (Math.abs(diff) > 0.01) {
+        reelPositions[r] += diff * 0.2;
+        allStopped = false;
+      } else {
+        reelPositions[r] = reelTargets[r];
+      }
+    }
+
+    // Update DOM
+    const strip = document.getElementById(`strip${r}`);
+    const offset = -(reelPositions[r] % STRIP_LEN) * EMOJI_H - EMOJI_H;
+    strip.style.top = offset + 'px';
+  }
+
+  if (!allStopped) {
+    animId = requestAnimationFrame(animate);
+  }
+}
+
+function getResult() {
+  // Get the middle symbol of each reel
+  const result = [];
+  for (let r = 0; r < REEL_COUNT; r++) {
+    const idx = (Math.round(reelPositions[r]) + 1) % STRIP_LEN;
+    result.push(reelStrips[r][(idx + STRIP_LEN) % STRIP_LEN]);
+  }
+  return result;
+}
+
+function evaluateResult() {
+  const result = getResult();
+  let winAmount = 0;
+  let winMsg = '';
+
+  // Count occurrences
+  const counts = {};
+  for (const s of result) {
+    counts[s] = (counts[s] || 0) + 1;
+  }
+
+  const jackpotSymbol = themes[currentTheme].jackpot;
+
+  // 5 of a kind
+  const fiveOf = Object.entries(counts).find(([, c]) => c === 5);
+  if (fiveOf) {
+    if (fiveOf[0] === jackpotSymbol) {
+      winAmount = bet * 100;
+      winMsg = 'JACKPOT!!!';
+    } else {
+      winAmount = bet * 50;
+      winMsg = 'FIVE OF A KIND!';
+    }
+  } else {
+    // 4 of a kind
+    const fourOf = Object.entries(counts).find(([, c]) => c === 4);
+    if (fourOf) {
+      winAmount = bet * 15;
+      winMsg = 'Four of a kind!';
+    } else {
+      // 3 of a kind
+      const threeOf = Object.entries(counts).find(([, c]) => c === 3);
+      if (threeOf) {
+        // Check for full house (3+2)
+        const twoOf = Object.entries(counts).find(([, c]) => c === 2);
+        if (twoOf) {
+          winAmount = bet * 10;
+          winMsg = 'Full House!';
+        } else {
+          winAmount = bet * 5;
+          winMsg = 'Three of a kind!';
+        }
+      } else {
+        // Two pair
+        const pairs = Object.entries(counts).filter(([, c]) => c === 2);
+        if (pairs.length === 2) {
+          winAmount = bet * 2;
+          winMsg = 'Two Pair!';
+        } else if (pairs.length === 1) {
+          // Single pair - small win
+          winAmount = bet * 1;
+          winMsg = 'Pair - push!';
+        }
+      }
+    }
+  }
+
+  if (winAmount > 0) {
+    balance += winAmount;
+    winCount++;
+    if (winAmount > biggestWin) biggestWin = winAmount;
+
+    const winLine = document.getElementById('winLine');
+    result.forEach(s => {
+      const sp = document.createElement('span');
+      sp.className = 'win-emoji';
+      sp.textContent = s;
+      winLine.appendChild(sp);
+    });
+
+    const wt = document.getElementById('winText');
+    wt.textContent = `${winMsg} +$${winAmount}`;
+    if (fiveOf && fiveOf[0] === jackpotSymbol) {
+      wt.className = 'jackpot';
+      playJackpotSound();
+      spawnSparkles();
+    } else {
+      wt.className = '';
+      playWinSound();
+    }
+  } else {
+    document.getElementById('winText').textContent = 'No win';
+  }
+
+  updateBalance();
+  updateStats();
+  spinning = false;
+  document.getElementById('spinBtn').disabled = false;
+
+  if (autoSpin && balance >= bet) {
+    setTimeout(spin, 800);
+  }
+}
+
+function spawnSparkles() {
+  const machine = document.getElementById('machine');
+  const emojis = ['✨','🌟','💫','⭐','🎉','🎊'];
+  for (let i = 0; i < 20; i++) {
+    setTimeout(() => {
+      const sp = document.createElement('div');
+      sp.className = 'sparkle';
+      sp.textContent = emojis[Math.random() * emojis.length | 0];
+      sp.style.left = (Math.random() * 100) + '%';
+      sp.style.top = (20 + Math.random() * 60) + '%';
+      machine.appendChild(sp);
+      setTimeout(() => sp.remove(), 1000);
+    }, i * 50);
+  }
+}
+
+// ── UI ───────────────────────────────────────────────────────────
+function setBet(amount) {
+  bet = amount;
+  document.getElementById('betVal').textContent = amount;
+  document.querySelectorAll('.bet-btn').forEach(b => {
+    b.classList.toggle('active', b.textContent === '$' + amount);
+  });
+}
+
+function updateBalance() {
+  document.getElementById('balance').textContent = '$' + balance;
+  document.getElementById('balance').style.color = balance > 500 ? '#60c060' : balance > 100 ? '#c0a040' : '#c04040';
+}
+
+function resetBalance() {
+  balance = 1000;
+  updateBalance();
+}
+
+function updateStats() {
+  document.getElementById('statSpins').textContent = spinCount;
+  document.getElementById('statWins').textContent = winCount;
+  document.getElementById('statBig').textContent = '$' + biggestWin;
+}
+
+function updatePaytable() {
+  const rows = document.getElementById('payRows');
+  const jp = themes[currentTheme].jackpot;
+  rows.innerHTML = '';
+  const payouts = [
+    [`${jp}${jp}${jp}${jp}${jp}`, 'x100 (JACKPOT)'],
+    ['5 of a kind', 'x50'],
+    ['4 of a kind', 'x15'],
+    ['Full house (3+2)', 'x10'],
+    ['3 of a kind', 'x5'],
+    ['Two pair', 'x2'],
+    ['Pair', 'x1 (push)'],
+  ];
+  for (const [desc, val] of payouts) {
+    const div = document.createElement('div');
+    div.className = 'pay-row';
+    div.innerHTML = `<span class="pay-icons">${desc}</span><span class="pay-val">${val}</span>`;
+    rows.appendChild(div);
+  }
+}
+
+// ── Keyboard ─────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === ' ') { e.preventDefault(); spin(); }
+});
+
+// Init
+buildReels();
+updatePaytable();
+</script>
+</body>
+</html>
