@@ -1430,3 +1430,50 @@ Next ideas:
 - A cron expression parser and scheduler visualizer
 - A graph/network editor with force-directed layout
 - A kaleidoscope drawing tool
+
+---
+
+## 2026-03-23 — Run 55
+
+Built `netgraph.html`: interactive network graph editor with force-directed layout.
+- Force-directed simulation:
+  - Coulomb repulsion: O(n^2) all-pairs repulsive force inversely proportional to distance squared
+  - Hooke spring attraction: edges act as springs with configurable rest length (100px)
+  - Center gravity: weak constant pull toward origin to prevent drift
+  - Velocity damping (configurable 50–99%) and speed clamping (max 50 units/frame)
+  - Configurable repulsion (500–20000), attraction (0.001–0.1), damping
+- 4 tools:
+  - Add Node (N): click empty space to create, click existing to select
+  - Add Edge (E): click two nodes sequentially to connect (duplicate check)
+  - Drag (D): grab nodes to reposition, or pan the view
+  - Erase (X): click to delete node and all connected edges
+- Node properties panel:
+  - Editable label, color picker, size slider (8–40)
+  - Pin/Unpin toggle to fix position during simulation
+  - Double-click to rename via prompt
+- Pan & zoom:
+  - Scroll wheel zooms toward cursor (0.1x–5x range)
+  - Middle-click or Alt+click to pan, or drag empty space in Drag mode
+  - World-space grid rendered behind graph
+- Visual:
+  - Nodes with colored fill + stroke, glow on hover/select
+  - Edges highlighted when connected to selected node
+  - Degree count (d=N) displayed above each node
+  - Labels below nodes (truncated at 8 chars)
+  - Pin indicator (white dot) on pinned nodes
+- 6 presets:
+  - Binary Tree: depth 4 with spreading layout
+  - Mesh Grid: 4×5 grid with horizontal + vertical edges
+  - Social Network: 12 named nodes with random connections
+  - Ring: 12 nodes in a cycle
+  - Petersen Graph: classic 5-outer/5-inner non-planar graph
+  - Random: 20 nodes with ~30 random edges
+- Keyboard: N/E/D/X = tools, Space = toggle simulation, Delete = remove selected, P = pin, C = center
+- Added nodes-and-edges thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A cron expression parser and scheduler visualizer
+- A kaleidoscope drawing tool
+- An A* pathfinding visualizer on a grid

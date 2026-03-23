@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="netgraph.html">
+    <canvas class="preview" id="netCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Network Graph</div>
+      <div class="card-desc">Force-directed graph editor with Coulomb repulsion and Hooke spring attraction. Add/connect/drag nodes, pan/zoom, degree display, 6 presets including Petersen graph.</div>
+      <div class="card-tags">
+        <span class="tag">tool</span>
+        <span class="tag">graph</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 55</div>
+  </a>
+
   <a class="card" href="raycast.html">
     <canvas class="preview" id="raycastCanvas"></canvas>
     <div class="card-body">
@@ -1763,6 +1777,33 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Network Graph preview (nodes and edges) ─────────────────────
+(function() {
+  const c = document.getElementById('netCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#080810';
+  ctx.fillRect(0, 0, W, H);
+  const nodes = [
+    {x:W*0.3,y:H*0.3,r:8,c:'#e06060'},{x:W*0.6,y:H*0.2,r:8,c:'#60a0e0'},
+    {x:W*0.7,y:H*0.55,r:8,c:'#60c080'},{x:W*0.4,y:H*0.65,r:8,c:'#c0a060'},
+    {x:W*0.15,y:H*0.6,r:8,c:'#a070c0'},{x:W*0.5,y:H*0.45,r:8,c:'#70c0c0'},
+  ];
+  const edges = [[0,1],[0,4],[1,2],[1,5],[2,3],[3,4],[3,5],[4,5],[0,5]];
+  // Edges
+  ctx.lineWidth = 1; ctx.strokeStyle = '#1a2a50';
+  edges.forEach(([a,b]) => {
+    ctx.beginPath(); ctx.moveTo(nodes[a].x,nodes[a].y); ctx.lineTo(nodes[b].x,nodes[b].y); ctx.stroke();
+  });
+  // Nodes
+  nodes.forEach(n => {
+    ctx.fillStyle = n.c+'40'; ctx.strokeStyle = n.c; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(n.x,n.y,n.r,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  });
 })();
 
 // ── Raycast Shadows preview (light with shadow polygon) ─────────
