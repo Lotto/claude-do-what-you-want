@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raycast Shadows</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+  input[type="range"] { width: 70px; accent-color: #4060a0; }
+
+  canvas { display: block; flex: 1; cursor: none; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; }
+  .stat b { color: #505078; font-weight: normal; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Raycast Shadows</h1>
+  <div class="sep"></div>
+  <button id="btnPlace" class="active" onclick="setTool('place')">Place Wall (1)</button>
+  <button id="btnMove" onclick="setTool('move')">Move Light (2)</button>
+  <button id="btnErase" onclick="setTool('erase')">Erase (3)</button>
+  <div class="sep"></div>
+  <label>Rays: <input type="range" id="rRays" min="30" max="1000" value="360" oninput="numRays=+this.value;document.getElementById('rayVal').textContent=this.value"> <span id="rayVal">360</span></label>
+  <label>Radius: <input type="range" id="rRadius" min="50" max="2000" value="800" oninput="lightRadius=+this.value"></label>
+  <label>Intensity: <input type="range" id="rIntensity" min="10" max="100" value="60" oninput="lightIntensity=this.value/100"></label>
+  <div class="sep"></div>
+  <label>Color: <input type="color" id="lightColor" value="#ffd080" oninput="lightCol=this.value"></label>
+  <label><input type="checkbox" id="chkSoft" checked onchange="softShadows=this.checked"> Soft</label>
+  <label><input type="checkbox" id="chkRays" onchange="showRays=this.checked"> Show Rays</label>
+  <label><input type="checkbox" id="chkMulti" onchange="multiLight=this.checked"> Multi-Light</label>
+  <div class="sep"></div>
+  <select id="selPreset" onchange="loadPreset(this.value)">
+    <option value="">-- Presets --</option>
+    <option value="maze">Maze</option>
+    <option value="pillars">Pillars</option>
+    <option value="room">Room</option>
+    <option value="spiral">Spiral</option>
+    <option value="clear">Clear All</option>
+  </select>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="statusBar">
+  <span class="stat">Walls: <b id="statWalls">0</b></span>
+  <span class="stat">Segments: <b id="statSegs">0</b></span>
+  <span class="stat">Rays: <b id="statRays">360</b></span>
+  <span class="stat">Move mouse = light source | Click+drag = draw walls | Right-click = add light</span>
+</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() { W = canvas.width = canvas.clientWidth; H = canvas.height = canvas.clientHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+// ── State ────────────────────────────────────────────────────────
+let walls = []; // [{x1,y1,x2,y2}]
+let lights = [{ x: 400, y: 300, col: '#ffd080' }];
+let numRays = 360;
+let lightRadius = 800;
+let lightIntensity = 0.6;
+let lightCol = '#ffd080';
+let softShadows = true;
+let showRays = false;
+let multiLight = false;
+let tool = 'place';
+let drawing = false;
+let drawStart = null;
+let mousePos = { x: W / 2, y: H / 2 };
+
+// ── Segments (walls + boundaries) ───────────────────────────────
+function getAllSegments() {
+  const segs = [...walls];
+  // Canvas boundaries
+  segs.push({ x1: 0, y1: 0, x2: W, y2: 0 });
+  segs.push({ x1: W, y1: 0, x2: W, y2: H });
+  segs.push({ x1: W, y1: H, x2: 0, y2: H });
+  segs.push({ x1: 0, y1: H, x2: 0, y2: 0 });
+  return segs;
+}
+
+// ── Ray-segment intersection ────────────────────────────────────
+function raySegIntersect(rx, ry, rdx, rdy, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const denom = rdx * dy - rdy * dx;
+  if (Math.abs(denom) < 1e-10) return null;
+
+  const t = ((x1 - rx) * dy - (y1 - ry) * dx) / denom;
+  const u = ((x1 - rx) * rdy - (y1 - ry) * rdx) / denom;
+
+  if (t > 0 && u >= 0 && u <= 1) {
+    return { x: rx + rdx * t, y: ry + rdy * t, t };
+  }
+  return null;
+}
+
+// ── Cast rays from a light ──────────────────────────────────────
+function castRays(lx, ly) {
+  const segs = getAllSegments();
+
+  // Collect unique angles: toward each endpoint + tiny offsets
+  const angles = new Set();
+  for (const s of segs) {
+    const a1 = Math.atan2(s.y1 - ly, s.x1 - lx);
+    const a2 = Math.atan2(s.y2 - ly, s.x2 - lx);
+    for (const a of [a1, a2]) {
+      angles.add(a - 0.0001);
+      angles.add(a);
+      angles.add(a + 0.0001);
+    }
+  }
+
+  // Also add uniform rays
+  for (let i = 0; i < numRays; i++) {
+    angles.add((i / numRays) * Math.PI * 2 - Math.PI);
+  }
+
+  const sorted = [...angles].sort((a, b) => a - b);
+  const hits = [];
+
+  for (const angle of sorted) {
+    const rdx = Math.cos(angle);
+    const rdy = Math.sin(angle);
+    let closest = null;
+
+    for (const seg of segs) {
+      const hit = raySegIntersect(lx, ly, rdx, rdy, seg.x1, seg.y1, seg.x2, seg.y2);
+      if (hit) {
+        // Clamp to light radius
+        const dist = Math.sqrt((hit.x - lx) ** 2 + (hit.y - ly) ** 2);
+        if (dist <= lightRadius) {
+          if (!closest || hit.t < closest.t) closest = hit;
+        }
+      }
+    }
+
+    // If no hit within radius, cap at radius
+    if (!closest) {
+      closest = { x: lx + rdx * lightRadius, y: ly + rdy * lightRadius, t: lightRadius };
+    }
+
+    hits.push(closest);
+  }
+
+  return hits;
+}
+
+// ── Render ──────────────────────────────────────────────────────
+function render() {
+  // Dark background
+  ctx.fillStyle = '#050508';
+  ctx.fillRect(0, 0, W, H);
+
+  const activeLights = multiLight ? lights : [{ x: mousePos.x, y: mousePos.y, col: lightCol }];
+
+  // For each light, draw visibility polygon
+  for (const light of activeLights) {
+    const hits = castRays(light.x, light.y);
+    if (hits.length < 2) continue;
+
+    // Parse light color
+    const r = parseInt(light.col.slice(1, 3), 16);
+    const g = parseInt(light.col.slice(3, 5), 16);
+    const b = parseInt(light.col.slice(5, 7), 16);
+
+    if (softShadows) {
+      // Radial gradient fill
+      const grad = ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, lightRadius);
+      grad.addColorStop(0, `rgba(${r},${g},${b},${lightIntensity})`);
+      grad.addColorStop(0.3, `rgba(${r},${g},${b},${lightIntensity * 0.6})`);
+      grad.addColorStop(0.7, `rgba(${r},${g},${b},${lightIntensity * 0.15})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(hits[0].x, hits[0].y);
+      for (let i = 1; i < hits.length; i++) ctx.lineTo(hits[i].x, hits[i].y);
+      ctx.closePath();
+      ctx.clip();
+      ctx.fillStyle = grad;
+      ctx.fillRect(light.x - lightRadius, light.y - lightRadius, lightRadius * 2, lightRadius * 2);
+      ctx.restore();
+    } else {
+      // Flat fill
+      ctx.fillStyle = `rgba(${r},${g},${b},${lightIntensity * 0.4})`;
+      ctx.beginPath();
+      ctx.moveTo(hits[0].x, hits[0].y);
+      for (let i = 1; i < hits.length; i++) ctx.lineTo(hits[i].x, hits[i].y);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Show individual rays
+    if (showRays) {
+      ctx.strokeStyle = `rgba(${r},${g},${b},0.08)`;
+      ctx.lineWidth = 0.5;
+      for (const h of hits) {
+        ctx.beginPath();
+        ctx.moveTo(light.x, light.y);
+        ctx.lineTo(h.x, h.y);
+        ctx.stroke();
+      }
+    }
+
+    // Light source glow
+    const glowGrad = ctx.createRadialGradient(light.x, light.y, 0, light.x, light.y, 15);
+    glowGrad.addColorStop(0, `rgba(${r},${g},${b},0.9)`);
+    glowGrad.addColorStop(0.5, `rgba(${r},${g},${b},0.3)`);
+    glowGrad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(light.x - 15, light.y - 15, 30, 30);
+  }
+
+  // Draw walls
+  ctx.strokeStyle = '#3040a0';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  for (const w of walls) {
+    ctx.beginPath();
+    ctx.moveTo(w.x1, w.y1);
+    ctx.lineTo(w.x2, w.y2);
+    ctx.stroke();
+  }
+
+  // Wall endpoints
+  ctx.fillStyle = '#4060c0';
+  for (const w of walls) {
+    ctx.beginPath(); ctx.arc(w.x1, w.y1, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(w.x2, w.y2, 3, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Drawing preview
+  if (drawing && drawStart) {
+    ctx.strokeStyle = '#6080c060';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(drawStart.x, drawStart.y);
+    ctx.lineTo(mousePos.x, mousePos.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Multi-light indicators
+  if (multiLight) {
+    ctx.font = '9px "Courier New",monospace';
+    lights.forEach((l, i) => {
+      ctx.fillStyle = l.col + '80';
+      ctx.beginPath(); ctx.arc(l.x, l.y, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#606080';
+      ctx.fillText(i + 1, l.x + 8, l.y - 4);
+    });
+  }
+
+  // Crosshair cursor
+  if (!multiLight || tool !== 'move') {
+    ctx.strokeStyle = '#ffffff20';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(mousePos.x - 8, mousePos.y);
+    ctx.lineTo(mousePos.x + 8, mousePos.y);
+    ctx.moveTo(mousePos.x, mousePos.y - 8);
+    ctx.lineTo(mousePos.x, mousePos.y + 8);
+    ctx.stroke();
+  }
+
+  // Stats
+  document.getElementById('statWalls').textContent = walls.length;
+  document.getElementById('statSegs').textContent = walls.length + 4;
+  document.getElementById('statRays').textContent = numRays;
+}
+
+// ── Tools ───────────────────────────────────────────────────────
+function setTool(t) {
+  tool = t;
+  ['place', 'move', 'erase'].forEach(n =>
+    document.getElementById('btn' + n.charAt(0).toUpperCase() + n.slice(1)).classList.toggle('active', n === t));
+}
+
+// ── Input ───────────────────────────────────────────────────────
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+  if (multiLight && tool === 'move' && drawing && lights.length > 0) {
+    const closest = findClosestLight(mousePos.x, mousePos.y);
+    if (closest) { closest.x = mousePos.x; closest.y = mousePos.y; }
+  }
+});
+
+canvas.addEventListener('mousedown', e => {
+  if (e.button === 2) return; // right click handled separately
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+
+  if (tool === 'place') {
+    drawing = true;
+    drawStart = { x, y };
+  } else if (tool === 'erase') {
+    // Find nearest wall
+    let minDist = 15, minIdx = -1;
+    walls.forEach((w, i) => {
+      const d = distToSegment(x, y, w.x1, w.y1, w.x2, w.y2);
+      if (d < minDist) { minDist = d; minIdx = i; }
+    });
+    if (minIdx >= 0) walls.splice(minIdx, 1);
+  } else if (tool === 'move') {
+    drawing = true;
+  }
+});
+
+canvas.addEventListener('mouseup', e => {
+  if (tool === 'place' && drawing && drawStart) {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const dx = x - drawStart.x, dy = y - drawStart.y;
+    if (Math.sqrt(dx * dx + dy * dy) > 5) {
+      walls.push({ x1: drawStart.x, y1: drawStart.y, x2: x, y2: y });
+    }
+  }
+  drawing = false;
+  drawStart = null;
+});
+
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  if (multiLight) {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left, y = e.clientY - rect.top;
+    const colors = ['#ffd080','#80d0ff','#ff8080','#80ff80','#d080ff','#ff80d0'];
+    lights.push({ x, y, col: colors[lights.length % colors.length] });
+  }
+});
+
+function findClosestLight(x, y) {
+  let best = null, bestD = Infinity;
+  for (const l of lights) {
+    const d = (l.x - x) ** 2 + (l.y - y) ** 2;
+    if (d < bestD) { bestD = d; best = l; }
+  }
+  return best;
+}
+
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  const cx = x1 + t * dx, cy = y1 + t * dy;
+  return Math.sqrt((px - cx) ** 2 + (py - cy) ** 2);
+}
+
+// ── Presets ──────────────────────────────────────────────────────
+function loadPreset(name) {
+  walls = [];
+  lights = [{ x: W / 2, y: H / 2, col: lightCol }];
+  document.getElementById('selPreset').value = '';
+
+  if (name === 'clear') return;
+
+  if (name === 'maze') {
+    const s = 60;
+    const cols = Math.floor(W / s) - 2, rows = Math.floor(H / s) - 2;
+    const ox = (W - cols * s) / 2, oy = (H - rows * s) / 2;
+    // Random horizontal and vertical wall segments
+    for (let r = 0; r <= rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        if (Math.random() < 0.4) {
+          walls.push({ x1: ox + c * s, y1: oy + r * s, x2: ox + (c + 1) * s, y2: oy + r * s });
+        }
+      }
+    }
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c <= cols; c++) {
+        if (Math.random() < 0.4) {
+          walls.push({ x1: ox + c * s, y1: oy + r * s, x2: ox + c * s, y2: oy + (r + 1) * s });
+        }
+      }
+    }
+  } else if (name === 'pillars') {
+    const spacing = 120;
+    const size = 25;
+    for (let x = spacing; x < W - spacing / 2; x += spacing) {
+      for (let y = spacing; y < H - spacing / 2; y += spacing) {
+        // Square pillar
+        walls.push({ x1: x - size, y1: y - size, x2: x + size, y2: y - size });
+        walls.push({ x1: x + size, y1: y - size, x2: x + size, y2: y + size });
+        walls.push({ x1: x + size, y1: y + size, x2: x - size, y2: y + size });
+        walls.push({ x1: x - size, y1: y + size, x2: x - size, y2: y - size });
+      }
+    }
+  } else if (name === 'room') {
+    const mx = W / 2, my = H / 2;
+    const rw = W * 0.35, rh = H * 0.35;
+    // Outer walls with doorways
+    walls.push({ x1: mx - rw, y1: my - rh, x2: mx - 20, y2: my - rh });
+    walls.push({ x1: mx + 20, y1: my - rh, x2: mx + rw, y2: my - rh });
+    walls.push({ x1: mx + rw, y1: my - rh, x2: mx + rw, y2: my - 20 });
+    walls.push({ x1: mx + rw, y1: my + 20, x2: mx + rw, y2: my + rh });
+    walls.push({ x1: mx + rw, y1: my + rh, x2: mx - rw, y2: my + rh });
+    walls.push({ x1: mx - rw, y1: my + rh, x2: mx - rw, y2: my - rh });
+    // Interior walls
+    walls.push({ x1: mx - rw * 0.3, y1: my - rh, x2: mx - rw * 0.3, y2: my - 30 });
+    walls.push({ x1: mx + rw * 0.4, y1: my + rh, x2: mx + rw * 0.4, y2: my + 30 });
+    walls.push({ x1: mx - rw * 0.5, y1: my, x2: mx - 40, y2: my });
+  } else if (name === 'spiral') {
+    const cx = W / 2, cy = H / 2;
+    const turns = 3;
+    const segs = 40;
+    for (let i = 0; i < segs; i++) {
+      const a1 = (i / segs) * turns * Math.PI * 2;
+      const a2 = ((i + 1) / segs) * turns * Math.PI * 2;
+      const r1 = 40 + (i / segs) * Math.min(W, H) * 0.35;
+      const r2 = 40 + ((i + 1) / segs) * Math.min(W, H) * 0.35;
+      walls.push({
+        x1: cx + Math.cos(a1) * r1, y1: cy + Math.sin(a1) * r1,
+        x2: cx + Math.cos(a2) * r2, y2: cy + Math.sin(a2) * r2,
+      });
+    }
+  }
+}
+
+// ── Keyboard ────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === '1') setTool('place');
+  if (e.key === '2') setTool('move');
+  if (e.key === '3') setTool('erase');
+  if (e.key === 'c') { walls = []; }
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  numRays = Math.max(30, Math.min(1000, numRays + (e.deltaY > 0 ? -10 : 10)));
+  document.getElementById('rRays').value = numRays;
+  document.getElementById('rayVal').textContent = numRays;
+});
+
+// ── Loop ────────────────────────────────────────────────────────
+function loop() {
+  render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

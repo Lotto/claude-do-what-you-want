@@ -1385,3 +1385,48 @@ Next ideas:
 - A cron expression parser and scheduler visualizer
 - A graph/network editor with force-directed layout
 - A ray casting 2D visibility / shadows demo
+
+---
+
+## 2026-03-23 — Run 54
+
+Built `raycast.html`: 2D ray casting visibility and shadow demo with interactive wall drawing.
+- Ray casting algorithm:
+  - Casts rays from light source toward every segment endpoint (+ tiny angle offsets ±0.0001 for edge accuracy)
+  - Additional uniform rays (30–1000 configurable) fill gaps between endpoint-directed rays
+  - Ray-segment intersection: parametric t/u calculation with denominator check for parallel lines
+  - Rays sorted by angle, hits form visibility polygon
+  - Rays capped at configurable light radius (50–2000)
+- Lighting:
+  - Soft shadows: radial gradient (4-stop) clipped to visibility polygon for realistic falloff
+  - Hard shadows: flat-color polygon fill alternative
+  - Light source rendered as radial glow dot
+  - Configurable intensity (10–100%) and color picker
+- Wall system:
+  - Click+drag to draw wall segments
+  - Canvas boundaries automatically included as 4 boundary segments
+  - Wall endpoints rendered as dots, walls as thick blue lines
+  - Click to erase nearest wall (within 15px distance-to-segment threshold)
+- Multi-light mode:
+  - Toggle to enable multiple light sources
+  - Right-click to place additional lights (auto-cycled colors)
+  - Each light independently casts its own visibility polygon
+  - Additive blending for overlapping light areas
+- 3 tools: Place Wall (1), Move Light (2), Erase (3)
+- 4 presets:
+  - Maze: random horizontal/vertical grid segments (40% density)
+  - Pillars: grid of square pillars (4 segments each)
+  - Room: outer walls with doorways + interior partitions
+  - Spiral: 40-segment Archimedean spiral wall
+- Show Rays toggle: visualize individual ray lines
+- Custom crosshair cursor (hidden native cursor)
+- Scroll wheel adjusts ray count
+- Keyboard: 1-3 tool select, C clear
+- Added light-with-shadows thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A cron expression parser and scheduler visualizer
+- A graph/network editor with force-directed layout
+- A kaleidoscope drawing tool
