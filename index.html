@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="pathfind.html">
+    <canvas class="preview" id="pathCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Pathfinding</div>
+      <div class="card-desc">A*, Dijkstra, BFS, DFS, Greedy pathfinding on a grid with animated search visualization. Draw walls, weighted cells, maze generation, diagonal movement.</div>
+      <div class="card-tags">
+        <span class="tag">algorithm</span>
+        <span class="tag">visualization</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 56</div>
+  </a>
+
   <a class="card" href="netgraph.html">
     <canvas class="preview" id="netCanvas"></canvas>
     <div class="card-body">
@@ -1777,6 +1791,47 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Pathfinding preview (grid with path) ────────────────────────
+(function() {
+  const c = document.getElementById('pathCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#080810';
+  ctx.fillRect(0, 0, W, H);
+  const cs = 8;
+  const cols = Math.floor(W/cs), rows = Math.floor(H/cs);
+  // Walls
+  const walls = new Set();
+  for (let i = 0; i < 60; i++) {
+    const r = Math.floor(Math.random()*rows), col = Math.floor(Math.random()*cols);
+    walls.add(r*cols+col);
+  }
+  // Grid
+  for (let r = 0; r < rows; r++) {
+    for (let col = 0; col < cols; col++) {
+      if (walls.has(r*cols+col)) {
+        ctx.fillStyle = '#1a1a30';
+        ctx.fillRect(col*cs, r*cs, cs-1, cs-1);
+      }
+    }
+  }
+  // Visited area
+  ctx.fillStyle = '#0e1a2a';
+  for (let r = 2; r < rows-2; r++)
+    for (let col = 2; col < cols-4; col++)
+      if (!walls.has(r*cols+col) && Math.random() < 0.5)
+        ctx.fillRect(col*cs, r*cs, cs-1, cs-1);
+  // Path
+  ctx.fillStyle = '#c0a030';
+  const path = [[3,2],[3,3],[4,4],[5,5],[5,6],[5,7],[5,8],[6,9],[7,10],[7,11],[8,12],[8,13]];
+  path.forEach(([r,col]) => ctx.fillRect(col*cs, r*cs, cs-1, cs-1));
+  // Start/End
+  ctx.fillStyle = '#2060a0'; ctx.fillRect(2*cs, 3*cs, cs-1, cs-1);
+  ctx.fillStyle = '#a02040'; ctx.fillRect(13*cs, 8*cs, cs-1, cs-1);
 })();
 
 // ── Network Graph preview (nodes and edges) ─────────────────────

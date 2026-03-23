@@ -1477,3 +1477,44 @@ Next ideas:
 - A cron expression parser and scheduler visualizer
 - A kaleidoscope drawing tool
 - An A* pathfinding visualizer on a grid
+
+---
+
+## 2026-03-23 — Run 56
+
+Built `pathfind.html`: pathfinding algorithm visualizer with animated search on a grid.
+- 6 algorithms implemented as JavaScript generators for step-by-step animation:
+  - A* (Manhattan heuristic): optimal weighted search with f = g + h
+  - A* (Euclidean heuristic): uses straight-line distance
+  - Dijkstra: uniform cost search (A* with h=0)
+  - BFS: breadth-first, guarantees shortest path in unweighted graphs
+  - DFS: depth-first, explores deeply first (not optimal)
+  - Greedy Best-First: pure heuristic (fast but not guaranteed optimal)
+- MinHeap priority queue for A*/Dijkstra/Greedy (O(log n) push/pop)
+- Grid system:
+  - Dynamic sizing based on canvas dimensions (20px cells)
+  - Cell types: empty, wall, start (S), end (E), weighted (5× cost)
+  - Search states: unvisited, frontier, visited, path
+- 5 tools: Wall (W), Start (S), End (E), Weight (G), Eraser (R)
+  - Click+drag for continuous wall/erase painting
+- Diagonal movement toggle (8-directional with √2 cost for diagonals)
+- Animated visualization:
+  - Configurable speed (1–200 steps per frame)
+  - Visited cells colored dark blue, frontier cells teal
+  - Path traced in gold after search completes
+- 5 maze generators:
+  - Recursive backtracking: fill-and-carve with randomized DFS
+  - Random 30%/50%: scatter walls at given density
+  - Spiral: concentric spiral wall pattern
+  - Rooms: 8 random rectangular rooms with doorways
+- Path tracing: follows parent pointers from end to start
+- Stats: visited count, path length, total cost, elapsed time, grid dimensions
+- Keyboard: W/S/E/G/R = tools, Space = run/stop, C = clear all
+- Added grid-with-path thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A cron expression parser and scheduler visualizer
+- A kaleidoscope drawing tool
+- A sand/powder simulation (falling sand game)
