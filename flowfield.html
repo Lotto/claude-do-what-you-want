@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flow Field</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #040406;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    height: 100vh; overflow: hidden;
+  }
+  h1 { font-size: 0.9rem; letter-spacing: 0.25em; color: #3a3a3a; text-transform: uppercase; padding: 7px 0 4px; }
+  #controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; padding: 2px 0 5px; align-items: center; }
+  button {
+    background: #0a0a0e; color: #777; border: 1px solid #181820;
+    padding: 3px 10px; cursor: pointer; font-family: inherit;
+    font-size: 0.7rem; border-radius: 3px; transition: all 0.12s;
+  }
+  button:hover { background: #121218; color: #bbb; }
+  button.active { background: #0e1220; color: #6090e0; border-color: #20406a; }
+  label { font-size: 0.7rem; color: #3a3a3a; display: flex; align-items: center; gap: 5px; }
+  input[type=range] { width: 60px; accent-color: #305070; }
+  select { background: #0a0a0e; color: #777; border: 1px solid #181820; padding: 2px 7px; font-family: inherit; font-size: 0.7rem; border-radius: 3px; }
+  #info { font-size: 0.64rem; color: #222; padding-bottom: 3px; }
+  canvas { display: block; cursor: crosshair; }
+</style>
+</head>
+<body>
+<h1>Flow Field</h1>
+<div id="controls">
+  <label>Field
+    <select id="fieldType">
+      <option value="noise">Perlin Noise</option>
+      <option value="curl">Curl Noise</option>
+      <option value="radial">Radial</option>
+      <option value="circular">Circular</option>
+      <option value="saddle">Saddle</option>
+      <option value="wave">Wave</option>
+      <option value="vortex">Multi-Vortex</option>
+    </select>
+  </label>
+  <label>Palette
+    <select id="palette">
+      <option value="ocean">Ocean</option>
+      <option value="fire">Fire</option>
+      <option value="aurora">Aurora</option>
+      <option value="mono">Mono</option>
+      <option value="neon">Neon</option>
+      <option value="speed">Speed</option>
+    </select>
+  </label>
+  <label>Particles <input type="range" id="nPart" min="500" max="8000" step="500" value="3000"><span id="nVal">3000</span></label>
+  <label>Speed <input type="range" id="speed" min="0.5" max="5" step="0.5" value="1.5"></label>
+  <label>Scale <input type="range" id="scale" min="1" max="10" value="4" step="0.5"></label>
+  <button id="btnEvolve" class="active">Evolve</button>
+  <button id="btnArrows">Arrows</button>
+  <button id="btnReset">Clear</button>
+</div>
+<div id="info">Hover to see field vector &nbsp;·&nbsp; Click to spawn burst &nbsp;·&nbsp; <span id="vecInfo">&nbsp;</span></div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = Math.min(window.innerWidth - 6, 1400);
+  H = window.innerHeight - 100;
+  canvas.width = W; canvas.height = H;
+  initOffscreen();
+}
+
+// ── Offscreen trail canvas ────────────────────────────────────────
+let offscreen, offCtx;
+function initOffscreen() {
+  offscreen = document.createElement('canvas');
+  offscreen.width = W; offscreen.height = H;
+  offCtx = offscreen.getContext('2d');
+  offCtx.fillStyle = '#040406';
+  offCtx.fillRect(0, 0, W, H);
+}
+
+// ── Perlin noise (seeded) ─────────────────────────────────────────
+const perm = new Uint8Array(512);
+(function seedPerm() {
+  const p = Array.from({length:256},(_,i)=>i);
+  for(let i=255;i>0;i--){const j=Math.random()*(i+1)|0;[p[i],p[j]]=[p[j],p[i]];}
+  for(let i=0;i<512;i++) perm[i]=p[i&255];
+})();
+
+function fade(t){return t*t*t*(t*(t*6-15)+10);}
+function lerp(a,b,t){return a+t*(b-a);}
+function grad2(h,x,y){const v=h&3;const u=v<2?x:y,w=v<2?y:x;return((h&1)?-u:u)+((h&2)?-w:w);}
+function noise2(x,y){
+  const X=Math.floor(x)&255,Y=Math.floor(y)&255;
+  x-=Math.floor(x);y-=Math.floor(y);
+  const u=fade(x),v=fade(y);
+  const a=perm[X]+Y,b=perm[X+1]+Y;
+  return lerp(lerp(grad2(perm[a],x,y),grad2(perm[b],x-1,y),u),
+              lerp(grad2(perm[a+1],x,y-1),grad2(perm[b+1],x-1,y-1),u),v);
+}
+
+// ── Vector field ──────────────────────────────────────────────────
+let evolveTime = 0, evolving = true;
+
+function getVector(x, y) {
+  const type  = document.getElementById('fieldType').value;
+  const scale = parseFloat(document.getElementById('scale').value) * 0.003;
+  const cx = W/2, cy = H/2;
+  const dx = (x-cx)/W, dy = (y-cy)/H;
+  let angle;
+
+  if (type === 'noise') {
+    angle = noise2(x*scale + evolveTime*0.15, y*scale + evolveTime*0.1) * Math.PI * 4;
+  } else if (type === 'curl') {
+    const e = 0.5;
+    const n1 = noise2(x*scale + e, y*scale + evolveTime*0.1);
+    const n2 = noise2(x*scale - e, y*scale + evolveTime*0.1);
+    const n3 = noise2(x*scale, y*scale + e + evolveTime*0.1);
+    const n4 = noise2(x*scale, y*scale - e + evolveTime*0.1);
+    return { vx: (n3-n4)/(2*e)*2, vy: -(n1-n2)/(2*e)*2 };
+  } else if (type === 'radial') {
+    const d = Math.sqrt(dx*dx+dy*dy)+0.01;
+    return { vx: dx/d, vy: dy/d };
+  } else if (type === 'circular') {
+    angle = Math.atan2(dy, dx) + Math.PI/2;
+  } else if (type === 'saddle') {
+    return { vx: dx*2, vy: -dy*2 };
+  } else if (type === 'wave') {
+    angle = Math.sin(x*scale*8 + evolveTime*0.5) * Math.PI + Math.cos(y*scale*6 + evolveTime*0.3) * 0.5;
+  } else if (type === 'vortex') {
+    // 3 rotating vortices
+    let vx=0,vy=0;
+    for(let i=0;i<3;i++){
+      const a=evolveTime*0.3+i*Math.PI*2/3;
+      const vox=cx+Math.cos(a)*W*0.25, voy=cy+Math.sin(a)*H*0.25;
+      const ddx=x-vox,ddy=y-voy,d2=ddx*ddx+ddy*ddy+100;
+      const str=5000/d2;
+      vx+=(-ddy)*str; vy+=ddx*str;
+    }
+    return {vx,vy};
+  }
+  return { vx: Math.cos(angle), vy: Math.sin(angle) };
+}
+
+// ── Palettes ──────────────────────────────────────────────────────
+function getColor(vx, vy, x, y, age) {
+  const pal  = document.getElementById('palette').value;
+  const speed = Math.sqrt(vx*vx+vy*vy);
+  const angle = (Math.atan2(vy,vx)+Math.PI)/(Math.PI*2); // 0–1
+  const t     = angle;
+  const fadeAlpha = Math.min(1, age/20) * 0.6;
+
+  if (pal === 'ocean')  return `rgba(${20+t*60|0},${80+t*100|0},${160+t*80|0},${fadeAlpha})`;
+  if (pal === 'fire')   return `rgba(${220+t*35|0},${80+t*120|0},${10+t*20|0},${fadeAlpha})`;
+  if (pal === 'aurora') return `rgba(${20+t*40|0},${180+t*60|0},${120+Math.sin(t*6)*80|0},${fadeAlpha*0.8})`;
+  if (pal === 'mono')   return `rgba(${120+t*100|0},${120+t*100|0},${140+t*80|0},${fadeAlpha*0.7})`;
+  if (pal === 'neon') {
+    const h = t*300+60;
+    return `hsla(${h},100%,60%,${fadeAlpha*0.7})`;
+  }
+  if (pal === 'speed') {
+    const s = Math.min(1, speed*0.4);
+    return `rgba(${s*255|0},${60+s*100|0},${255-s*200|0},${fadeAlpha})`;
+  }
+  return `rgba(200,200,200,${fadeAlpha})`;
+}
+
+// ── Particles ─────────────────────────────────────────────────────
+let particles = [];
+let N_PART = 3000;
+
+function makeParticle(x, y) {
+  return {
+    x: x ?? Math.random()*W,
+    y: y ?? Math.random()*H,
+    age: Math.random()*60|0,
+    maxAge: 60 + Math.random()*120|0,
+    vx: 0, vy: 0,
+  };
+}
+
+function initParticles() {
+  N_PART = parseInt(document.getElementById('nPart').value);
+  particles = Array.from({length:N_PART}, () => makeParticle());
+}
+
+function spawnBurst(x, y, n=80) {
+  for(let i=0;i<n;i++) particles.push({
+    x, y, age:0, maxAge:80+Math.random()*60|0, vx:0, vy:0,
+  });
+  // Remove oldest to keep cap
+  if(particles.length > N_PART+500) particles.splice(0, particles.length - N_PART);
+}
+
+// ── Arrow grid ────────────────────────────────────────────────────
+let showArrows = false;
+function drawArrows() {
+  const step = 40;
+  ctx.strokeStyle = 'rgba(80,100,140,0.35)';
+  ctx.lineWidth = 0.8;
+  for(let x=step/2;x<W;x+=step) for(let y=step/2;y<H;y+=step) {
+    const {vx,vy} = getVector(x,y);
+    const len=Math.sqrt(vx*vx+vy*vy)+0.001, scale=12/len;
+    ctx.beginPath();
+    ctx.moveTo(x,y);
+    ctx.lineTo(x+vx/len*scale, y+vy/len*scale);
+    ctx.stroke();
+  }
+}
+
+// ── Main loop ─────────────────────────────────────────────────────
+let showArrowsFlag = false;
+
+function loop() {
+  const sp = parseFloat(document.getElementById('speed').value);
+  if (evolving) evolveTime += 0.016;
+
+  // Fade trail
+  offCtx.fillStyle = 'rgba(4,4,6,0.08)';
+  offCtx.fillRect(0, 0, W, H);
+
+  // Update + draw particles
+  const deadList = [];
+  for(let i=0;i<particles.length;i++) {
+    const p = particles[i];
+    p.age++;
+    if(p.age>p.maxAge){ deadList.push(i); continue; }
+
+    const {vx,vy} = getVector(p.x, p.y);
+    p.vx = p.vx*0.8 + vx*0.2*sp;
+    p.vy = p.vy*0.8 + vy*0.2*sp;
+    const px=p.x, py=p.y;
+    p.x += p.vx; p.y += p.vy;
+
+    // Wrap
+    if(p.x<0) p.x+=W; if(p.x>W) p.x-=W;
+    if(p.y<0) p.y+=H; if(p.y>H) p.y-=H;
+
+    offCtx.strokeStyle = getColor(p.vx, p.vy, p.x, p.y, p.age);
+    offCtx.lineWidth   = 0.9;
+    offCtx.beginPath();
+    offCtx.moveTo(px, py);
+    offCtx.lineTo(p.x, p.y);
+    offCtx.stroke();
+  }
+
+  // Replace dead particles
+  for(let i=deadList.length-1;i>=0;i--) {
+    particles[deadList[i]] = makeParticle();
+  }
+
+  // Blit offscreen to main canvas
+  ctx.drawImage(offscreen, 0, 0);
+  if(showArrowsFlag) drawArrows();
+
+  requestAnimationFrame(loop);
+}
+
+// ── Controls ──────────────────────────────────────────────────────
+document.getElementById('nPart').addEventListener('input', e=>{
+  document.getElementById('nVal').textContent = e.target.value;
+});
+document.getElementById('nPart').addEventListener('change', initParticles);
+document.getElementById('fieldType').addEventListener('change', () => {
+  offCtx.fillStyle='#040406'; offCtx.fillRect(0,0,W,H);
+});
+document.getElementById('palette').addEventListener('change', ()=>{});
+document.getElementById('btnEvolve').addEventListener('click', ()=>{
+  evolving=!evolving;
+  document.getElementById('btnEvolve').classList.toggle('active',evolving);
+});
+document.getElementById('btnArrows').addEventListener('click', ()=>{
+  showArrowsFlag=!showArrowsFlag;
+  document.getElementById('btnArrows').classList.toggle('active',showArrowsFlag);
+});
+document.getElementById('btnReset').addEventListener('click', ()=>{
+  offCtx.fillStyle='#040406'; offCtx.fillRect(0,0,W,H);
+  initParticles();
+});
+['scale','speed'].forEach(id=>{
+  document.getElementById(id).addEventListener('change', ()=>{
+    offCtx.fillStyle='#040406'; offCtx.fillRect(0,0,W,H);
+  });
+});
+
+// Hover: show vector
+canvas.addEventListener('mousemove', e=>{
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  const {vx,vy}=getVector(mx,my);
+  const angle=Math.atan2(vy,vx)*180/Math.PI|0;
+  document.getElementById('vecInfo').textContent=`vec=(${vx.toFixed(2)}, ${vy.toFixed(2)})  angle=${angle}°`;
+});
+
+// Click: spawn burst
+canvas.addEventListener('click', e=>{
+  const r=canvas.getBoundingClientRect();
+  spawnBurst(e.clientX-r.left, e.clientY-r.top);
+});
+
+window.addEventListener('resize', ()=>{resize();initParticles();});
+
+resize();
+initParticles();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

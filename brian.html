@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Brian's Brain</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #040406;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    height: 100vh; overflow: hidden;
+  }
+  h1 { font-size: 0.85rem; letter-spacing: 0.3em; color: #333; text-transform: uppercase; padding: 6px 0 3px; }
+  #controls {
+    display: flex; gap: 6px; flex-wrap: wrap; justify-content: center;
+    padding: 2px 0 4px; align-items: center;
+  }
+  button {
+    background: #0a0a0e; color: #777; border: 1px solid #181820;
+    padding: 3px 9px; cursor: pointer; font-family: inherit;
+    font-size: 0.68rem; border-radius: 3px; transition: all 0.12s;
+  }
+  button:hover { background: #121218; color: #bbb; }
+  button.active { background: #0e1220; color: #6090e0; border-color: #20406a; }
+  label { font-size: 0.68rem; color: #3a3a3a; display: flex; align-items: center; gap: 4px; }
+  input[type=range] { width: 55px; accent-color: #305070; }
+  select { background: #0a0a0e; color: #777; border: 1px solid #181820;
+           padding: 2px 6px; font-family: inherit; font-size: 0.68rem; border-radius: 3px; }
+  #info { font-size: 0.62rem; color: #222; padding-bottom: 3px; }
+  canvas { display: block; cursor: crosshair; }
+</style>
+</head>
+<body>
+<h1>Brian's Brain</h1>
+<div id="controls">
+  <select id="rule">
+    <option value="brain">Brian's Brain</option>
+    <option value="seeds">Seeds</option>
+    <option value="daynight">Day &amp; Night</option>
+    <option value="cyclic3">Cyclic 3</option>
+    <option value="cyclic5">Cyclic 5</option>
+    <option value="wireworld">Wireworld</option>
+  </select>
+  <select id="palette">
+    <option value="plasma">Plasma</option>
+    <option value="ember">Ember</option>
+    <option value="ice">Ice</option>
+    <option value="matrix">Matrix</option>
+    <option value="mono">Mono</option>
+  </select>
+  <label>Speed <input type="range" id="speed" min="1" max="30" value="8"></label>
+  <label>Zoom <input type="range" id="zoom" min="2" max="16" value="5" step="1"></label>
+  <button id="btnPlay" class="active">Pause</button>
+  <button id="btnStep">Step</button>
+  <button id="btnRandom">Random</button>
+  <select id="preset">
+    <option value="">— Preset —</option>
+    <option value="glider">Glider</option>
+    <option value="spaceship">Spaceship</option>
+    <option value="explode">Explosion</option>
+    <option value="grid">Grid</option>
+    <option value="rings">Rings</option>
+  </select>
+  <button id="btnClear">Clear</button>
+</div>
+<div id="info">
+  <span id="genEl">Gen 0</span> &nbsp;·&nbsp;
+  <span id="popEl">0 alive</span> &nbsp;·&nbsp;
+  Draw: <span id="drawState">ON</span> (right-click = OFF)
+</div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W, H, COLS, ROWS, CELL;
+
+function resize() {
+  W = Math.min(window.innerWidth - 4, 1400);
+  H = window.innerHeight - 88;
+  canvas.width = W; canvas.height = H;
+  CELL = parseInt(document.getElementById('zoom').value);
+  COLS = Math.floor(W / CELL);
+  ROWS = Math.floor(H / CELL);
+}
+
+// ── Grid (Uint8Array, 0=off, 1=on, 2=dying/other states) ──────────
+let grid, next;
+
+function makeGrid() {
+  grid = new Uint8Array(COLS * ROWS);
+  next = new Uint8Array(COLS * ROWS);
+}
+
+function idx(x, y) {
+  return ((y + ROWS) % ROWS) * COLS + ((x + COLS) % COLS);
+}
+
+// ── Rules ──────────────────────────────────────────────────────────
+const RULES = {
+  brain: {
+    states: 3,
+    step(g, n, cols, rows) {
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        const s = g[i];
+        if (s === 1) { n[i] = 2; continue; }
+        if (s === 2) { n[i] = 0; continue; }
+        // count ON neighbors
+        let on = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          if (g[((y+dy+rows)%rows)*cols+((x+dx+cols)%cols)] === 1) on++;
+        }
+        n[i] = on === 2 ? 1 : 0;
+      }
+    },
+    name: "Brian's Brain",
+    desc: "3-state: OFF→ON if 2 ON neighbors; ON→DYING; DYING→OFF. Produces endless streams of gliders.",
+  },
+  seeds: {
+    states: 2,
+    step(g, n, cols, rows) {
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        if (g[i] === 1) { n[i] = 0; continue; } // nothing survives
+        let on = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          if (g[((y+dy+rows)%rows)*cols+((x+dx+cols)%cols)] === 1) on++;
+        }
+        n[i] = on === 2 ? 1 : 0;
+      }
+    },
+    name: "Seeds (B2/S)",
+    desc: "2-state: cells born with exactly 2 neighbors; none survive. Explosive chaotic growth.",
+  },
+  daynight: {
+    states: 2,
+    step(g, n, cols, rows) {
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        const s = g[i];
+        let on = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          if (g[((y+dy+rows)%rows)*cols+((x+dx+cols)%cols)] === 1) on++;
+        }
+        // B3678/S34678
+        if (s === 0) n[i] = (on===3||on===6||on===7||on===8) ? 1 : 0;
+        else         n[i] = (on===3||on===4||on===6||on===7||on===8) ? 1 : 0;
+      }
+    },
+    name: "Day & Night (B3678/S34678)",
+    desc: "Symmetric rule: stable structures look identical whether cells are on or off. Produces dense, symmetric patterns.",
+  },
+  cyclic3: {
+    states: 3,
+    step(g, n, cols, rows) {
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        const s = g[i];
+        const next_s = (s + 1) % 3;
+        let has_next = false;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          if (g[((y+dy+rows)%rows)*cols+((x+dx+cols)%cols)] === next_s) { has_next = true; break; }
+          if (has_next) break;
+        }
+        n[i] = has_next ? next_s : s;
+      }
+    },
+    name: "Cyclic CA (3 states)",
+    desc: "Each cell advances to next state if a neighbor is already there. Produces rotating spirals.",
+  },
+  cyclic5: {
+    states: 5,
+    step(g, n, cols, rows) {
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        const s = g[i];
+        const next_s = (s + 1) % 5;
+        let cnt = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          if (g[((y+dy+rows)%rows)*cols+((x+dx+cols)%cols)] === next_s) cnt++;
+        }
+        n[i] = cnt >= 3 ? next_s : s;
+      }
+    },
+    name: "Cyclic CA (5 states, threshold 3)",
+    desc: "5-state cyclic rule: cell advances only if ≥3 neighbors are the next state. Produces slower, more structured spirals.",
+  },
+  wireworld: {
+    states: 4,
+    // 0=empty, 1=conductor, 2=electron head, 3=electron tail
+    step(g, n, cols, rows) {
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        const s = g[i];
+        if (s === 0) { n[i] = 0; continue; }
+        if (s === 2) { n[i] = 3; continue; } // head → tail
+        if (s === 3) { n[i] = 1; continue; } // tail → conductor
+        // conductor → head if 1 or 2 electron heads in neighborhood
+        let heads = 0;
+        for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          if (g[((y+dy+rows)%rows)*cols+((x+dx+cols)%cols)] === 2) heads++;
+        }
+        n[i] = (heads === 1 || heads === 2) ? 2 : 1;
+      }
+    },
+    name: "Wireworld",
+    desc: "4-state: empty, conductor, electron head, electron tail. Simulates logic gates and digital circuits.",
+  },
+};
+
+// ── Palettes ───────────────────────────────────────────────────────
+function getStateColor(state, maxStates, palName) {
+  const t = state / (maxStates - 1); // 0..1
+  if (state === 0) return [4, 4, 6]; // always dark bg for 0
+
+  const palettes = {
+    plasma: [
+      [4, 4, 6],
+      [200, 80, 240],
+      [100, 200, 255],
+      [255, 220, 80],
+      [255, 100, 60],
+    ],
+    ember: [
+      [4, 4, 6],
+      [255, 200, 40],
+      [255, 100, 20],
+      [180, 40, 10],
+      [80, 20, 5],
+    ],
+    ice: [
+      [4, 4, 6],
+      [200, 230, 255],
+      [100, 180, 255],
+      [40, 100, 200],
+      [20, 50, 140],
+    ],
+    matrix: [
+      [4, 4, 6],
+      [80, 255, 80],
+      [40, 160, 40],
+      [20, 80, 20],
+      [10, 40, 10],
+    ],
+    mono: [
+      [4, 4, 6],
+      [220, 220, 230],
+      [140, 140, 160],
+      [80, 80, 100],
+      [40, 40, 60],
+    ],
+  };
+  const pal = palettes[palName] || palettes.plasma;
+  if (state === 0) return pal[0];
+  // map state 1..maxStates-1 to palette indices 1..
+  const i = Math.min(state, pal.length - 1);
+  return pal[i];
+}
+
+// ── Prerender ──────────────────────────────────────────────────────
+let imageData;
+
+function initImageData() {
+  imageData = ctx.createImageData(COLS * CELL, ROWS * CELL);
+}
+
+function renderGrid() {
+  const rule = RULES[document.getElementById('rule').value];
+  const pal  = document.getElementById('palette').value;
+  const S = rule.states;
+  const d = imageData.data;
+  const iw = COLS * CELL;
+
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    const s = grid[y * COLS + x];
+    const [r, g, b] = getStateColor(s, S, pal);
+    // Fill CELL×CELL block
+    for (let dy = 0; dy < CELL; dy++) for (let dx = 0; dx < CELL; dx++) {
+      const off = ((y * CELL + dy) * iw + (x * CELL + dx)) * 4;
+      d[off] = r; d[off+1] = g; d[off+2] = b; d[off+3] = 255;
+    }
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+// ── Step ───────────────────────────────────────────────────────────
+let generation = 0;
+
+function step() {
+  const rule = RULES[document.getElementById('rule').value];
+  rule.step(grid, next, COLS, ROWS);
+  [grid, next] = [next, grid];
+  generation++;
+  updateInfo();
+}
+
+function updateInfo() {
+  const rule = RULES[document.getElementById('rule').value];
+  let alive = 0;
+  for (let i = 0; i < grid.length; i++) if (grid[i] > 0) alive++;
+  document.getElementById('genEl').textContent = `Gen ${generation}`;
+  document.getElementById('popEl').textContent = `${alive} alive`;
+}
+
+// ── Presets ────────────────────────────────────────────────────────
+function loadPreset(name) {
+  if (!name) return;
+  clearGrid();
+  const cx = COLS >> 1, cy = ROWS >> 1;
+
+  const set = (x, y, v=1) => { if (x>=0&&x<COLS&&y>=0&&y<ROWS) grid[y*COLS+x]=v; };
+
+  if (name === 'glider') {
+    // Classic Brian's Brain glider
+    const pat = [
+      [0,1,0,0,0,0],
+      [0,0,0,1,0,0],
+      [1,0,0,0,1,0],
+      [0,1,1,1,0,0],
+    ];
+    pat.forEach((row, dy) => row.forEach((v, dx) => { if (v) set(cx+dx-3, cy+dy-2); }));
+  } else if (name === 'spaceship') {
+    // Larger pattern that creates multiple streams
+    const offsets = [
+      [-4,0],[-3,0],[-2,0],[-1,0],[0,0],[1,0],[2,0],[3,0],[4,0],
+      [-4,-2],[0,-2],[4,-2],
+      [-4,-4],[4,-4],
+    ];
+    offsets.forEach(([dx,dy]) => set(cx+dx, cy+dy));
+  } else if (name === 'explode') {
+    // Dense central seed
+    for (let dy=-4; dy<=4; dy++) for (let dx=-4; dx<=4; dx++) {
+      if (Math.random() < 0.5) set(cx+dx, cy+dy);
+    }
+  } else if (name === 'grid') {
+    // Regular ON/OFF grid
+    for (let y=0; y<ROWS; y+=3) for (let x=0; x<COLS; x+=3) set(x, y);
+  } else if (name === 'rings') {
+    // Concentric rings
+    for (let a=0; a<Math.PI*2; a+=0.08) {
+      [20,35,50,65].forEach(r => set((cx+Math.cos(a)*r)|0, (cy+Math.sin(a)*r*0.6)|0));
+    }
+  }
+  document.getElementById('preset').value = '';
+  generation = 0;
+  updateInfo();
+}
+
+// ── Random fill ────────────────────────────────────────────────────
+function randomFill() {
+  const rule = RULES[document.getElementById('rule').value];
+  for (let i = 0; i < grid.length; i++) {
+    grid[i] = Math.random() < 0.3 ? (Math.random() * rule.states | 0) + 0 : 0;
+    if (grid[i] === 0 && Math.random() < 0.15) grid[i] = 1;
+  }
+  generation = 0;
+  updateInfo();
+}
+
+function clearGrid() {
+  grid.fill(0);
+  generation = 0;
+  updateInfo();
+}
+
+// ── Main loop ──────────────────────────────────────────────────────
+let running = true;
+let frameCount = 0;
+
+function loop() {
+  const spd = parseInt(document.getElementById('speed').value);
+  if (running) {
+    frameCount++;
+    const stepsPerFrame = Math.max(1, Math.floor(spd / 10));
+    const frameSkip = Math.max(1, Math.ceil(10 / spd));
+    if (frameCount % frameSkip === 0) {
+      for (let s = 0; s < stepsPerFrame; s++) step();
+    }
+  }
+  renderGrid();
+  requestAnimationFrame(loop);
+}
+
+// ── Drawing ────────────────────────────────────────────────────────
+let drawing = false, drawValue = 1;
+
+function gridPos(e) {
+  const r = canvas.getBoundingClientRect();
+  return {
+    x: Math.floor((e.clientX - r.left) / CELL),
+    y: Math.floor((e.clientY - r.top) / CELL),
+  };
+}
+
+function paintCell(e, val) {
+  const { x, y } = gridPos(e);
+  if (x >= 0 && x < COLS && y >= 0 && y < ROWS) {
+    const rule = RULES[document.getElementById('rule').value];
+    grid[y * COLS + x] = (val !== undefined ? val : drawValue) % rule.states;
+    updateInfo();
+  }
+}
+
+canvas.addEventListener('mousedown', e => {
+  e.preventDefault();
+  drawing = true;
+  drawValue = e.button === 2 ? 0 : 1;
+  paintCell(e, drawValue);
+});
+canvas.addEventListener('mousemove', e => { if (drawing) paintCell(e, drawValue); });
+canvas.addEventListener('mouseup',   () => drawing = false);
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// ── Controls ───────────────────────────────────────────────────────
+document.getElementById('btnPlay').addEventListener('click', () => {
+  running = !running;
+  document.getElementById('btnPlay').textContent = running ? 'Pause' : 'Play';
+  document.getElementById('btnPlay').classList.toggle('active', running);
+});
+
+document.getElementById('btnStep').addEventListener('click', () => {
+  running = false;
+  document.getElementById('btnPlay').textContent = 'Play';
+  document.getElementById('btnPlay').classList.remove('active');
+  step();
+  renderGrid();
+});
+
+document.getElementById('btnRandom').addEventListener('click', () => {
+  randomFill();
+});
+
+document.getElementById('btnClear').addEventListener('click', () => {
+  clearGrid();
+});
+
+document.getElementById('preset').addEventListener('change', e => {
+  loadPreset(e.target.value);
+});
+
+document.getElementById('rule').addEventListener('change', () => {
+  clearGrid();
+  const rule = RULES[document.getElementById('rule').value];
+  const desc = document.querySelector('#info');
+  // Update draw state label based on rule
+  document.getElementById('drawState').textContent =
+    rule.states > 2 ? 'FIRING' : 'ON';
+});
+
+document.getElementById('zoom').addEventListener('change', () => {
+  resize();
+  makeGrid();
+  initImageData();
+  randomFill();
+});
+
+window.addEventListener('resize', () => {
+  resize();
+  makeGrid();
+  initImageData();
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    document.getElementById('btnPlay').click();
+  }
+  if (e.code === 'KeyR') document.getElementById('btnRandom').click();
+  if (e.code === 'KeyC') document.getElementById('btnClear').click();
+  if (e.code === 'Period' || e.code === 'KeyN') {
+    running = false;
+    document.getElementById('btnPlay').textContent = 'Play';
+    document.getElementById('btnPlay').classList.remove('active');
+    step(); renderGrid();
+  }
+});
+
+// ── Init ───────────────────────────────────────────────────────────
+resize();
+makeGrid();
+initImageData();
+randomFill();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terrain Generator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #080808;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+  }
+  h1 { font-size: 1rem; letter-spacing: 0.25em; color: #555; text-transform: uppercase; padding: 8px 0 5px; }
+  #controls {
+    display: flex; gap: 7px; flex-wrap: wrap; justify-content: center;
+    padding: 3px 0 7px; align-items: center;
+  }
+  button {
+    background: #141414; color: #999; border: 1px solid #222;
+    padding: 3px 11px; cursor: pointer; font-family: inherit;
+    font-size: 0.71rem; border-radius: 3px; transition: all 0.12s;
+  }
+  button:hover { background: #1e1e1e; color: #fff; }
+  button.active { background: #1a2a3a; color: #7ab4ff; border-color: #2a4a7a; }
+  label { font-size: 0.71rem; color: #555; display: flex; align-items: center; gap: 5px; }
+  input[type=range] { width: 65px; accent-color: #3a6a5a; }
+  select {
+    background: #141414; color: #aaa; border: 1px solid #222;
+    padding: 3px 8px; font-family: inherit; font-size: 0.71rem; border-radius: 3px;
+  }
+  #info { font-size: 0.66rem; color: #333; padding-bottom: 4px; }
+  canvas { display: block; cursor: crosshair; }
+</style>
+</head>
+<body>
+<h1>Terrain Generator</h1>
+<div id="controls">
+  <button id="btnNew">New Seed</button>
+  <label>Preset
+    <select id="preset">
+      <option value="island">Island</option>
+      <option value="continent">Continent</option>
+      <option value="archipelago">Archipelago</option>
+      <option value="mountains">Mountains</option>
+      <option value="plains">Plains</option>
+      <option value="canyon">Canyon</option>
+    </select>
+  </label>
+  <label>Scale <input type="range" id="scale" min="1" max="10" value="4" step="0.5"><span id="scaleVal">4</span></label>
+  <label>Octaves <input type="range" id="octaves" min="1" max="8" value="6"><span id="octVal">6</span></label>
+  <button id="btnContour" class="active">Contours</button>
+  <button id="btnShade" class="active">Shading</button>
+  <button id="btnAnim">Animate</button>
+  <label>Palette
+    <select id="palette">
+      <option value="natural">Natural</option>
+      <option value="arctic">Arctic</option>
+      <option value="desert">Desert</option>
+      <option value="alien">Alien</option>
+      <option value="topo">Topo</option>
+    </select>
+  </label>
+</div>
+<div id="info">Scroll to zoom &nbsp;|&nbsp; Drag to pan &nbsp;|&nbsp; <span id="seedInfo">seed: —</span></div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = Math.min(window.innerWidth - 8, 1300);
+  H = window.innerHeight - 116;
+  canvas.width = W; canvas.height = H;
+}
+
+// ── Permutation table (seeded) ────────────────────────────────────
+let perm = new Uint8Array(512);
+let seed = Math.random() * 65536 | 0;
+
+function seedRng(s) {
+  seed = s;
+  let state = s;
+  function rand() {
+    state ^= state << 13; state ^= state >> 17; state ^= state << 5;
+    return (state >>> 0) / 0x100000000;
+  }
+  const p = Array.from({length:256}, (_,i)=>i);
+  for (let i = 255; i > 0; i--) {
+    const j = Math.floor(rand() * (i+1));
+    [p[i], p[j]] = [p[j], p[i]];
+  }
+  for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+}
+
+function fade(t) { return t*t*t*(t*(t*6-15)+10); }
+function lerp(a, b, t) { return a + t*(b-a); }
+
+function grad(hash, x, y) {
+  const h = hash & 7;
+  const u = h < 4 ? x : y, v = h < 4 ? y : x;
+  return ((h&1)?-u:u) + ((h&2)?-v:v);
+}
+
+function noise2(x, y) {
+  const X = Math.floor(x)&255, Y = Math.floor(y)&255;
+  x -= Math.floor(x); y -= Math.floor(y);
+  const u = fade(x), v = fade(y);
+  const a=perm[X]+Y, b=perm[X+1]+Y;
+  return lerp(
+    lerp(grad(perm[a],x,y),   grad(perm[b],x-1,y),   u),
+    lerp(grad(perm[a+1],x,y-1),grad(perm[b+1],x-1,y-1),u),
+    v
+  );
+}
+
+function fbm(x, y, octaves, lacunarity=2, gain=0.5) {
+  let val=0, amp=1, freq=1, max=0;
+  for(let i=0;i<octaves;i++){
+    val += noise2(x*freq, y*freq)*amp;
+    max += amp; amp*=gain; freq*=lacunarity;
+  }
+  return val/max;
+}
+
+// ── Terrain presets ───────────────────────────────────────────────
+const PRESETS = {
+  island:      { warpAmt:0.4, islandMask:true,  seaLevel:0.38, ridged:false },
+  continent:   { warpAmt:0.3, islandMask:false, seaLevel:0.3,  ridged:false },
+  archipelago: { warpAmt:0.5, islandMask:true,  seaLevel:0.52, ridged:false },
+  mountains:   { warpAmt:0.2, islandMask:false, seaLevel:0.2,  ridged:true  },
+  plains:      { warpAmt:0.1, islandMask:false, seaLevel:0.25, ridged:false },
+  canyon:      { warpAmt:0.6, islandMask:false, seaLevel:0.28, ridged:true  },
+};
+
+// ── Palettes ──────────────────────────────────────────────────────
+// Each palette: array of [elevation_0_to_1, [r,g,b]] stops
+const PALETTES = {
+  natural: [
+    [0.00, [10,20,80]],   // deep ocean
+    [0.30, [30,60,160]],  // ocean
+    [0.37, [50,100,200]], // shallow
+    [0.38, [210,190,140]],// beach
+    [0.42, [180,200,120]],// lowland
+    [0.55, [100,160,60]], // grass
+    [0.68, [80,120,40]],  // forest
+    [0.78, [100,90,80]],  // highland
+    [0.87, [130,110,100]],// rock
+    [0.94, [200,195,190]],// snow line
+    [1.00, [255,255,255]],// peak
+  ],
+  arctic: [
+    [0.00, [20,30,80]],
+    [0.35, [40,80,160]],
+    [0.38, [180,210,230]],
+    [0.50, [200,220,240]],
+    [0.65, [220,230,245]],
+    [0.80, [235,240,250]],
+    [1.00, [255,255,255]],
+  ],
+  desert: [
+    [0.00, [20,30,80]],
+    [0.33, [30,60,140]],
+    [0.38, [200,180,120]],
+    [0.50, [210,175,100]],
+    [0.63, [190,145,75]],
+    [0.78, [170,120,60]],
+    [0.90, [150,100,50]],
+    [1.00, [200,180,160]],
+  ],
+  alien: [
+    [0.00, [10,5,30]],
+    [0.30, [20,10,80]],
+    [0.38, [80,200,60]],
+    [0.50, [60,180,40]],
+    [0.65, [180,80,200]],
+    [0.80, [220,100,60]],
+    [0.92, [240,200,40]],
+    [1.00, [255,255,200]],
+  ],
+  topo: [
+    [0.00, [10,20,60]],
+    [0.38, [30,80,160]],
+    [0.39, [220,200,140]],
+    [0.50, [200,220,180]],
+    [0.62, [160,200,120]],
+    [0.74, [120,150,80]],
+    [0.84, [100,90,70]],
+    [0.92, [160,140,130]],
+    [1.00, [255,255,255]],
+  ],
+};
+
+function samplePalette(t, stops) {
+  t = Math.max(0, Math.min(1, t));
+  for (let i = 1; i < stops.length; i++) {
+    if (t <= stops[i][0]) {
+      const lo = stops[i-1], hi = stops[i];
+      const f = (t - lo[0]) / (hi[0] - lo[0]);
+      return [
+        lo[1][0] + (hi[1][0]-lo[1][0])*f | 0,
+        lo[1][1] + (hi[1][1]-lo[1][1])*f | 0,
+        lo[1][2] + (hi[1][2]-lo[1][2])*f | 0,
+      ];
+    }
+  }
+  return stops[stops.length-1][1];
+}
+
+// ── View state ────────────────────────────────────────────────────
+let viewX=0, viewY=0, viewZoom=1;
+let showContours=true, showShading=true;
+let animating=false, animOffset=0, animFrame=null;
+
+// ── Render ────────────────────────────────────────────────────────
+function getHeight(nx, ny) {
+  const cfg = PRESETS[document.getElementById('preset').value];
+  const octaves = parseInt(document.getElementById('octaves').value);
+  const scl = parseFloat(document.getElementById('scale').value) * 0.001;
+
+  let x = nx * scl, y = ny * scl;
+
+  // Domain warp
+  if (cfg.warpAmt > 0) {
+    const wx = fbm(x+1.7, y+9.2, 4) * cfg.warpAmt * 8;
+    const wy = fbm(x+8.3, y+2.8, 4) * cfg.warpAmt * 8;
+    x += wx; y += wy;
+  }
+
+  let h = fbm(x, y, octaves);
+
+  if (cfg.ridged) {
+    const r = fbm(x*1.5+4, y*1.5+4, octaves);
+    h = h * 0.6 + (1 - Math.abs(r)) * 0.4;
+  }
+
+  h = (h + 1) * 0.5; // normalize [0,1]
+
+  // Island mask: distance from center fades to ocean
+  if (cfg.islandMask) {
+    const cx = 0.5, cy = 0.5;
+    const dx = nx/W - cx, dy = ny/H - cy;
+    const d = Math.sqrt(dx*dx + dy*dy) * 2.2;
+    const mask = Math.max(0, 1 - d*d);
+    h = h * mask;
+  }
+
+  return h;
+}
+
+function renderTerrain() {
+  const img = ctx.createImageData(W, H);
+  const data = img.data;
+  const stops = PALETTES[document.getElementById('palette').value];
+  const cfg = PRESETS[document.getElementById('preset').value];
+  const seaLevel = cfg.seaLevel;
+  const ao = animating ? animOffset : 0;
+
+  // Build height map for shading
+  const heights = new Float32Array(W * H);
+  for (let py = 0; py < H; py++) {
+    for (let px = 0; px < W; px++) {
+      const wx = (px - W/2) / viewZoom + W/2 + viewX;
+      const wy = (py - H/2) / viewZoom + H/2 + viewY;
+      heights[py*W+px] = getHeight(wx + ao * W * 0.02, wy);
+    }
+  }
+
+  for (let py = 0; py < H; py++) {
+    for (let px = 0; px < W; px++) {
+      const h = heights[py*W+px];
+      let [r, g, b] = samplePalette(h, stops);
+
+      // Hillshading: simple central-difference normal
+      if (showShading && h > seaLevel) {
+        const hL = px > 0 ? heights[py*W+px-1] : h;
+        const hR = px < W-1 ? heights[py*W+px+1] : h;
+        const hU = py > 0 ? heights[(py-1)*W+px] : h;
+        const hD = py < H-1 ? heights[(py+1)*W+px] : h;
+        const sx = (hR - hL) * 60, sy = (hD - hU) * 60;
+        const nz = 1 / Math.sqrt(sx*sx + sy*sy + 1);
+        // Light from NW
+        const shade = Math.max(0.4, Math.min(1.3, 1 + (-sx*0.7 - sy*0.3) * nz * 1.5));
+        r = Math.min(255, r * shade) | 0;
+        g = Math.min(255, g * shade) | 0;
+        b = Math.min(255, b * shade) | 0;
+      }
+
+      // Contour lines
+      if (showContours) {
+        const interval = 0.05;
+        const frac = (h % interval) / interval;
+        if (frac < 0.04 || frac > 0.96) {
+          const dim = h < seaLevel ? 0.85 : 0.75;
+          r = r * dim | 0; g = g * dim | 0; b = b * dim | 0;
+        }
+      }
+
+      const off = (py * W + px) * 4;
+      data[off] = r; data[off+1] = g; data[off+2] = b; data[off+3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function render() { renderTerrain(); }
+
+// ── Animation (slow drift) ────────────────────────────────────────
+function startAnim() {
+  animating = true;
+  document.getElementById('btnAnim').classList.add('active');
+  document.getElementById('btnAnim').textContent = 'Stop';
+  function frame() {
+    animOffset += 0.003;
+    renderTerrain();
+    animFrame = requestAnimationFrame(frame);
+  }
+  animFrame = requestAnimationFrame(frame);
+}
+function stopAnim() {
+  animating = false;
+  cancelAnimationFrame(animFrame);
+  document.getElementById('btnAnim').classList.remove('active');
+  document.getElementById('btnAnim').textContent = 'Animate';
+}
+
+// ── Controls ──────────────────────────────────────────────────────
+function newSeed() {
+  seed = Math.random() * 65536 | 0;
+  seedRng(seed);
+  document.getElementById('seedInfo').textContent = `seed: ${seed}`;
+  render();
+}
+
+document.getElementById('btnNew').addEventListener('click', newSeed);
+document.getElementById('btnContour').addEventListener('click', () => {
+  showContours = !showContours;
+  document.getElementById('btnContour').classList.toggle('active', showContours);
+  render();
+});
+document.getElementById('btnShade').addEventListener('click', () => {
+  showShading = !showShading;
+  document.getElementById('btnShade').classList.toggle('active', showShading);
+  render();
+});
+document.getElementById('btnAnim').addEventListener('click', () => {
+  animating ? stopAnim() : startAnim();
+});
+['preset','palette'].forEach(id => document.getElementById(id).addEventListener('change', render));
+['scale','octaves'].forEach(id => {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => {
+    document.getElementById(id==='scale'?'scaleVal':'octVal').textContent = el.value;
+  });
+  el.addEventListener('change', render);
+});
+
+// ── Pan & zoom ────────────────────────────────────────────────────
+let dragging = false, dragSX, dragSY, dragVX, dragVY;
+canvas.addEventListener('mousedown', e => {
+  dragging = true; dragSX = e.clientX; dragSY = e.clientY;
+  dragVX = viewX; dragVY = viewY;
+});
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  viewX = dragVX - (e.clientX - dragSX) / viewZoom;
+  viewY = dragVY - (e.clientY - dragSY) / viewZoom;
+  if (!animating) render();
+});
+window.addEventListener('mouseup', () => { dragging = false; });
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.2 : 0.83;
+  viewZoom = Math.max(0.2, Math.min(12, viewZoom * factor));
+  if (!animating) render();
+}, { passive: false });
+
+window.addEventListener('resize', () => { resize(); render(); });
+
+// ── Init ──────────────────────────────────────────────────────────
+resize();
+seedRng(seed);
+document.getElementById('seedInfo').textContent = `seed: ${seed}`;
+render();
+</script>
+</body>
+</html>

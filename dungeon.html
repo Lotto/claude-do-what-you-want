@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dungeon</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #000; color: #a0a0b0; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { display: flex; align-items: center; gap: 10px; padding: 7px 14px; background: #06060a; border-bottom: 1px solid #10101c; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; margin-right: 4px; }
+  canvas { display: block; flex: 1; min-height: 0; cursor: default; outline: none; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; letter-spacing: 0.08em; }
+  button:hover { background: #12122a; color: #a0a0c8; border-color: #3a3a60; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 5px; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  #info { font-size: 10px; color: #303050; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Dungeon</h1>
+  <div class="sep"></div>
+  <button id="btnGen">New Map</button>
+  <label>Theme
+    <select id="selTheme">
+      <option value="0">Dungeon</option>
+      <option value="1">Crypt</option>
+      <option value="2">Temple</option>
+    </select>
+  </label>
+  <div class="sep"></div>
+  <span id="info">WASD / arrows to move · ▼ stairs to next floor</span>
+</div>
+<canvas id="c" tabindex="0"></canvas>
+
+<script>
+'use strict';
+
+const VOID=0, FLOOR=1, WALL=2, STAIR=3;
+const DECO_NONE=0, DECO_TORCH=1, DECO_PILLAR=2, DECO_CHEST=3;
+const MAP_W=72, MAP_H=50, TILE=22, LOS_R=10;
+
+const THEMES = [
+  { bg:'#040406', floor:'#131318', floorLine:'#18181e', wall:'#282832', wallTop:'#363644', wallShade:'#1e1e28', door:'#5a3a18', accent:'#6080b0', torch:'255,165,55',  player:'#50a0e0' },
+  { bg:'#030108', floor:'#10080e', floorLine:'#160e14', wall:'#24122a', wallTop:'#32203a', wallShade:'#18081e', door:'#481228', accent:'#a060c0', torch:'210,80,255',  player:'#c070e0' },
+  { bg:'#060400', floor:'#161004', floorLine:'#1e160a', wall:'#2e1e08', wallTop:'#3e2e14', wallShade:'#201408', door:'#6a4010', accent:'#c0a040', torch:'255,225,80',  player:'#e0b040' },
+];
+let TH = THEMES[0];
+
+let tiles, deco, vis, rooms, torches;
+let px = 0, py = 0, floorNum = 1;
+let camX = 0, camY = 0;
+let t = 0;
+
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight - document.getElementById('top').offsetHeight;
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+// ── Map generation ────────────────────────────────────────────────
+
+function genMap() {
+  tiles  = new Uint8Array(MAP_W * MAP_H);
+  deco   = new Uint8Array(MAP_W * MAP_H);
+  vis    = new Uint8Array(MAP_W * MAP_H);
+  rooms  = [];
+  torches = [];
+
+  // BSP room placement
+  bspSplit({x:1, y:1, w:MAP_W-2, h:MAP_H-2}, 0);
+
+  // Connect rooms with L-corridors (sorted for better connectivity)
+  rooms.sort((a,b) => a.cx - b.cx);
+  for (let i = 0; i < rooms.length-1; i++) corridor(rooms[i], rooms[i+1]);
+
+  // Carve walls around all floor tiles
+  for (let y = 0; y < MAP_H; y++) {
+    for (let x = 0; x < MAP_W; x++) {
+      if (tiles[y*MAP_W+x] !== FLOOR) continue;
+      for (let dy=-1; dy<=1; dy++) for (let dx=-1; dx<=1; dx++) {
+        const nx=x+dx, ny=y+dy;
+        if (nx>=0&&nx<MAP_W&&ny>=0&&ny<MAP_H&&tiles[ny*MAP_W+nx]===VOID)
+          tiles[ny*MAP_W+nx] = WALL;
+      }
+    }
+  }
+
+  // Decorations
+  for (const r of rooms) {
+    // Torches on room border walls
+    const pts = [
+      [r.x-1, r.y + (r.h/3|0)], [r.x+r.w, r.y + (r.h*2/3|0)],
+      [r.x + (r.w/3|0), r.y-1], [r.x + (r.w*2/3|0), r.y+r.h],
+    ];
+    for (const [wx,wy] of pts) {
+      if (wx>=0&&wx<MAP_W&&wy>=0&&wy<MAP_H && tiles[wy*MAP_W+wx]===WALL) {
+        deco[wy*MAP_W+wx] = DECO_TORCH;
+        torches.push({x:wx, y:wy});
+      }
+    }
+    // Pillars in large rooms
+    if (r.w >= 7 && r.h >= 6) {
+      for (const [ox,oy] of [[1,1],[r.w-2,1],[1,r.h-2],[r.w-2,r.h-2]]) {
+        if (Math.random() < 0.6) deco[(r.y+oy)*MAP_W+(r.x+ox)] = DECO_PILLAR;
+      }
+    }
+    // Chest (not in first room)
+    if (rooms.indexOf(r) > 0 && Math.random() < 0.45) {
+      const cx = r.x+1 + (Math.random()*(r.w-2)|0);
+      const cy = r.y+1 + (Math.random()*(r.h-2)|0);
+      if (deco[cy*MAP_W+cx] === DECO_NONE) deco[cy*MAP_W+cx] = DECO_CHEST;
+    }
+  }
+
+  // Start + stairs
+  const first = rooms[0];
+  const last  = rooms[rooms.length-1];
+  px = first.cx; py = first.cy;
+  tiles[last.cy*MAP_W+last.cx] = STAIR;
+  camX = px*TILE; camY = py*TILE;
+
+  computeLOS();
+  document.getElementById('info').textContent =
+    `Floor ${floorNum} · ${rooms.length} rooms · WASD/arrows · ▼=stairs`;
+}
+
+function bspSplit(leaf, depth) {
+  const MIN = 8;
+  if (depth > 4 || leaf.w < MIN*2+2 || leaf.h < MIN*2+2) {
+    placeRoom(leaf);
+    return;
+  }
+  const splitH = leaf.h > leaf.w + 4 ? true : leaf.w > leaf.h + 4 ? false : Math.random() < 0.5;
+  if (splitH) {
+    const s = MIN + (Math.random()*(leaf.h - MIN*2)|0);
+    bspSplit({x:leaf.x, y:leaf.y,   w:leaf.w, h:s},          depth+1);
+    bspSplit({x:leaf.x, y:leaf.y+s, w:leaf.w, h:leaf.h-s},   depth+1);
+  } else {
+    const s = MIN + (Math.random()*(leaf.w - MIN*2)|0);
+    bspSplit({x:leaf.x,   y:leaf.y, w:s,          h:leaf.h}, depth+1);
+    bspSplit({x:leaf.x+s, y:leaf.y, w:leaf.w-s,   h:leaf.h}, depth+1);
+  }
+}
+
+function placeRoom(leaf) {
+  const pad = 1 + (Math.random()*2|0);
+  const rx = leaf.x + pad;
+  const ry = leaf.y + pad;
+  const rw = Math.max(4, leaf.w - pad*2 - (Math.random()*2|0));
+  const rh = Math.max(3, leaf.h - pad*2 - (Math.random()*2|0));
+  if (rw < 3 || rh < 3) return;
+  for (let y=ry; y<ry+rh; y++) for (let x=rx; x<rx+rw; x++) tiles[y*MAP_W+x] = FLOOR;
+  rooms.push({x:rx, y:ry, w:rw, h:rh, cx:rx+(rw/2|0), cy:ry+(rh/2|0)});
+}
+
+function corridor(a, b) {
+  // L-shaped: horizontal then vertical
+  const x1=a.cx, y1=a.cy, x2=b.cx, y2=b.cy;
+  for (let x=Math.min(x1,x2); x<=Math.max(x1,x2); x++) tiles[y1*MAP_W+x] = FLOOR;
+  for (let y=Math.min(y1,y2); y<=Math.max(y1,y2); y++) tiles[y*MAP_W+x2] = FLOOR;
+}
+
+// ── Line of sight ─────────────────────────────────────────────────
+
+function computeLOS() {
+  const R2 = LOS_R * LOS_R;
+  for (let i=0; i<vis.length; i++) if (vis[i]===2) vis[i]=1;
+  for (let dy=-LOS_R; dy<=LOS_R; dy++) {
+    for (let dx=-LOS_R; dx<=LOS_R; dx++) {
+      if (dx*dx+dy*dy > R2) continue;
+      const tx=px+dx, ty=py+dy;
+      if (tx<0||tx>=MAP_W||ty<0||ty>=MAP_H) continue;
+      if (castRay(px,py,tx,ty)) vis[ty*MAP_W+tx]=2;
+    }
+  }
+}
+
+function castRay(x0,y0,x1,y1) {
+  let dx=Math.abs(x1-x0), dy=Math.abs(y1-y0);
+  let sx=x0<x1?1:-1, sy=y0<y1?1:-1;
+  let err=dx-dy, cx=x0, cy=y0;
+  while (cx!==x1||cy!==y1) {
+    if ((cx!==x0||cy!==y0) && tiles[cy*MAP_W+cx]===WALL) return false;
+    const e2=2*err;
+    if (e2>-dy){err-=dy;cx+=sx;}
+    if (e2< dx){err+=dx;cy+=sy;}
+  }
+  return true;
+}
+
+// ── Rendering ─────────────────────────────────────────────────────
+
+function sx(x) { return x*TILE - camX + canvas.width*0.5|0; }
+function sy(y) { return y*TILE - camY + canvas.height*0.5|0; }
+
+function drawTile(x, y, v) {
+  const bx=sx(x), by=sy(y);
+  if (bx>canvas.width+TILE||bx<-TILE||by>canvas.height+TILE||by<-TILE) return;
+
+  const tile=tiles[y*MAP_W+x], d=deco[y*MAP_W+x];
+  ctx.globalAlpha = v===1 ? 0.32 : 1.0;
+
+  if (tile===FLOOR||tile===STAIR) {
+    ctx.fillStyle = TH.floor;
+    ctx.fillRect(bx,by,TILE,TILE);
+    ctx.strokeStyle = TH.floorLine;
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(bx+0.5,by+0.5,TILE-1,TILE-1);
+
+    if (tile===STAIR) {
+      ctx.fillStyle = TH.accent+'cc';
+      ctx.font = `${TILE*0.7|0}px Courier New`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('▼', bx+TILE/2, by+TILE/2+1);
+    }
+
+    // Floor decorations
+    if (d===DECO_PILLAR) {
+      ctx.fillStyle = TH.wallTop;
+      ctx.beginPath(); ctx.arc(bx+TILE/2,by+TILE/2, TILE*0.37,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle = TH.wall;
+      ctx.beginPath(); ctx.arc(bx+TILE/2,by+TILE/2, TILE*0.24,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle = TH.wallShade; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.arc(bx+TILE/2,by+TILE/2, TILE*0.37,0,Math.PI*2); ctx.stroke();
+    } else if (d===DECO_CHEST) {
+      const cx2=bx+TILE*0.18, cy2=by+TILE*0.32, cw=TILE*0.64, ch=TILE*0.42;
+      ctx.fillStyle=TH.door; ctx.fillRect(cx2,cy2,cw,ch);
+      ctx.fillStyle=TH.wallTop; ctx.fillRect(cx2,cy2,cw,ch*0.22);
+      ctx.fillStyle='rgba(255,220,80,0.85)';
+      ctx.fillRect(cx2+cw*0.42,cy2+ch*0.38,cw*0.16,ch*0.3);
+      ctx.strokeStyle=TH.wallShade; ctx.lineWidth=0.7;
+      ctx.strokeRect(cx2,cy2,cw,ch);
+    }
+
+  } else if (tile===WALL) {
+    ctx.fillStyle = TH.wall;
+    ctx.fillRect(bx,by,TILE,TILE);
+    // Top highlight
+    ctx.fillStyle = TH.wallTop;
+    ctx.fillRect(bx,by,TILE,4);
+    // Bottom shadow
+    ctx.fillStyle = TH.wallShade;
+    ctx.fillRect(bx,by+TILE-3,TILE,3);
+    // Stone crack details
+    ctx.fillStyle='rgba(0,0,0,0.12)';
+    const seed=(x*31+y*17)&255;
+    if (seed<80)  ctx.fillRect(bx+4+(seed&7),  by+5,  1, 8+((seed>>3)&7));
+    if (seed>170) ctx.fillRect(bx+12+((seed>>4)&5), by+7, 1, 6+((seed>>1)&5));
+
+    // Torch on wall
+    if (d===DECO_TORCH) {
+      const fl  = 1 + 0.25*Math.sin(t*9 + x*1.7 + y*2.3);
+      const fc  = `rgba(${TH.torch},`;
+      ctx.fillStyle = fc+'0.95)';
+      ctx.beginPath(); ctx.arc(bx+TILE/2, by+TILE*0.45, 2.5, 0, Math.PI*2); ctx.fill();
+      // Flame
+      ctx.fillStyle = fc+'0.8)';
+      const fy = by+TILE*0.28*fl;
+      ctx.beginPath(); ctx.ellipse(bx+TILE/2, fy, 2, 4*fl, 0, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,200,0.6)';
+      ctx.beginPath(); ctx.arc(bx+TILE/2, fy, 1.2, 0, Math.PI*2); ctx.fill();
+    }
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+function drawTorchLights() {
+  ctx.save();
+  ctx.globalCompositeOperation = 'screen';
+  for (const to of torches) {
+    const v = vis[to.y*MAP_W+to.x];
+    if (!v) continue;
+    const bx = sx(to.x)+TILE/2, by2 = sy(to.y)+TILE/2;
+    const r  = TILE * (4 + 0.6*Math.sin(t*7+to.x+to.y*2.1));
+    const g  = ctx.createRadialGradient(bx, by2, 0, bx, by2, r);
+    const a  = v===2 ? 0.10 : 0.03;
+    g.addColorStop(0, `rgba(${TH.torch},${a})`);
+    g.addColorStop(1, `rgba(${TH.torch},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(bx-r, by2-r, r*2, r*2);
+  }
+  ctx.restore();
+}
+
+function drawPlayer() {
+  const bx=sx(px), by=sy(py);
+  // Soft glow
+  const g = ctx.createRadialGradient(bx+TILE/2,by+TILE/2,0,bx+TILE/2,by+TILE/2,TILE*1.2);
+  g.addColorStop(0,TH.player+'28'); g.addColorStop(1,TH.player+'00');
+  ctx.fillStyle=g;
+  ctx.fillRect(bx-TILE,by-TILE,TILE*3,TILE*3);
+  // Body
+  ctx.fillStyle = TH.player;
+  ctx.beginPath(); ctx.arc(bx+TILE/2, by+TILE/2, TILE*0.35, 0, Math.PI*2); ctx.fill();
+  // Specular
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.beginPath(); ctx.arc(bx+TILE/2-2, by+TILE/2-2, TILE*0.14, 0, Math.PI*2); ctx.fill();
+}
+
+function drawMinimap() {
+  const S=2, MW=MAP_W*S, MH=MAP_H*S, mx=canvas.width-MW-10, my=10;
+  ctx.fillStyle='rgba(0,0,0,0.72)'; ctx.fillRect(mx-2,my-2,MW+4,MH+4);
+  ctx.strokeStyle='#1a1a30'; ctx.lineWidth=1; ctx.strokeRect(mx-2,my-2,MW+4,MH+4);
+  for (let y=0; y<MAP_H; y++) for (let x=0; x<MAP_W; x++) {
+    const v=vis[y*MAP_W+x]; if (!v) continue;
+    const tile=tiles[y*MAP_W+x];
+    ctx.globalAlpha = v===2 ? 1 : 0.3;
+    ctx.fillStyle = tile===WALL ? '#505868' : tile===FLOOR||tile===STAIR ? '#2c3838' : '#000';
+    ctx.fillRect(mx+x*S, my+y*S, S, S);
+  }
+  ctx.globalAlpha=1;
+  // Player dot
+  ctx.fillStyle=TH.player;
+  ctx.fillRect(mx+px*S-1, my+py*S-1, 3, 3);
+}
+
+function drawFOW() {
+  // Dim overlay for unseen areas
+  const W=canvas.width, H=canvas.height;
+  for (let py2=0; py2<H; py2+=TILE) for (let px2=0; px2<W; px2+=TILE) {
+    // approximate: if map tile there is unseen, draw black overlay
+    const mx=Math.floor((px2 + camX - canvas.width*0.5)/TILE);
+    const my2=Math.floor((py2 + camY - canvas.height*0.5)/TILE);
+    if (mx>=0&&mx<MAP_W&&my2>=0&&my2<MAP_H&&vis[my2*MAP_W+mx]===0) {
+      ctx.fillStyle='rgba(0,0,0,0.96)';
+      ctx.fillRect(px2, py2, TILE, TILE);
+    }
+  }
+}
+
+// ── Main loop ─────────────────────────────────────────────────────
+function render() {
+  const W=canvas.width, H=canvas.height;
+  ctx.fillStyle=TH.bg; ctx.fillRect(0,0,W,H);
+
+  // Smooth camera
+  camX += (px*TILE - camX) * 0.10;
+  camY += (py*TILE - camY) * 0.10;
+
+  const x0=Math.max(0,  (camX-W/2)/TILE-1|0);
+  const y0=Math.max(0,  (camY-H/2)/TILE-1|0);
+  const x1=Math.min(MAP_W, (camX+W/2)/TILE+2|0);
+  const y1=Math.min(MAP_H, (camY+H/2)/TILE+2|0);
+
+  for (let y=y0; y<y1; y++) for (let x=x0; x<x1; x++) {
+    const v=vis[y*MAP_W+x];
+    if (v>0) drawTile(x,y,v);
+  }
+
+  drawTorchLights();
+  drawFOW();
+  drawPlayer();
+  drawMinimap();
+
+  t += 1/60;
+  requestAnimationFrame(render);
+}
+
+// ── Input ─────────────────────────────────────────────────────────
+function tryMove(dx, dy) {
+  const nx=px+dx, ny=py+dy;
+  if (nx<0||nx>=MAP_W||ny<0||ny>=MAP_H) return;
+  const tile=tiles[ny*MAP_W+nx];
+  if (tile===VOID||tile===WALL) return;
+  if (deco[ny*MAP_W+nx]===DECO_PILLAR) return;
+  px=nx; py=ny;
+  if (tile===STAIR) { floorNum++; genMap(); return; }
+  computeLOS();
+}
+
+const DIRS = {
+  ArrowUp:[0,-1], ArrowDown:[0,1], ArrowLeft:[-1,0], ArrowRight:[1,0],
+  w:[0,-1], s:[0,1], a:[-1,0], d:[1,0],
+  W:[0,-1], S:[0,1], A:[-1,0], D:[1,0],
+};
+
+canvas.addEventListener('keydown', e => {
+  const d = DIRS[e.key];
+  if (d) { e.preventDefault(); tryMove(d[0], d[1]); }
+});
+
+// Click adjacent tile
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = Math.floor((e.clientX - rect.left + camX - canvas.width*0.5) / TILE);
+  const my = Math.floor((e.clientY - rect.top  + camY - canvas.height*0.5) / TILE);
+  const dx=mx-px, dy=my-py;
+  if (Math.abs(dx)+Math.abs(dy)===1) tryMove(dx,dy);
+  canvas.focus();
+});
+
+document.getElementById('btnGen').addEventListener('click', () => { floorNum=1; genMap(); canvas.focus(); });
+document.getElementById('selTheme').addEventListener('change', e => { TH=THEMES[parseInt(e.target.value)]; });
+
+// ── Init ──────────────────────────────────────────────────────────
+genMap();
+render();
+canvas.focus();
+</script>
+</body>
+</html>

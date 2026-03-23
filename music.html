@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sequencer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #080808;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px 16px 40px;
+  }
+  h1 { font-size: 1rem; letter-spacing: 0.25em; color: #666; text-transform: uppercase; margin-bottom: 4px; }
+  #subtitle { font-size: 0.68rem; color: #333; margin-bottom: 18px; letter-spacing: 0.1em; }
+
+  #top-controls {
+    display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;
+    margin-bottom: 18px; align-items: center;
+  }
+  button {
+    background: #141414; color: #aaa; border: 1px solid #2a2a2a;
+    padding: 5px 14px; cursor: pointer; font-family: inherit;
+    font-size: 0.75rem; border-radius: 3px; transition: all 0.15s;
+  }
+  button:hover { background: #1e1e1e; color: #fff; }
+  button.active { background: #1a3a1a; color: #7fff7f; border-color: #3a6a3a; }
+  label { font-size: 0.72rem; color: #666; display: flex; align-items: center; gap: 6px; }
+  input[type=range] { width: 70px; accent-color: #3a6a6a; }
+  select {
+    background: #141414; color: #aaa; border: 1px solid #2a2a2a;
+    padding: 4px 8px; font-family: inherit; font-size: 0.72rem; border-radius: 3px;
+  }
+
+  #grid-wrap { width: 100%; max-width: 900px; }
+
+  .track-row {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 5px;
+  }
+  .track-label {
+    width: 68px; font-size: 0.68rem; color: #555; text-align: right;
+    flex-shrink: 0; padding-right: 4px;
+  }
+  .track-label span { color: #888; }
+  .cells { display: flex; gap: 3px; flex: 1; }
+  .cell {
+    flex: 1; height: 28px; border-radius: 2px; cursor: pointer;
+    border: 1px solid #1a1a1a; background: #111;
+    transition: background 0.08s;
+    position: relative;
+  }
+  .cell.on { background: var(--track-color, #3a7a3a); border-color: transparent; }
+  .cell.playing { outline: 2px solid #fff8; outline-offset: -2px; }
+  .cell.beat4 { border-left: 1px solid #2a2a2a; }
+
+  .track-vol {
+    width: 55px; flex-shrink: 0;
+  }
+  .track-vol input { width: 100%; accent-color: #3a5a5a; }
+
+  #visualizer {
+    width: 100%; max-width: 900px; height: 60px;
+    background: #0d0d0d; border: 1px solid #1a1a1a;
+    border-radius: 3px; margin: 14px 0;
+    display: block;
+  }
+
+  #status { font-size: 0.68rem; color: #444; margin-top: 6px; letter-spacing: 0.08em; }
+
+  .section-sep {
+    width: 100%; max-width: 900px;
+    border: none; border-top: 1px solid #181818;
+    margin: 14px 0;
+  }
+</style>
+</head>
+<body>
+<h1>Step Sequencer</h1>
+<div id="subtitle">16-step &mdash; 6 tracks &mdash; Web Audio API</div>
+
+<div id="top-controls">
+  <button id="btnPlay">Play</button>
+  <button id="btnGen">Randomize</button>
+  <button id="btnClear">Clear</button>
+  <label>BPM <input type="range" id="bpm" min="60" max="200" value="120"><span id="bpmVal">120</span></label>
+  <label>Scale
+    <select id="scale">
+      <option value="minor">Minor</option>
+      <option value="major">Major</option>
+      <option value="penta">Pentatonic</option>
+      <option value="blues">Blues</option>
+      <option value="dorian">Dorian</option>
+    </select>
+  </label>
+  <label>Root
+    <select id="root">
+      <option value="0">C</option><option value="2">D</option><option value="4">E</option>
+      <option value="5">F</option><option value="7">G</option><option value="9">A</option>
+      <option value="11">B</option>
+    </select>
+  </label>
+</div>
+
+<canvas id="visualizer"></canvas>
+
+<div id="grid-wrap" id="grid-wrap"></div>
+
+<hr class="section-sep">
+<div id="status">click Play to start &mdash; click cells to toggle &mdash; Randomize for new patterns</div>
+
+<script>
+// ── Scales ───────────────────────────────────────────────────────
+const SCALES = {
+  minor:  [0,2,3,5,7,8,10],
+  major:  [0,2,4,5,7,9,11],
+  penta:  [0,3,5,7,10],
+  blues:  [0,3,5,6,7,10],
+  dorian: [0,2,3,5,7,9,10],
+};
+
+// ── Track config ─────────────────────────────────────────────────
+const TRACKS = [
+  { label:'Kick',    color:'#8a3a3a', type:'drum',  drum:'kick'   },
+  { label:'Snare',   color:'#8a6a3a', type:'drum',  drum:'snare'  },
+  { label:'Hi-hat',  color:'#6a7a3a', type:'drum',  drum:'hihat'  },
+  { label:'Bass',    color:'#3a5a8a', type:'synth', oct:2         },
+  { label:'Melody',  color:'#5a3a8a', type:'synth', oct:4         },
+  { label:'Pad',     color:'#3a7a7a', type:'pad',   oct:3         },
+];
+const STEPS = 16;
+
+// State
+let playing = false;
+let step = 0;
+let stepInterval = null;
+let grid = TRACKS.map(() => new Uint8Array(STEPS));
+let notes = TRACKS.map(() => new Uint8Array(STEPS)); // scale degree per step
+let vols = TRACKS.map(() => 0.7);
+let audioCtx = null;
+let analyser = null;
+let masterGain = null;
+
+// ── Build UI ─────────────────────────────────────────────────────
+const gridWrap = document.getElementById('grid-wrap');
+
+TRACKS.forEach((track, ti) => {
+  const row = document.createElement('div');
+  row.className = 'track-row';
+
+  const lbl = document.createElement('div');
+  lbl.className = 'track-label';
+  lbl.innerHTML = `<span>${track.label}</span>`;
+  row.appendChild(lbl);
+
+  const cells = document.createElement('div');
+  cells.className = 'cells';
+
+  for (let s = 0; s < STEPS; s++) {
+    const cell = document.createElement('div');
+    cell.className = 'cell' + (s % 4 === 0 && s > 0 ? ' beat4' : '');
+    cell.dataset.track = ti;
+    cell.dataset.step = s;
+    cell.style.setProperty('--track-color', track.color);
+    cell.addEventListener('click', () => {
+      grid[ti][s] ^= 1;
+      cell.classList.toggle('on', !!grid[ti][s]);
+    });
+    cells.appendChild(cell);
+  }
+  row.appendChild(cells);
+
+  const volWrap = document.createElement('div');
+  volWrap.className = 'track-vol';
+  const volInput = document.createElement('input');
+  volInput.type = 'range'; volInput.min = 0; volInput.max = 1; volInput.step = 0.05;
+  volInput.value = vols[ti];
+  volInput.addEventListener('input', () => { vols[ti] = parseFloat(volInput.value); });
+  volWrap.appendChild(volInput);
+  row.appendChild(volWrap);
+
+  gridWrap.appendChild(row);
+});
+
+function getCells(ti, si) {
+  return gridWrap.querySelectorAll(`.cell[data-track="${ti}"][data-step="${si}"]`)[0];
+}
+
+// ── Audio ─────────────────────────────────────────────────────────
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new AudioContext();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.7;
+  masterGain.connect(analyser);
+  analyser.connect(audioCtx.destination);
+}
+
+function getScale() {
+  const root = parseInt(document.getElementById('root').value);
+  const scale = SCALES[document.getElementById('scale').value];
+  return scale.map(s => s + root);
+}
+
+function midiToFreq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
+
+function playDrum(type, time, vol) {
+  const g = audioCtx.createGain();
+  g.connect(masterGain);
+  g.gain.setValueAtTime(vol, time);
+
+  if (type === 'kick') {
+    const osc = audioCtx.createOscillator();
+    osc.connect(g);
+    osc.frequency.setValueAtTime(150, time);
+    osc.frequency.exponentialRampToValueAtTime(40, time + 0.15);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+    osc.start(time); osc.stop(time + 0.3);
+
+  } else if (type === 'snare') {
+    const noise = audioCtx.createBufferSource();
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.15, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    noise.buffer = buf;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass'; filter.frequency.value = 1800;
+    noise.connect(filter); filter.connect(g);
+    g.gain.setValueAtTime(vol * 0.8, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.15);
+    noise.start(time); noise.stop(time + 0.15);
+
+    const osc = audioCtx.createOscillator();
+    const g2 = audioCtx.createGain();
+    g2.connect(masterGain);
+    osc.connect(g2);
+    osc.frequency.value = 180;
+    g2.gain.setValueAtTime(vol * 0.4, time);
+    g2.gain.exponentialRampToValueAtTime(0.001, time + 0.08);
+    osc.start(time); osc.stop(time + 0.08);
+
+  } else if (type === 'hihat') {
+    const noise = audioCtx.createBufferSource();
+    const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.08, audioCtx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    noise.buffer = buf;
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'highpass'; filter.frequency.value = 7000;
+    noise.connect(filter); filter.connect(g);
+    g.gain.setValueAtTime(vol * 0.5, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.06);
+    noise.start(time); noise.stop(time + 0.08);
+  }
+}
+
+function playSynth(freq, time, dur, vol, type='square') {
+  const osc = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  const filter = audioCtx.createBiquadFilter();
+  filter.type = 'lowpass';
+  filter.frequency.value = type === 'pad' ? 800 : 2500;
+  osc.type = type === 'pad' ? 'sawtooth' : (type === 'bass' ? 'sawtooth' : 'square');
+  osc.frequency.value = freq;
+  osc.connect(filter); filter.connect(g); g.connect(masterGain);
+  g.gain.setValueAtTime(0, time);
+  g.gain.linearRampToValueAtTime(vol, time + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.001, time + dur * 0.85);
+  osc.start(time); osc.stop(time + dur);
+}
+
+// ── Sequencer ─────────────────────────────────────────────────────
+function fireStep(s) {
+  const bpm = parseInt(document.getElementById('bpm').value);
+  const stepDur = 60 / bpm / 4;
+  const now = audioCtx.currentTime;
+  const scale = getScale();
+
+  // Clear previous playing highlight
+  document.querySelectorAll('.cell.playing').forEach(c => c.classList.remove('playing'));
+
+  TRACKS.forEach((track, ti) => {
+    const cell = getCells(ti, s);
+    if (cell) cell.classList.add('playing');
+    if (!grid[ti][s]) return;
+    const vol = vols[ti];
+    if (track.type === 'drum') {
+      playDrum(track.drum, now, vol);
+    } else {
+      const degree = notes[ti][s] % scale.length;
+      const midi = (track.oct + 1) * 12 + scale[degree];
+      const freq = midiToFreq(midi);
+      const dur = track.type === 'pad' ? stepDur * 3 : stepDur * 0.9;
+      playSynth(freq, now, dur, vol * (track.type === 'pad' ? 0.3 : 0.5), track.type);
+    }
+  });
+}
+
+function tick() {
+  fireStep(step);
+  step = (step + 1) % STEPS;
+}
+
+function getBpmInterval() {
+  return 60000 / parseInt(document.getElementById('bpm').value) / 4;
+}
+
+function startStop() {
+  initAudio();
+  playing = !playing;
+  document.getElementById('btnPlay').classList.toggle('active', playing);
+  document.getElementById('btnPlay').textContent = playing ? 'Stop' : 'Play';
+  if (playing) {
+    step = 0;
+    tick();
+    stepInterval = setInterval(tick, getBpmInterval());
+  } else {
+    clearInterval(stepInterval);
+    document.querySelectorAll('.cell.playing').forEach(c => c.classList.remove('playing'));
+  }
+}
+
+document.getElementById('bpm').addEventListener('input', () => {
+  document.getElementById('bpmVal').textContent = document.getElementById('bpm').value;
+  if (playing) { clearInterval(stepInterval); stepInterval = setInterval(tick, getBpmInterval()); }
+});
+
+// ── Randomize ─────────────────────────────────────────────────────
+function randomize() {
+  const scale = getScale();
+  TRACKS.forEach((track, ti) => {
+    grid[ti].fill(0);
+    notes[ti].fill(0);
+    if (track.drum === 'kick') {
+      // 4-on-the-floor with variations
+      [0,4,8,12].forEach(s => { if (Math.random() < 0.85) grid[ti][s] = 1; });
+      [2,6,10,14].forEach(s => { if (Math.random() < 0.2) grid[ti][s] = 1; });
+    } else if (track.drum === 'snare') {
+      [4,12].forEach(s => { if (Math.random() < 0.9) grid[ti][s] = 1; });
+      for (let s = 0; s < STEPS; s++) if (Math.random() < 0.1) grid[ti][s] = 1;
+    } else if (track.drum === 'hihat') {
+      for (let s = 0; s < STEPS; s++) if (Math.random() < 0.55) grid[ti][s] = 1;
+    } else {
+      // Melodic: sparse, musical
+      const density = track.type === 'pad' ? 0.25 : 0.35;
+      for (let s = 0; s < STEPS; s++) {
+        if (Math.random() < density) {
+          grid[ti][s] = 1;
+          notes[ti][s] = Math.random() * scale.length | 0;
+        }
+      }
+    }
+    // Update visual
+    for (let s = 0; s < STEPS; s++) {
+      const cell = getCells(ti, s);
+      if (cell) cell.classList.toggle('on', !!grid[ti][s]);
+    }
+  });
+}
+
+function clearAll() {
+  TRACKS.forEach((_, ti) => {
+    grid[ti].fill(0);
+    for (let s = 0; s < STEPS; s++) {
+      const cell = getCells(ti, s);
+      if (cell) cell.classList.remove('on');
+    }
+  });
+}
+
+document.getElementById('btnPlay').addEventListener('click', startStop);
+document.getElementById('btnGen').addEventListener('click', randomize);
+document.getElementById('btnClear').addEventListener('click', clearAll);
+document.getElementById('scale').addEventListener('change', () => {});
+document.getElementById('root').addEventListener('change', () => {});
+
+// ── Visualizer ───────────────────────────────────────────────────
+const vis = document.getElementById('visualizer');
+const vCtx = vis.getContext('2d');
+vis.width = vis.offsetWidth; vis.height = vis.offsetHeight;
+
+function drawVis() {
+  requestAnimationFrame(drawVis);
+  vCtx.fillStyle = '#0d0d0d';
+  vCtx.fillRect(0, 0, vis.width, vis.height);
+  if (!analyser) return;
+  const buf = new Uint8Array(analyser.frequencyBinCount);
+  analyser.getByteFrequencyData(buf);
+  const barW = vis.width / buf.length * 2.5;
+  for (let i = 0; i < buf.length; i++) {
+    const h = (buf[i] / 255) * vis.height;
+    const hue = 120 + i * 1.5;
+    vCtx.fillStyle = `hsl(${hue},60%,45%)`;
+    vCtx.fillRect(i * barW, vis.height - h, barW - 1, h);
+  }
+}
+drawVis();
+
+// Init with a random pattern
+randomize();
+document.getElementById('status').textContent = 'click Play to start — click cells to toggle — drag sliders for per-track volume';
+</script>
+</body>
+</html>

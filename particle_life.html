@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Particle Life</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #040406; color: #a0a0b0; font: 12px/1.4 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { display: flex; align-items: center; gap: 12px; padding: 8px 14px; background: #06060a; border-bottom: 1px solid #10101c; flex-wrap: wrap; }
+  #top h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; margin-right: 4px; white-space: nowrap; }
+  canvas { display: block; flex: 1; cursor: crosshair; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; letter-spacing: 0.08em; transition: background 0.1s; }
+  button:hover { background: #12122a; color: #a0a0c8; border-color: #3a3a60; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  input[type=range] { width: 72px; accent-color: #4060c0; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  #matrix-panel {
+    position: absolute; top: 44px; right: 12px;
+    background: rgba(6,6,14,0.95); border: 1px solid #1a1a30;
+    padding: 10px; z-index: 10;
+    backdrop-filter: blur(4px);
+  }
+  #matrix-panel h3 { font-size: 10px; color: #404070; letter-spacing: 0.12em; margin-bottom: 8px; text-transform: uppercase; }
+  .mat-row { display: flex; gap: 3px; margin-bottom: 3px; }
+  .mat-cell {
+    width: 24px; height: 24px; border: 1px solid #111122; cursor: pointer;
+    border-radius: 3px; display: flex; align-items: center; justify-content: center;
+    transition: transform 0.1s; font-size: 0;
+  }
+  .mat-cell:hover { transform: scale(1.2); border-color: #4040a0; }
+  .mat-cell .dot { width: 7px; height: 7px; border-radius: 50%; pointer-events: none; }
+  .mat-hint { font-size: 9px; color: #282840; margin-top: 6px; }
+  #info { position: absolute; bottom: 8px; left: 12px; font-size: 10px; color: #282840; pointer-events: none; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 2px; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Particle Life</h1>
+  <div class="sep"></div>
+  <button id="btnRandom">Randomize</button>
+  <button id="btnPreset">Preset</button>
+  <button id="btnPause">Pause</button>
+  <div class="sep"></div>
+  <label>Species
+    <select id="selSpecies">
+      <option>3</option><option>4</option><option selected>5</option><option>6</option>
+    </select>
+  </label>
+  <label>Count <input type="range" id="rngCount" min="200" max="2000" value="800" step="100"></label>
+  <label>Friction <input type="range" id="rngFriction" min="0.80" max="0.99" step="0.01" value="0.92"></label>
+  <label>Force <input type="range" id="rngForce" min="0.2" max="3.0" step="0.1" value="1.0"></label>
+  <div class="sep"></div>
+  <button id="btnMatrix">Rules ▾</button>
+</div>
+<canvas id="c"></canvas>
+<div id="matrix-panel" style="display:none">
+  <h3>Attraction Matrix</h3>
+  <div id="matGrid"></div>
+  <div class="mat-hint">click cell: attract → repel → neutral</div>
+</div>
+<div id="info"></div>
+
+<script>
+'use strict';
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight - rect.top;
+}
+resize();
+window.addEventListener('resize', () => { resize(); buildHash(); });
+
+// Species color palettes
+const PALETTE = ['#e05050','#50c0e0','#70d060','#e0c040','#c060e0','#e08030'];
+
+let NUM_SPECIES = 5;
+let NUM_PARTICLES = 800;
+let friction = 0.92;
+let forceMul = 1.0;
+
+const R_MAX   = 80;   // outer interaction radius (px)
+const R_INNER = 14;   // hard repulsion zone (px)
+const DT      = 0.016;
+const F_SCALE = 10;
+
+// Attraction matrix: rules[i][j] = attraction of species-i toward species-j
+let rules = [];
+
+function randomRules() {
+  rules = [];
+  for (let i = 0; i < NUM_SPECIES; i++) {
+    rules[i] = Array.from({length: NUM_SPECIES}, () => (Math.random() * 2 - 1));
+  }
+}
+
+// --- Presets ---
+const PRESETS = [
+  // 0: Ring chase — each species chases the next, flees the previous
+  function ringChase() {
+    rules = [];
+    for (let i = 0; i < NUM_SPECIES; i++) {
+      rules[i] = [];
+      for (let j = 0; j < NUM_SPECIES; j++) {
+        const d = (j - i + NUM_SPECIES) % NUM_SPECIES;
+        rules[i][j] = d === 1 ? 0.9 : d === NUM_SPECIES - 1 ? -0.7 : d === 0 ? -0.15 : 0.05;
+      }
+    }
+  },
+  // 1: Clusters — self-attract, other-repel
+  function clusters() {
+    rules = [];
+    for (let i = 0; i < NUM_SPECIES; i++) {
+      rules[i] = Array.from({length: NUM_SPECIES}, (_, j) => i === j ? 0.8 : -0.4);
+    }
+  },
+  // 2: Symbiosis — species attract each other in pairs, ignore others
+  function symbiosis() {
+    rules = [];
+    for (let i = 0; i < NUM_SPECIES; i++) {
+      rules[i] = Array.from({length: NUM_SPECIES}, (_, j) => {
+        if (i === j) return -0.1;
+        if (Math.floor(j/2) === Math.floor(i/2)) return 0.7;
+        return -0.2;
+      });
+    }
+  },
+  // 3: Chaos — strong asymmetric random forces
+  function chaos() {
+    rules = [];
+    for (let i = 0; i < NUM_SPECIES; i++) {
+      rules[i] = Array.from({length: NUM_SPECIES}, () => {
+        const v = Math.random();
+        return v < 0.4 ? -0.9 + Math.random()*0.4 : 0.5 + Math.random()*0.5;
+      });
+    }
+  },
+];
+let presetIdx = 0;
+function applyPreset() {
+  PRESETS[presetIdx % PRESETS.length]();
+  presetIdx++;
+  updateMatrixUI();
+}
+
+// --- Particles ---
+let px, py, vx, vy, sp; // typed arrays
+
+function initParticles() {
+  const W = canvas.width, H = canvas.height;
+  px = new Float32Array(NUM_PARTICLES);
+  py = new Float32Array(NUM_PARTICLES);
+  vx = new Float32Array(NUM_PARTICLES);
+  vy = new Float32Array(NUM_PARTICLES);
+  sp = new Uint8Array(NUM_PARTICLES);
+  for (let i = 0; i < NUM_PARTICLES; i++) {
+    px[i] = Math.random() * W;
+    py[i] = Math.random() * H;
+    sp[i] = Math.random() * NUM_SPECIES | 0;
+  }
+}
+
+// --- Spatial hash ---
+let hashCells;
+let hW, hH;
+
+function buildHash() {
+  hW = Math.ceil(canvas.width / R_MAX) + 2;
+  hH = Math.ceil(canvas.height / R_MAX) + 2;
+  hashCells = Array.from({length: hW * hH}, () => []);
+}
+
+function insertHash() {
+  for (let k = 0; k < hashCells.length; k++) hashCells[k].length = 0;
+  for (let i = 0; i < NUM_PARTICLES; i++) {
+    const cx = px[i] / R_MAX | 0;
+    const cy = py[i] / R_MAX | 0;
+    if (cx >= 0 && cx < hW && cy >= 0 && cy < hH) {
+      hashCells[cy * hW + cx].push(i);
+    }
+  }
+}
+
+// Force: bell curve for attraction/repulsion
+// d in [0, R_INNER]: linear repulsion toward -1
+// d in [R_INNER, R_MAX]: bell scaled by rule coefficient
+function computeForce(d, rule) {
+  if (d < R_INNER) return -(1 - d / R_INNER);
+  if (d < R_MAX) {
+    const peak = (R_INNER + R_MAX) * 0.5;
+    const half = (R_MAX - R_INNER) * 0.5;
+    return rule * (1 - Math.abs(d - peak) / half);
+  }
+  return 0;
+}
+
+// --- Simulation step ---
+function step() {
+  const W = canvas.width, H = canvas.height;
+  insertHash();
+
+  for (let i = 0; i < NUM_PARTICLES; i++) {
+    const xi = px[i], yi = py[i];
+    const si = sp[i];
+    let ax = 0, ay = 0;
+
+    const cxMin = Math.max(0, (xi / R_MAX | 0) - 1);
+    const cxMax = Math.min(hW - 1, (xi / R_MAX | 0) + 1);
+    const cyMin = Math.max(0, (yi / R_MAX | 0) - 1);
+    const cyMax = Math.min(hH - 1, (yi / R_MAX | 0) + 1);
+
+    for (let cy = cyMin; cy <= cyMax; cy++) {
+      for (let cx = cxMin; cx <= cxMax; cx++) {
+        const cell = hashCells[cy * hW + cx];
+        for (let k = 0; k < cell.length; k++) {
+          const j = cell[k];
+          if (j === i) continue;
+          const dx = px[j] - xi, dy = py[j] - yi;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < 1 || d2 >= R_MAX * R_MAX) continue;
+          const d = Math.sqrt(d2);
+          const f = computeForce(d, rules[si][sp[j]]) * F_SCALE * forceMul / d;
+          ax += dx * f;
+          ay += dy * f;
+        }
+      }
+    }
+
+    vx[i] = (vx[i] + ax * DT) * friction;
+    vy[i] = (vy[i] + ay * DT) * friction;
+    px[i] += vx[i];
+    py[i] += vy[i];
+
+    // Toroidal wrap
+    if (px[i] < 0) px[i] += W; else if (px[i] >= W) px[i] -= W;
+    if (py[i] < 0) py[i] += H; else if (py[i] >= H) py[i] -= H;
+  }
+}
+
+// --- Render ---
+function render() {
+  // Fade trail
+  ctx.fillStyle = 'rgba(4,4,6,0.30)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  for (let s = 0; s < NUM_SPECIES; s++) {
+    ctx.fillStyle = PALETTE[s];
+    for (let i = 0; i < NUM_PARTICLES; i++) {
+      if (sp[i] !== s) continue;
+      const speed = Math.sqrt(vx[i]*vx[i] + vy[i]*vy[i]);
+      const r = Math.min(2.5 + speed * 0.25, 5.5);
+      ctx.beginPath();
+      ctx.arc(px[i], py[i], r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+// --- Matrix UI ---
+function ruleColor(v) {
+  // green for attract, blue for repel, dark for neutral
+  if (v > 0.1)  return `rgb(${10+v*20|0},${20+v*120|0},${10+v*30|0})`;
+  if (v < -0.1) return `rgb(${10-v*30|0},${10},${20-v*120|0})`;
+  return '#111118';
+}
+
+function updateMatrixUI() {
+  const grid = document.getElementById('matGrid');
+  grid.innerHTML = '';
+  for (let i = 0; i < NUM_SPECIES; i++) {
+    const row = document.createElement('div');
+    row.className = 'mat-row';
+    for (let j = 0; j < NUM_SPECIES; j++) {
+      const cell = document.createElement('div');
+      cell.className = 'mat-cell';
+      cell.style.background = ruleColor(rules[i][j]);
+      cell.title = `${PALETTE[i]} on ${PALETTE[j]}: ${rules[i][j].toFixed(2)}`;
+      const dot = document.createElement('div');
+      dot.className = 'dot';
+      dot.style.background = PALETTE[j];
+      dot.style.border = `2px solid ${PALETTE[i]}`;
+      cell.appendChild(dot);
+      cell.addEventListener('click', () => {
+        const v = rules[i][j];
+        rules[i][j] = v > 0.3 ? -0.7 : v < -0.3 ? 0 : 0.7;
+        cell.style.background = ruleColor(rules[i][j]);
+      });
+      row.appendChild(cell);
+    }
+    grid.appendChild(row);
+  }
+}
+
+// --- Controls ---
+document.getElementById('btnRandom').addEventListener('click', () => { randomRules(); updateMatrixUI(); });
+document.getElementById('btnPreset').addEventListener('click', () => { applyPreset(); });
+
+let paused = false;
+document.getElementById('btnPause').addEventListener('click', function() {
+  paused = !paused;
+  this.textContent = paused ? 'Resume' : 'Pause';
+});
+
+document.getElementById('rngFriction').addEventListener('input', e => { friction = parseFloat(e.target.value); });
+document.getElementById('rngForce').addEventListener('input', e => { forceMul = parseFloat(e.target.value); });
+
+document.getElementById('rngCount').addEventListener('change', e => {
+  NUM_PARTICLES = parseInt(e.target.value);
+  initParticles(); buildHash();
+});
+
+document.getElementById('selSpecies').addEventListener('change', e => {
+  NUM_SPECIES = parseInt(e.target.value);
+  randomRules(); initParticles(); buildHash(); updateMatrixUI();
+});
+
+document.getElementById('btnMatrix').addEventListener('click', () => {
+  const p = document.getElementById('matrix-panel');
+  p.style.display = p.style.display === 'none' ? 'block' : 'none';
+});
+
+// Mouse: repulse particles near cursor
+let mouseActive = false, mx = 0, my = 0;
+canvas.addEventListener('mousedown', e => { mouseActive = true; });
+canvas.addEventListener('mouseup', () => mouseActive = false);
+canvas.addEventListener('mouseleave', () => mouseActive = false);
+canvas.addEventListener('mousemove', e => {
+  mx = e.clientX;
+  my = e.clientY - canvas.getBoundingClientRect().top;
+  if (!mouseActive) return;
+  const R = 70, R2 = R * R;
+  for (let i = 0; i < NUM_PARTICLES; i++) {
+    const dx = px[i] - mx, dy = py[i] - my;
+    const d2 = dx*dx + dy*dy;
+    if (d2 < R2 && d2 > 1) {
+      const d = Math.sqrt(d2);
+      const f = (R - d) / R * 9;
+      vx[i] += dx / d * f;
+      vy[i] += dy / d * f;
+    }
+  }
+});
+
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  const tx = t.clientX, ty = t.clientY - canvas.getBoundingClientRect().top;
+  const R = 80, R2 = R * R;
+  for (let i = 0; i < NUM_PARTICLES; i++) {
+    const dx = px[i] - tx, dy = py[i] - ty;
+    const d2 = dx*dx + dy*dy;
+    if (d2 < R2 && d2 > 1) {
+      const d = Math.sqrt(d2);
+      vx[i] += dx / d * (R - d) / R * 7;
+      vy[i] += dy / d * (R - d) / R * 7;
+    }
+  }
+}, {passive: false});
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === ' ') {
+    paused = !paused;
+    document.getElementById('btnPause').textContent = paused ? 'Resume' : 'Pause';
+    e.preventDefault();
+  }
+  if (e.key === 'r') { randomRules(); updateMatrixUI(); }
+  if (e.key === 'p') { applyPreset(); }
+});
+
+// FPS
+let frameCount = 0, fps = 60, fpsTime = performance.now();
+function updateInfo() {
+  frameCount++;
+  const now = performance.now();
+  if (now - fpsTime > 600) {
+    fps = frameCount / (now - fpsTime) * 1000;
+    frameCount = 0; fpsTime = now;
+  }
+  document.getElementById('info').textContent =
+    `${NUM_PARTICLES} particles · ${NUM_SPECIES} species · ${fps.toFixed(0)} fps  ·  drag=repulse  space=pause  r=random  p=preset`;
+}
+
+// Init
+randomRules();
+initParticles();
+buildHash();
+updateMatrixUI();
+
+function loop() {
+  if (!paused) step();
+  render();
+  updateInfo();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+</html>

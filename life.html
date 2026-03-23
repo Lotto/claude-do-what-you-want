@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cellular Automata</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #0d0d0d;
+    color: #e0e0e0;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+  }
+  h1 {
+    font-size: 1rem;
+    letter-spacing: 0.2em;
+    padding: 10px 0 6px;
+    color: #888;
+    text-transform: uppercase;
+  }
+  #controls {
+    display: flex;
+    gap: 8px;
+    padding: 6px 0 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  button {
+    background: #1e1e1e;
+    color: #ccc;
+    border: 1px solid #333;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.75rem;
+    border-radius: 3px;
+    transition: background 0.15s, color 0.15s;
+  }
+  button:hover { background: #2a2a2a; color: #fff; }
+  button.active { background: #2d4a2d; color: #7fff7f; border-color: #4a7a4a; }
+  label { font-size: 0.75rem; color: #888; display: flex; align-items: center; gap: 6px; }
+  input[type=range] { width: 80px; accent-color: #4a7a4a; }
+  #info {
+    font-size: 0.7rem;
+    color: #555;
+    padding-bottom: 4px;
+  }
+  canvas {
+    border: 1px solid #222;
+    cursor: crosshair;
+    display: block;
+  }
+</style>
+</head>
+<body>
+<h1>Cellular Automata</h1>
+<div id="controls">
+  <button id="btnPlay">Pause</button>
+  <button id="btnStep">Step</button>
+  <button id="btnReset">Reset</button>
+  <button id="btnClear">Clear</button>
+  <button id="btnMode">Mode: Life</button>
+  <label>Speed <input type="range" id="speed" min="1" max="30" value="10"></label>
+</div>
+<div id="info">Generation: <span id="gen">0</span> &nbsp;|&nbsp; Live cells: <span id="pop">0</span> &nbsp;|&nbsp; Click to draw &nbsp;|&nbsp; Right-click to erase</div>
+<canvas id="c"></canvas>
+
+<script>
+const CELL = 8;
+let cols, rows, grid, next;
+let running = true;
+let generation = 0;
+let mode = 'life'; // 'life' | 'ant'
+let antX, antY, antDir = 0; // Langton's Ant
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  const maxW = Math.min(window.innerWidth - 20, 1200);
+  const maxH = window.innerHeight - 130;
+  cols = Math.floor(maxW / CELL);
+  rows = Math.floor(maxH / CELL);
+  canvas.width = cols * CELL;
+  canvas.height = rows * CELL;
+}
+
+function makeGrid() {
+  return new Uint8Array(cols * rows);
+}
+
+function idx(x, y) {
+  return ((y + rows) % rows) * cols + ((x + cols) % cols);
+}
+
+function randomize() {
+  grid = makeGrid();
+  next = makeGrid();
+  for (let i = 0; i < grid.length; i++) {
+    grid[i] = Math.random() < 0.3 ? 1 : 0;
+  }
+  generation = 0;
+  antX = Math.floor(cols / 2);
+  antY = Math.floor(rows / 2);
+  antDir = 0;
+}
+
+function clear() {
+  grid = makeGrid();
+  next = makeGrid();
+  generation = 0;
+  antX = Math.floor(cols / 2);
+  antY = Math.floor(rows / 2);
+  antDir = 0;
+}
+
+function stepLife() {
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let n = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          n += grid[idx(x + dx, y + dy)];
+        }
+      }
+      const alive = grid[idx(x, y)];
+      next[idx(x, y)] = alive ? (n === 2 || n === 3 ? 1 : 0) : (n === 3 ? 1 : 0);
+    }
+  }
+  [grid, next] = [next, grid];
+}
+
+const DIRS = [[1,0],[0,1],[-1,0],[0,-1]]; // R, D, L, U
+function stepAnt() {
+  const i = idx(antX, antY);
+  if (grid[i] === 0) {
+    antDir = (antDir + 1) % 4; // turn right on white
+    grid[i] = 1;
+  } else {
+    antDir = (antDir + 3) % 4; // turn left on black
+    grid[i] = 0;
+  }
+  antX = ((antX + DIRS[antDir][0]) + cols) % cols;
+  antY = ((antY + DIRS[antDir][1]) + rows) % rows;
+}
+
+function draw() {
+  ctx.fillStyle = '#0d0d0d';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  if (mode === 'life') {
+    ctx.fillStyle = '#3a7a3a';
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        if (grid[idx(x, y)]) {
+          ctx.fillRect(x * CELL + 1, y * CELL + 1, CELL - 1, CELL - 1);
+        }
+      }
+    }
+  } else {
+    // Ant mode: white = on, trail color
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        if (grid[idx(x, y)]) {
+          ctx.fillStyle = '#5a9a5a';
+          ctx.fillRect(x * CELL + 1, y * CELL + 1, CELL - 1, CELL - 1);
+        }
+      }
+    }
+    // Draw ant
+    ctx.fillStyle = '#ff6060';
+    ctx.fillRect(antX * CELL + 1, antY * CELL + 1, CELL - 1, CELL - 1);
+  }
+
+  document.getElementById('gen').textContent = generation;
+  let pop = 0;
+  for (let i = 0; i < grid.length; i++) pop += grid[i];
+  document.getElementById('pop').textContent = pop;
+}
+
+let last = 0;
+function loop(ts) {
+  const fps = parseInt(document.getElementById('speed').value);
+  const interval = 1000 / fps;
+  if (running && ts - last > interval) {
+    if (mode === 'life') stepLife();
+    else for (let i = 0; i < 5; i++) stepAnt(); // ant needs more steps per frame
+    generation++;
+    last = ts;
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// Controls
+document.getElementById('btnPlay').addEventListener('click', () => {
+  running = !running;
+  document.getElementById('btnPlay').textContent = running ? 'Pause' : 'Play';
+});
+document.getElementById('btnStep').addEventListener('click', () => {
+  if (mode === 'life') stepLife(); else stepAnt();
+  generation++;
+  draw();
+});
+document.getElementById('btnReset').addEventListener('click', () => {
+  randomize(); draw();
+});
+document.getElementById('btnClear').addEventListener('click', () => {
+  clear(); draw();
+});
+document.getElementById('btnMode').addEventListener('click', () => {
+  mode = mode === 'life' ? 'ant' : 'life';
+  document.getElementById('btnMode').textContent = 'Mode: ' + (mode === 'life' ? 'Life' : 'Ant');
+  clear();
+  if (mode === 'life') randomize();
+});
+
+// Drawing
+let drawing = false, erasing = false;
+function cellAt(e) {
+  const r = canvas.getBoundingClientRect();
+  return [Math.floor((e.clientX - r.left) / CELL), Math.floor((e.clientY - r.top) / CELL)];
+}
+canvas.addEventListener('mousedown', e => {
+  e.preventDefault();
+  drawing = e.button === 0;
+  erasing = e.button === 2;
+  const [x, y] = cellAt(e);
+  if (x >= 0 && x < cols && y >= 0 && y < rows) {
+    grid[idx(x, y)] = erasing ? 0 : 1;
+    draw();
+  }
+});
+canvas.addEventListener('mousemove', e => {
+  if (!drawing && !erasing) return;
+  const [x, y] = cellAt(e);
+  if (x >= 0 && x < cols && y >= 0 && y < rows) {
+    grid[idx(x, y)] = erasing ? 0 : 1;
+    draw();
+  }
+});
+canvas.addEventListener('mouseup', () => { drawing = false; erasing = false; });
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+window.addEventListener('resize', () => { resize(); randomize(); });
+
+resize();
+randomize();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

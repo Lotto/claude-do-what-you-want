@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Double Pendulum</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #040406;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    height: 100vh; overflow: hidden;
+  }
+  h1 { font-size: 0.85rem; letter-spacing: 0.3em; color: #333; text-transform: uppercase; padding: 6px 0 3px; }
+  #controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; padding: 2px 0 4px; align-items: center; }
+  button { background: #0a0a0e; color: #777; border: 1px solid #181820; padding: 3px 9px; cursor: pointer; font-family: inherit; font-size: 0.68rem; border-radius: 3px; transition: all 0.12s; }
+  button:hover { background: #121218; color: #bbb; }
+  button.active { background: #0e1220; color: #6090e0; border-color: #20406a; }
+  label { font-size: 0.68rem; color: #3a3a3a; display: flex; align-items: center; gap: 4px; }
+  input[type=range] { width: 52px; accent-color: #305070; }
+  select { background: #0a0a0e; color: #777; border: 1px solid #181820; padding: 2px 6px; font-family: inherit; font-size: 0.68rem; border-radius: 3px; }
+  #info { font-size: 0.62rem; color: #222; padding-bottom: 3px; }
+  canvas { display: block; cursor: crosshair; }
+</style>
+</head>
+<body>
+<h1>Double Pendulum</h1>
+<div id="controls">
+  <button id="btnChaos" class="active">Chaos Mode</button>
+  <button id="btnPause">Pause</button>
+  <button id="btnReset">Reset</button>
+  <label>Gravity <input type="range" id="gravity" min="1" max="30" value="9.8" step="0.5"></label>
+  <label>Speed   <input type="range" id="simSpeed" min="0.1" max="4" value="1" step="0.1"></label>
+  <label>Trail   <input type="range" id="trailLen" min="100" max="3000" value="800" step="100"></label>
+  <label>Count   <input type="range" id="count" min="1" max="20" value="8" step="1"><span id="countVal">8</span></label>
+  <select id="palette">
+    <option value="rainbow">Rainbow</option>
+    <option value="fire">Fire</option>
+    <option value="ice">Ice</option>
+    <option value="mono">Mono</option>
+  </select>
+</div>
+<div id="info"><span id="energyEl">&nbsp;</span> &nbsp;·&nbsp; drag bob to set initial angle &nbsp;·&nbsp; click reset to restart</div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W, H, OX, OY;  // origin of pivot
+
+function resize() {
+  W = Math.min(window.innerWidth - 4, 1400);
+  H = window.innerHeight - 84;
+  canvas.width = W; canvas.height = H;
+  OX = W / 2; OY = H * 0.28;
+}
+resize();
+window.addEventListener('resize', () => { resize(); init(); });
+
+// ── Physics ────────────────────────────────────────────────────────
+// State: [θ1, θ2, ω1, ω2]  (angles from downward vertical)
+const L1 = 1.0, L2 = 1.0;   // rod lengths (normalized)
+const M1 = 1.0, M2 = 1.0;   // masses
+
+function deriv([θ1, θ2, ω1, ω2], g) {
+  const Δ = θ1 - θ2;
+  const sinΔ = Math.sin(Δ), cosΔ = Math.cos(Δ);
+  const sin1 = Math.sin(θ1), sin2 = Math.sin(θ2);
+  const denom = 2*M1 + M2 - M2*Math.cos(2*Δ);
+  const α1 = (-g*(2*M1+M2)*sin1 - M2*g*Math.sin(θ1-2*θ2) - 2*sinΔ*M2*(ω2*ω2*L2+ω1*ω1*L1*cosΔ)) / (L1*denom);
+  const α2 = (2*sinΔ*(ω1*ω1*L1*(M1+M2)+g*(M1+M2)*Math.cos(θ1)+ω2*ω2*L2*M2*cosΔ)) / (L2*denom);
+  return [ω1, ω2, α1, α2];
+}
+
+function rk4(state, dt, g) {
+  const k1 = deriv(state, g);
+  const k2 = deriv(state.map((x,i)=>x+k1[i]*dt/2), g);
+  const k3 = deriv(state.map((x,i)=>x+k2[i]*dt/2), g);
+  const k4 = deriv(state.map((x,i)=>x+k3[i]*dt), g);
+  return state.map((x,i)=>x+(k1[i]+2*k2[i]+2*k3[i]+k4[i])*dt/6);
+}
+
+function energy(state, g) {
+  const [θ1,θ2,ω1,ω2]=state;
+  const x1=L1*Math.sin(θ1), y1=-L1*Math.cos(θ1);
+  const x2=x1+L2*Math.sin(θ2), y2=y1-L2*Math.cos(θ2);
+  const ke = 0.5*M1*(ω1*L1)**2 + 0.5*M2*((ω1*L1)**2 + (ω2*L2)**2 + 2*ω1*L1*ω2*L2*Math.cos(θ1-θ2));
+  const pe = -g*(M1*(y1+0)+M2*(y2+0))+g*(M1+M2)*2; // shift for display
+  return { ke, pe, total: ke+pe };
+}
+
+// ── Pendulums ──────────────────────────────────────────────────────
+let pendulums = [];
+
+function makePendulum(θ1, θ2, hue) {
+  return { state:[θ1,θ2,0,0], trail:[], hue };
+}
+
+function hueForPalette(i, n) {
+  const pal = document.getElementById('palette').value;
+  if (pal==='rainbow') return (i/n)*360;
+  if (pal==='fire')    return 10+((i/n)*60);
+  if (pal==='ice')     return 190+((i/n)*60);
+  if (pal==='mono')    return 220;
+  return (i/n)*360;
+}
+
+function satForPalette() {
+  const pal = document.getElementById('palette').value;
+  return pal==='mono'?20:80;
+}
+
+function init() {
+  const n   = parseInt(document.getElementById('count').value);
+  const chaos = document.getElementById('btnChaos').classList.contains('active');
+  pendulums = [];
+  const base1 = Math.PI * 0.9, base2 = Math.PI * 0.5;
+  for (let i=0;i<n;i++) {
+    const offset = chaos ? (i/(n||1)-0.5)*0.015 : 0;
+    pendulums.push(makePendulum(base1+offset, base2+offset*0.7, hueForPalette(i,n)));
+  }
+}
+
+// ── Rod scale: map unit length to pixels ──────────────────────────
+function rodPx() { return Math.min(W, H) * 0.28; }
+
+function bob1pos(state) {
+  const sc = rodPx();
+  return [OX + L1*Math.sin(state[0])*sc, OY + L1*Math.cos(state[0])*sc]; // note: +cos because θ from down
+}
+function bob2pos(state) {
+  const [b1x,b1y] = bob1pos(state);
+  const sc = rodPx();
+  return [b1x + L2*Math.sin(state[1])*sc, b1y + L2*Math.cos(state[1])*sc];
+}
+
+// ── Trail offscreen ────────────────────────────────────────────────
+let offscreen, offCtx;
+function initOff() {
+  offscreen = document.createElement('canvas');
+  offscreen.width = W; offscreen.height = H;
+  offCtx = offscreen.getContext('2d');
+  offCtx.fillStyle = '#040406';
+  offCtx.fillRect(0,0,W,H);
+}
+initOff();
+
+// ── Drag state ─────────────────────────────────────────────────────
+let dragging = null; // 'bob1' | 'bob2' | null
+let paused = false;
+
+canvas.addEventListener('mousedown', e => {
+  const r = canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  // Check proximity to each pendulum's bobs
+  const p = pendulums[0];
+  if (!p) return;
+  const [b1x,b1y]=bob1pos(p.state), [b2x,b2y]=bob2pos(p.state);
+  const sc=rodPx();
+  if (Math.hypot(mx-b2x,my-b2y)<20) { dragging='bob2'; paused=true; }
+  else if (Math.hypot(mx-b1x,my-b1y)<20) { dragging='bob1'; paused=true; }
+});
+
+canvas.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  const sc=rodPx();
+  const p=pendulums[0];
+  if (dragging==='bob1') {
+    const θ1=Math.atan2(mx-OX, my-OY);
+    pendulums.forEach((p2,i)=>{
+      const offset=(i/(pendulums.length||1)-0.5)*0.015*(document.getElementById('btnChaos').classList.contains('active')?1:0);
+      p2.state=[θ1+offset,p2.state[1],0,0];
+      p2.trail=[];
+    });
+  } else {
+    const [b1x,b1y]=bob1pos(p.state);
+    const θ2=Math.atan2(mx-b1x, my-b1y);
+    pendulums.forEach((p2,i)=>{
+      const offset=(i/(pendulums.length||1)-0.5)*0.015*(document.getElementById('btnChaos').classList.contains('active')?1:0);
+      p2.state=[p2.state[0],θ2+offset,0,0];
+      p2.trail=[];
+    });
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  if (dragging) { dragging=null; paused=false; }
+});
+
+// ── Controls ───────────────────────────────────────────────────────
+document.getElementById('btnChaos').addEventListener('click', ()=>{
+  document.getElementById('btnChaos').classList.toggle('active');
+  init();
+  initOff();
+});
+document.getElementById('btnPause').addEventListener('click', ()=>{
+  paused=!paused;
+  document.getElementById('btnPause').textContent=paused?'Play':'Pause';
+  document.getElementById('btnPause').classList.toggle('active',paused);
+});
+document.getElementById('btnReset').addEventListener('click', ()=>{
+  init(); initOff();
+  offCtx.fillStyle='#040406'; offCtx.fillRect(0,0,W,H);
+});
+document.getElementById('count').addEventListener('input', e=>{
+  document.getElementById('countVal').textContent=e.target.value;
+  init(); initOff();
+});
+document.getElementById('palette').addEventListener('change', ()=>{ init(); initOff(); });
+document.getElementById('btnChaos').addEventListener('dblclick', e=>e.preventDefault());
+
+// ── Update ─────────────────────────────────────────────────────────
+let subSteps = 10;
+
+function update() {
+  if (paused) return;
+  const g   = parseFloat(document.getElementById('gravity').value);
+  const sp  = parseFloat(document.getElementById('simSpeed').value);
+  const maxTrail = parseInt(document.getElementById('trailLen').value);
+  const dt  = 0.016 * sp / subSteps;
+
+  for (const p of pendulums) {
+    for (let s=0; s<subSteps; s++) {
+      p.state = rk4(p.state, dt, g);
+    }
+    const pos = bob2pos(p.state);
+    p.trail.push(pos);
+    if (p.trail.length > maxTrail) p.trail.shift();
+  }
+}
+
+// ── Draw ────────────────────────────────────────────────────────────
+function drawTrails() {
+  // Fade offscreen
+  offCtx.fillStyle = 'rgba(4,4,6,0.018)';
+  offCtx.fillRect(0,0,W,H);
+
+  const sat = satForPalette();
+  const chaos = document.getElementById('btnChaos').classList.contains('active');
+  const n = pendulums.length;
+
+  for (const p of pendulums) {
+    if (p.trail.length < 2) continue;
+    const maxL = p.trail.length;
+    // Draw trail in segments for fading alpha
+    for (let i=1; i<maxL; i++) {
+      const t = i/maxL;
+      offCtx.beginPath();
+      offCtx.moveTo(p.trail[i-1][0], p.trail[i-1][1]);
+      offCtx.lineTo(p.trail[i][0],   p.trail[i][1]);
+      offCtx.strokeStyle = `hsla(${p.hue},${sat}%,${55+t*25}%,${t*t*0.8})`;
+      offCtx.lineWidth = chaos ? 0.8 : 1.4;
+      offCtx.stroke();
+    }
+  }
+}
+
+function drawPendulums() {
+  const sat = satForPalette();
+  const primaryPen = pendulums[0];
+  if (!primaryPen) return;
+
+  // Draw rods + bobs for first pendulum only (or all if few)
+  const drawCount = pendulums.length <= 3 ? pendulums.length : 1;
+
+  for (let pi=0; pi<drawCount; pi++) {
+    const p = pendulums[pi];
+    const [b1x,b1y] = bob1pos(p.state);
+    const [b2x,b2y] = bob2pos(p.state);
+
+    // Rods
+    ctx.strokeStyle = `hsla(${p.hue},30%,40%,0.9)`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(OX,OY);   ctx.lineTo(b1x,b1y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(b1x,b1y); ctx.lineTo(b2x,b2y); ctx.stroke();
+
+    // Pivot
+    ctx.fillStyle = '#444';
+    ctx.beginPath(); ctx.arc(OX,OY, 5,0,Math.PI*2); ctx.fill();
+
+    // Bob 1
+    const r1 = 9;
+    const g1=ctx.createRadialGradient(b1x,b1y,0,b1x,b1y,r1*2.5);
+    g1.addColorStop(0,`hsla(${p.hue},${sat}%,65%,0.4)`); g1.addColorStop(1,'transparent');
+    ctx.fillStyle=g1; ctx.beginPath(); ctx.arc(b1x,b1y,r1*2.5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=`hsl(${p.hue},${sat}%,60%)`; ctx.beginPath(); ctx.arc(b1x,b1y,r1,0,Math.PI*2); ctx.fill();
+
+    // Bob 2
+    const r2 = 10;
+    const g2=ctx.createRadialGradient(b2x,b2y,0,b2x,b2y,r2*3);
+    g2.addColorStop(0,`hsla(${p.hue},${sat}%,70%,0.5)`); g2.addColorStop(1,'transparent');
+    ctx.fillStyle=g2; ctx.beginPath(); ctx.arc(b2x,b2y,r2*3,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=`hsl(${p.hue},${sat}%,70%)`; ctx.beginPath(); ctx.arc(b2x,b2y,r2,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,0.4)'; ctx.beginPath(); ctx.arc(b2x-r2*0.25,b2y-r2*0.25,r2*0.28,0,Math.PI*2); ctx.fill();
+  }
+}
+
+function drawEnergy() {
+  const g = parseFloat(document.getElementById('gravity').value);
+  const p = pendulums[0];
+  if (!p) return;
+  const e = energy(p.state, g);
+  document.getElementById('energyEl').textContent =
+    `KE ${e.ke.toFixed(2)}  PE ${e.pe.toFixed(2)}  E ${e.total.toFixed(2)}`;
+
+  // Mini energy bar in corner
+  const bw=80, bh=6, bx=W-bw-10, by=10;
+  const maxE = e.ke+e.pe+0.01;
+  ctx.fillStyle='rgba(4,4,6,0.6)'; ctx.fillRect(bx-2,by-2,bw+4,bh+4);
+  ctx.fillStyle='#1a3a6a'; ctx.fillRect(bx,by,bw,bh);
+  ctx.fillStyle='#4080e0'; ctx.fillRect(bx,by,bw*(e.ke/maxE),bh/2);
+  ctx.fillStyle='#e08040'; ctx.fillRect(bx,by+bh/2,bw*Math.max(0,e.pe/maxE),bh/2);
+  ctx.fillStyle='#333'; ctx.font='8px Courier New'; ctx.textAlign='right';
+  ctx.fillText('KE/PE', bx-4, by+bh);
+}
+
+function drawPhasePortrait() {
+  // Small θ1 vs θ2 phase plot in corner
+  const px=10, py=10, psz=60;
+  ctx.fillStyle='rgba(4,4,6,0.7)'; ctx.fillRect(px,py,psz,psz);
+  ctx.strokeStyle='#1a1a2a'; ctx.lineWidth=0.5;
+  ctx.strokeRect(px,py,psz,psz);
+  // Axes
+  ctx.strokeStyle='#252530';
+  ctx.beginPath(); ctx.moveTo(px,py+psz/2); ctx.lineTo(px+psz,py+psz/2); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(px+psz/2,py); ctx.lineTo(px+psz/2,py+psz); ctx.stroke();
+
+  const sat=satForPalette();
+  for (const p of pendulums) {
+    const [θ1,θ2]=p.state;
+    const ppx = px + psz/2 + (θ1/Math.PI)*psz/2;
+    const ppy = py + psz/2 + (θ2/Math.PI)*psz/2;
+    ctx.fillStyle=`hsla(${p.hue},${sat}%,65%,0.9)`;
+    ctx.fillRect(ppx-0.8,ppy-0.8,2,2);
+  }
+  ctx.fillStyle='#282835'; ctx.font='7px Courier New'; ctx.textAlign='left';
+  ctx.fillText('θ₁/θ₂', px+2, py+psz-3);
+}
+
+// ── Main loop ──────────────────────────────────────────────────────
+function loop() {
+  update();
+
+  drawTrails();
+
+  ctx.drawImage(offscreen, 0, 0);
+  drawPendulums();
+  drawEnergy();
+  drawPhasePortrait();
+
+  requestAnimationFrame(loop);
+}
+
+// ── Init ───────────────────────────────────────────────────────────
+init();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

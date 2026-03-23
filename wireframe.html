@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3D Wireframe</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #040406;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    height: 100vh; overflow: hidden;
+  }
+  h1 { font-size: 0.85rem; letter-spacing: 0.3em; color: #333; text-transform: uppercase; padding: 6px 0 3px; }
+  #controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; padding: 2px 0 4px; align-items: center; }
+  button { background: #0a0a0e; color: #777; border: 1px solid #181820; padding: 3px 9px; cursor: pointer; font-family: inherit; font-size: 0.68rem; border-radius: 3px; transition: all 0.12s; }
+  button:hover { background: #121218; color: #bbb; }
+  button.active { background: #0e1220; color: #6090e0; border-color: #20406a; }
+  label { font-size: 0.68rem; color: #3a3a3a; display: flex; align-items: center; gap: 4px; }
+  select { background: #0a0a0e; color: #777; border: 1px solid #181820; padding: 2px 6px; font-family: inherit; font-size: 0.68rem; border-radius: 3px; }
+  canvas { display: block; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+</style>
+</head>
+<body>
+<h1>3D Wireframe</h1>
+<div id="controls">
+  <select id="shape">
+    <option value="cube">Cube</option>
+    <option value="tetra">Tetrahedron</option>
+    <option value="octa">Octahedron</option>
+    <option value="icosa">Icosahedron</option>
+    <option value="dodeca">Dodecahedron</option>
+    <option value="torus">Torus</option>
+    <option value="sphere">Sphere</option>
+    <option value="trefoil">Trefoil Knot</option>
+  </select>
+  <select id="theme">
+    <option value="electric">Electric</option>
+    <option value="gold">Gold</option>
+    <option value="ghost">Ghost</option>
+    <option value="neon">Neon</option>
+    <option value="crimson">Crimson</option>
+  </select>
+  <select id="mode">
+    <option value="solidwire">Solid + Wire</option>
+    <option value="wire">Wireframe</option>
+    <option value="solid">Solid</option>
+  </select>
+  <button id="btnSpin" class="active">Auto-spin</button>
+  <label>Speed <input type="range" id="spinSpeed" min="0.1" max="3" step="0.1" value="1" style="width:50px;accent-color:#305070"></label>
+</div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W, H, cx, cy;
+
+function resize() {
+  W = Math.min(window.innerWidth - 4, 1400);
+  H = window.innerHeight - 70;
+  canvas.width = W; canvas.height = H;
+  cx = W / 2; cy = H / 2;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Vector math ────────────────────────────────────────────────────
+const vsub  = (a,b)  => [a[0]-b[0], a[1]-b[1], a[2]-b[2]];
+const vcross= (a,b)  => [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]];
+const vdot  = (a,b)  => a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const vlen  = a      => Math.sqrt(a[0]*a[0]+a[1]*a[1]+a[2]*a[2]);
+const vnorm = a      => { const l=vlen(a)||1; return [a[0]/l,a[1]/l,a[2]/l]; };
+
+// ── Quaternion ────────────────────────────────────────────────────
+function qMul([a,b,c,d],[e,f,g,h]) {
+  return [a*e-b*f-c*g-d*h, a*f+b*e+c*h-d*g, a*g-b*h+c*e+d*f, a*h+b*g-c*f+d*e];
+}
+function qRot(v, [qw,qx,qy,qz]) {
+  const [vx,vy,vz]=v;
+  const ix= qw*vx+qy*vz-qz*vy, iy= qw*vy+qz*vx-qx*vz, iz= qw*vz+qx*vy-qy*vx, iw=-qx*vx-qy*vy-qz*vz;
+  return [ix*qw+iw*-qx+iy*-qz-iz*-qy, iy*qw+iw*-qy+iz*-qx-ix*-qz, iz*qw+iw*-qz+ix*-qy-iy*-qx];
+}
+function qAA(axis, a) { const s=Math.sin(a/2),[x,y,z]=vnorm(axis); return [Math.cos(a/2),x*s,y*s,z*s]; }
+function qNorm(q) { const l=Math.sqrt(q.reduce((s,x)=>s+x*x,0))||1; return q.map(x=>x/l); }
+
+// ── Shape builders ─────────────────────────────────────────────────
+// Ensure face normals point outward (for convex meshes)
+function fixWinding(verts, faces) {
+  return faces.map(face => {
+    const pts = face.map(i => verts[i]);
+    const n = vcross(vsub(pts[1],pts[0]), vsub(pts[2],pts[0]));
+    const c = pts.reduce((s,p)=>[s[0]+p[0],s[1]+p[1],s[2]+p[2]],[0,0,0]).map(x=>x/pts.length);
+    return vdot(n,c) < 0 ? [...face].reverse() : face;
+  });
+}
+
+function buildCube() {
+  const s = 1/Math.sqrt(3);
+  const verts = [[-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],[-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]].map(v=>v.map(x=>x*s));
+  const faces = [[3,2,1,0],[4,5,6,7],[0,1,5,4],[2,3,7,6],[1,2,6,5],[3,0,4,7]];
+  return { verts, faces: fixWinding(verts,faces) };
+}
+
+function buildTetrahedron() {
+  const s = 1/Math.sqrt(3);
+  const verts = [[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]].map(v=>v.map(x=>x*s));
+  return { verts, faces: fixWinding(verts, [[0,1,2],[0,2,3],[0,3,1],[1,3,2]]) };
+}
+
+function buildOctahedron() {
+  const verts = [[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+  return { verts, faces: fixWinding(verts, [[0,2,4],[2,1,4],[1,3,4],[3,0,4],[2,0,5],[1,2,5],[3,1,5],[0,3,5]]) };
+}
+
+function buildIcosahedron() {
+  const φ = (1+Math.sqrt(5))/2;
+  const verts = [
+    [0,1,φ],[0,-1,φ],[0,1,-φ],[0,-1,-φ],
+    [1,φ,0],[-1,φ,0],[1,-φ,0],[-1,-φ,0],
+    [φ,0,1],[φ,0,-1],[-φ,0,1],[-φ,0,-1]
+  ].map(vnorm);
+  const faces = [
+    [0,1,8],[0,8,4],[0,4,5],[0,5,10],[0,10,1],
+    [3,9,2],[3,2,11],[3,11,7],[3,7,6],[3,6,9],
+    [1,6,8],[8,6,9],[8,9,4],[4,9,2],[4,2,5],
+    [5,2,11],[5,11,10],[10,11,7],[10,7,1],[1,7,6]
+  ];
+  return { verts, faces: fixWinding(verts,faces) };
+}
+
+function buildDodecahedron() {
+  const φ = (1+Math.sqrt(5))/2, ip = 1/φ;
+  const verts = [
+    [1,1,1],[1,1,-1],[1,-1,1],[1,-1,-1],
+    [-1,1,1],[-1,1,-1],[-1,-1,1],[-1,-1,-1],
+    [0,ip,φ],[0,-ip,φ],[0,ip,-φ],[0,-ip,-φ],
+    [ip,φ,0],[-ip,φ,0],[ip,-φ,0],[-ip,-φ,0],
+    [φ,0,ip],[φ,0,-ip],[-φ,0,ip],[-φ,0,-ip]
+  ].map(vnorm);
+  // 12 pentagonal faces — verified by edge-counting (all 30 edges appear exactly twice)
+  const faces = [
+    [0,8,4,13,12], [0,12,1,17,16], [0,16,2,9,8],
+    [7,11,3,14,15],[7,15,6,18,19], [7,19,5,10,11],
+    [9,8,4,18,6],  [9,2,14,15,6],  [4,13,5,19,18],
+    [1,12,13,5,10],[1,17,3,11,10], [2,16,17,3,14]
+  ];
+  return { verts, faces: fixWinding(verts,faces) };
+}
+
+function buildTorus(R=0.68, r=0.28, U=30, V=18) {
+  const verts = [];
+  for (let u=0;u<U;u++) for (let v=0;v<V;v++) {
+    const θ=u/U*Math.PI*2, φ=v/V*Math.PI*2;
+    verts.push([(R+r*Math.cos(φ))*Math.cos(θ),(R+r*Math.cos(φ))*Math.sin(θ),r*Math.sin(φ)]);
+  }
+  const faces=[];
+  for (let u=0;u<U;u++) for (let v=0;v<V;v++) {
+    const a=u*V+v, b=u*V+(v+1)%V, c=((u+1)%U)*V+(v+1)%V, d=((u+1)%U)*V+v;
+    faces.push([a,d,c,b]);
+  }
+  return { verts, faces };
+}
+
+function buildSphere(U=22, V=14) {
+  const verts=[];
+  for (let v=0;v<=V;v++) for (let u=0;u<U;u++) {
+    const θ=u/U*Math.PI*2, φ=v/V*Math.PI;
+    verts.push([Math.sin(φ)*Math.cos(θ),Math.cos(φ),Math.sin(φ)*Math.sin(θ)]);
+  }
+  const faces=[];
+  for (let v=0;v<V;v++) for (let u=0;u<U;u++) {
+    const a=v*U+u, b=v*U+(u+1)%U, c=(v+1)*U+(u+1)%U, d=(v+1)*U+u;
+    faces.push([a,d,c,b]);
+  }
+  return { verts, faces };
+}
+
+function buildTrefoil(U=100, tube=14, r=0.11) {
+  function pos(t) {
+    const s=t*Math.PI*2;
+    return [(Math.sin(s)+2*Math.sin(2*s))*0.29,(Math.cos(s)-2*Math.cos(2*s))*0.29,(-Math.sin(3*s))*0.29];
+  }
+  function tang(t) {
+    const dt=0.0005;
+    const a=pos(t-dt),b=pos(t+dt);
+    return vnorm([b[0]-a[0],b[1]-a[1],b[2]-a[2]]);
+  }
+  const verts=[];
+  for (let i=0;i<U;i++) {
+    const t=i/U, p=pos(t), T=tang(t);
+    const ref=Math.abs(T[1])<0.9?[0,1,0]:[1,0,0];
+    const N=vnorm(vcross(T,ref)), B=vcross(T,N);
+    for (let j=0;j<tube;j++) {
+      const φ=j/tube*Math.PI*2;
+      const c=Math.cos(φ)*r, s2=Math.sin(φ)*r;
+      verts.push([p[0]+N[0]*c+B[0]*s2, p[1]+N[1]*c+B[1]*s2, p[2]+N[2]*c+B[2]*s2]);
+    }
+  }
+  const faces=[];
+  for (let i=0;i<U;i++) for (let j=0;j<tube;j++) {
+    const a=i*tube+j, b=i*tube+(j+1)%tube, c=((i+1)%U)*tube+(j+1)%tube, d=((i+1)%U)*tube+j;
+    faces.push([a,b,c,d]);
+  }
+  return { verts, faces };
+}
+
+const SHAPES = {
+  cube:    buildCube(),
+  tetra:   buildTetrahedron(),
+  octa:    buildOctahedron(),
+  icosa:   buildIcosahedron(),
+  dodeca:  buildDodecahedron(),
+  torus:   buildTorus(),
+  sphere:  buildSphere(),
+  trefoil: buildTrefoil(),
+};
+
+// ── Themes ─────────────────────────────────────────────────────────
+const THEMES = {
+  electric: { bg:'#040406', face:(t,a)=>`rgba(8,${12+t*18|0},${30+t*26|0},${a})`, edge:(t)=>`rgba(${60+t*120|0},${150+t*80|0},${220+t*35|0},${0.4+t*0.6})`, lw:1.1 },
+  gold:     { bg:'#040402', face:(t,a)=>`rgba(${14+t*8|0},${10+t*6|0},2,${a})`,    edge:(t)=>`rgba(${180+t*75|0},${120+t*80|0},${18+t*28|0},${0.4+t*0.6})`, lw:1.0 },
+  ghost:    { bg:'#020204', face:(t,a)=>`rgba(${12+t*8|0},${14+t*10|0},${18+t*12|0},${a})`, edge:(t)=>`rgba(${150+t*100|0},${160+t*90|0},${195+t*60|0},${0.22+t*0.55})`, lw:0.9 },
+  neon:     { bg:'#020402', face:(t,a)=>`rgba(4,${8+t*8|0},4,${a})`,              edge:(t)=>`rgba(${20+t*36|0},${175+t*80|0},${38+t*46|0},${0.4+t*0.6})`, lw:1.1 },
+  crimson:  { bg:'#040202', face:(t,a)=>`rgba(${12+t*10|0},4,4,${a})`,            edge:(t)=>`rgba(${180+t*75|0},${28+t*56|0},${18+t*18|0},${0.4+t*0.6})`, lw:1.0 },
+};
+
+// ── State ──────────────────────────────────────────────────────────
+let quat = [1,0,0,0];
+let autoSpin = true;
+const spinAxis = vnorm([0.28, 1, 0.14]);
+let dragging = false, lastX, lastY;
+let userScale = 1.0;
+
+// ── Input ──────────────────────────────────────────────────────────
+canvas.addEventListener('mousedown', e => { dragging=true; lastX=e.clientX; lastY=e.clientY; canvas.classList.add('dragging'); e.preventDefault(); });
+window.addEventListener('mouseup', () => { dragging=false; canvas.classList.remove('dragging'); });
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  const dx=e.clientX-lastX, dy=e.clientY-lastY;
+  lastX=e.clientX; lastY=e.clientY;
+  const a=Math.sqrt(dx*dx+dy*dy)*0.011;
+  if (a>0.0001) quat = qNorm(qMul(qAA(vnorm([-dy,dx,0]),a), quat));
+});
+canvas.addEventListener('wheel', e => {
+  userScale *= e.deltaY>0?0.92:1.09;
+  userScale = Math.max(0.25, Math.min(4, userScale));
+  e.preventDefault();
+}, {passive:false});
+canvas.addEventListener('touchstart', e=>{const t=e.touches[0];dragging=true;lastX=t.clientX;lastY=t.clientY;e.preventDefault();},{passive:false});
+canvas.addEventListener('touchend', ()=>dragging=false);
+canvas.addEventListener('touchmove', e=>{
+  const t=e.touches[0], dx=t.clientX-lastX, dy=t.clientY-lastY;
+  lastX=t.clientX; lastY=t.clientY;
+  const a=Math.sqrt(dx*dx+dy*dy)*0.013;
+  if (a>0.0001) quat=qNorm(qMul(qAA(vnorm([-dy,dx,0]),a),quat));
+  e.preventDefault();
+},{passive:false});
+document.getElementById('btnSpin').addEventListener('click', ()=>{
+  autoSpin=!autoSpin;
+  document.getElementById('btnSpin').classList.toggle('active',autoSpin);
+});
+
+// ── Render ─────────────────────────────────────────────────────────
+function render() {
+  const sp  = parseFloat(document.getElementById('spinSpeed').value);
+  if (autoSpin && !dragging) quat = qNorm(qMul(qAA(spinAxis, 0.006*sp), quat));
+
+  const { verts, faces } = SHAPES[document.getElementById('shape').value];
+  const theme = THEMES[document.getElementById('theme').value];
+  const mode  = document.getElementById('mode').value;
+  const sc    = Math.min(W,H)*0.36*userScale;
+  const fov   = 2.6;
+
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0,0,W,H);
+
+  // Transform + project vertices
+  const tv = verts.map(v => qRot(v, quat));
+  const pv = tv.map(v => {
+    const f = fov/(fov - v[2]*0.9);
+    return [cx + v[0]*f*sc, cy - v[1]*f*sc, v[2]];
+  });
+
+  // Depth range for color
+  let minZ=Infinity, maxZ=-Infinity;
+  for (const v of tv) { if(v[2]<minZ)minZ=v[2]; if(v[2]>maxZ)maxZ=v[2]; }
+  const zRange = maxZ-minZ||1;
+
+  // Backface cull + depth sort
+  const vis = faces
+    .map(face => {
+      const pts = face.map(i=>tv[i]);
+      const n = vcross(vsub(pts[1],pts[0]), vsub(pts[2],pts[0]));
+      if (n[2] <= 0) return null;
+      const avgZ = pts.reduce((s,p)=>s+p[2],0)/pts.length;
+      return { face, avgZ, t:(avgZ-minZ)/zRange };
+    })
+    .filter(Boolean)
+    .sort((a,b) => a.avgZ - b.avgZ);
+
+  // Draw back-to-front
+  for (const { face, t } of vis) {
+    const pts = face.map(i => pv[i]);
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0], pts[0][1]);
+    for (let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0],pts[i][1]);
+    ctx.closePath();
+    if (mode !== 'wire') {
+      ctx.fillStyle = theme.face(t, mode==='solid' ? 0.95 : 0.85);
+      ctx.fill();
+    }
+    if (mode !== 'solid') {
+      ctx.strokeStyle = theme.edge(t);
+      ctx.lineWidth = theme.lw;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+    }
+    // Subtle edges in solid mode
+    if (mode === 'solid') {
+      ctx.strokeStyle = theme.edge(t*0.5);
+      ctx.lineWidth = 0.5;
+      ctx.stroke();
+    }
+  }
+}
+
+function loop() { render(); requestAnimationFrame(loop); }
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

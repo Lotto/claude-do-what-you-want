@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Visualizer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #040406;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    height: 100vh; overflow: hidden;
+  }
+  h1 { font-size: 0.85rem; letter-spacing: 0.3em; color: #333; text-transform: uppercase; padding: 6px 0 3px; }
+  #controls { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; padding: 2px 0 4px; align-items: center; }
+  button { background: #0a0a0e; color: #777; border: 1px solid #181820; padding: 3px 9px; cursor: pointer; font-family: inherit; font-size: 0.68rem; border-radius: 3px; transition: all 0.12s; }
+  button:hover { background: #121218; color: #bbb; }
+  button.active { background: #0e1220; color: #6090e0; border-color: #20406a; }
+  label { font-size: 0.68rem; color: #3a3a3a; display: flex; align-items: center; gap: 4px; }
+  input[type=range] { width: 52px; accent-color: #305070; }
+  select { background: #0a0a0e; color: #777; border: 1px solid #181820; padding: 2px 6px; font-family: inherit; font-size: 0.68rem; border-radius: 3px; }
+  #info { font-size: 0.62rem; color: #222; padding-bottom: 3px; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<h1>Audio Visualizer</h1>
+<div id="controls">
+  <select id="mode">
+    <option value="waveform">Waveform</option>
+    <option value="spectrum">Spectrum</option>
+    <option value="radial">Radial</option>
+    <option value="spectrogram">Spectrogram</option>
+    <option value="lissajous">Lissajous</option>
+  </select>
+  <select id="source">
+    <option value="drone">Drone</option>
+    <option value="arpeggio">Arpeggio</option>
+    <option value="chord">Chord</option>
+    <option value="bass">Bass</option>
+    <option value="noise">Noise</option>
+  </select>
+  <select id="palette">
+    <option value="electric">Electric</option>
+    <option value="fire">Fire</option>
+    <option value="aurora">Aurora</option>
+    <option value="mono">Mono</option>
+  </select>
+  <label>Smooth <input type="range" id="smooth" min="0" max="0.98" step="0.02" value="0.8"></label>
+  <label>FFT
+    <select id="fftSize">
+      <option value="512">512</option>
+      <option value="1024">1024</option>
+      <option value="2048" selected>2048</option>
+      <option value="4096">4096</option>
+      <option value="8192">8192</option>
+    </select>
+  </label>
+  <button id="btnGlow" class="active">Glow</button>
+  <button id="btnMic">Mic</button>
+</div>
+<div id="info"><span id="infoEl">click to start audio</span></div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = Math.min(window.innerWidth - 4, 1400);
+  H = window.innerHeight - 82;
+  canvas.width = W; canvas.height = H;
+  initSpectrogram();
+}
+resize();
+window.addEventListener('resize', () => { resize(); });
+
+// ── Audio Context ──────────────────────────────────────────────────
+let AC = null, analyser = null, analyserR = null;
+let freqData, timeData, freqDataR, timeDataR;
+let currentSource = null, micStream = null;
+let started = false;
+
+function initAudio() {
+  if (AC) return;
+  AC = new (window.AudioContext || window.webkitAudioContext)();
+  analyser  = AC.createAnalyser();
+  analyserR = AC.createAnalyser();
+  analyser.connect(AC.destination);
+  updateFFT();
+  freqData  = new Uint8Array(analyser.frequencyBinCount);
+  timeData  = new Uint8Array(analyser.fftSize);
+  freqDataR = new Uint8Array(analyserR.frequencyBinCount);
+  timeDataR = new Uint8Array(analyserR.fftSize);
+  startSource(document.getElementById('source').value);
+  started = true;
+  document.getElementById('infoEl').textContent = 'running';
+}
+
+function updateFFT() {
+  if (!analyser) return;
+  const sz = parseInt(document.getElementById('fftSize').value);
+  analyser.fftSize  = sz;
+  analyserR.fftSize = sz;
+  analyser.smoothingTimeConstant  = parseFloat(document.getElementById('smooth').value);
+  analyserR.smoothingTimeConstant = parseFloat(document.getElementById('smooth').value);
+  freqData  = new Uint8Array(analyser.frequencyBinCount);
+  timeData  = new Uint8Array(analyser.fftSize);
+  freqDataR = new Uint8Array(analyserR.frequencyBinCount);
+  timeDataR = new Uint8Array(analyserR.fftSize);
+}
+
+// ── Synth Sources ──────────────────────────────────────────────────
+function stopSource() {
+  if (currentSource) { currentSource.stop(); currentSource = null; }
+  if (micStream) { micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
+}
+
+function startSource(name) {
+  if (!AC) return;
+  stopSource();
+  const sources = { drone, arpeggio, chord, bass, noise };
+  currentSource = (sources[name] || drone)();
+}
+
+function makeOsc(freq, type='sine', detune=0) {
+  const o=AC.createOscillator(), g=AC.createGain();
+  o.type=type; o.frequency.value=freq; o.detune.value=detune;
+  o.connect(g); g.gain.value=0.25;
+  o.start();
+  return {osc:o,gain:g};
+}
+
+function drone() {
+  const root=110, nodes=[];
+  [[root,'sine',0],[root*1.5,'triangle',-5],[root*2,'sine',5],[root*3,'triangle',-3]].forEach(([f,t,d])=>{
+    const {osc,gain}=makeOsc(f,t,d);
+    gain.connect(analyser); gain.connect(analyserR);
+    // Slow LFO on gain
+    const lfo=AC.createOscillator(), lgain=AC.createGain();
+    lfo.frequency.value=0.12+Math.random()*0.08; lgain.gain.value=0.08;
+    lfo.connect(lgain); lgain.connect(gain.gain);
+    lfo.start();
+    nodes.push(osc,lfo);
+  });
+  return { stop:()=>nodes.forEach(n=>{try{n.stop();}catch(e){}}) };
+}
+
+function arpeggio() {
+  const scale=[261.63,293.66,329.63,392,440,523.25,587.33,659.26];
+  let i=0, timer, cur=null, gainNode=AC.createGain();
+  gainNode.gain.value=0.3; gainNode.connect(analyser); gainNode.connect(analyserR);
+  function play(){
+    if(cur){try{cur.stop();}catch(e){}}
+    cur=AC.createOscillator(); cur.type='triangle';
+    cur.frequency.value=scale[i%scale.length]*(i>7?2:1);
+    i++; cur.connect(gainNode); cur.start();
+    cur.stop(AC.currentTime+0.22);
+    // Envelope
+    gainNode.gain.setValueAtTime(0.3,AC.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+0.2);
+  }
+  play(); timer=setInterval(play,220);
+  return { stop:()=>{ clearInterval(timer); try{cur.stop();}catch(e){} } };
+}
+
+function chord() {
+  const chords=[[261.63,329.63,392],[220,277.18,329.63],[196,246.94,293.66],[174.61,220,261.63]];
+  let ci=0, nodes=[];
+  function playChord() {
+    nodes.forEach(({osc,gain})=>{ gain.gain.setTargetAtTime(0,AC.currentTime,0.3); setTimeout(()=>{ try{osc.stop();}catch(e){}},500); });
+    nodes=[];
+    chords[ci%chords.length].forEach(f=>{
+      const {osc,gain}=makeOsc(f,'triangle');
+      gain.connect(analyser); gain.connect(analyserR);
+      gain.gain.setValueAtTime(0,AC.currentTime); gain.gain.linearRampToValueAtTime(0.2,AC.currentTime+0.1);
+      nodes.push({osc,gain});
+    });
+    ci++;
+  }
+  playChord(); const timer=setInterval(playChord,2000);
+  return { stop:()=>{ clearInterval(timer); nodes.forEach(({osc})=>{try{osc.stop();}catch(e){}}); } };
+}
+
+function bass() {
+  const bpm=120, period=60/bpm*1000;
+  let timer, nodes=[];
+  function pulse(){
+    nodes.forEach(n=>{try{n.stop();}catch(e){}});
+    nodes=[];
+    const o1=AC.createOscillator(), o2=AC.createOscillator(), g=AC.createGain();
+    o1.type='sine'; o1.frequency.value=55;
+    o2.type='square'; o2.frequency.value=55; o2.detune.value=1200;
+    const g2=AC.createGain(); g2.gain.value=0.05;
+    o1.connect(g); o2.connect(g2); g2.connect(g);
+    g.connect(analyser); g.connect(analyserR);
+    g.gain.setValueAtTime(0.4,AC.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,AC.currentTime+0.45);
+    o1.start(); o2.start(); o1.stop(AC.currentTime+0.5); o2.stop(AC.currentTime+0.5);
+    nodes=[o1,o2];
+  }
+  pulse(); timer=setInterval(pulse,period);
+  return { stop:()=>{ clearInterval(timer); nodes.forEach(n=>{try{n.stop();}catch(e){}}); } };
+}
+
+function noise() {
+  const buf=AC.createBuffer(1,AC.sampleRate*2,AC.sampleRate);
+  const d=buf.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+  const src=AC.createBufferSource(); src.buffer=buf; src.loop=true;
+  const filt=AC.createBiquadFilter(); filt.type='bandpass'; filt.frequency.value=800; filt.Q.value=0.5;
+  const g=AC.createGain(); g.gain.value=0.3;
+  src.connect(filt); filt.connect(g); g.connect(analyser); g.connect(analyserR);
+  src.start();
+  return { stop:()=>{ try{src.stop();}catch(e){} } };
+}
+
+// ── Palette ────────────────────────────────────────────────────────
+function palColor(t, alpha=1) {
+  const p = document.getElementById('palette').value;
+  t = Math.max(0,Math.min(1,t));
+  let r,g,b;
+  if (p==='electric') { r=40+t*200; g=100+t*120; b=220+t*35; }
+  else if (p==='fire') { r=220+t*35; g=80+t*140; b=10+t*20; }
+  else if (p==='aurora'){ r=20+t*40; g=180+t*60; b=120+Math.sin(t*6)*80; }
+  else { r=g=b=120+t*130; } // mono
+  return `rgba(${r|0},${g|0},${b|0},${alpha})`;
+}
+
+// ── Spectrogram ────────────────────────────────────────────────────
+let sgOff, sgCtx, sgImg;
+function initSpectrogram() {
+  sgOff = document.createElement('canvas'); sgOff.width=W; sgOff.height=H;
+  sgCtx = sgOff.getContext('2d');
+  sgCtx.fillStyle='#040406'; sgCtx.fillRect(0,0,W,H);
+  sgImg = sgCtx.createImageData(1, H);
+}
+
+function updateSpectrogram() {
+  if (!analyser) return;
+  // Shift left by 1
+  const id = sgCtx.getImageData(1,0,W-1,H);
+  sgCtx.putImageData(id,0,0);
+  sgCtx.fillStyle='#040406'; sgCtx.fillRect(W-1,0,1,H);
+  // Draw new column
+  const bins = freqData.length;
+  for (let i=0;i<H;i++) {
+    const bin = Math.floor((1-i/H)*bins*0.7); // 0–70% of spectrum
+    const val = freqData[Math.min(bin,bins-1)] / 255;
+    const col = palColor(val*1.2, val*val);
+    sgCtx.fillStyle=col;
+    sgCtx.fillRect(W-1,i,1,1);
+  }
+}
+
+// ── Draw modes ─────────────────────────────────────────────────────
+const glow = () => document.getElementById('btnGlow').classList.contains('active');
+
+function drawWaveform() {
+  const n = timeData.length;
+  // Find zero crossing for stable trigger
+  let start=0;
+  for (let i=1;i<n/2;i++) { if(timeData[i-1]<128&&timeData[i]>=128){start=i;break;} }
+  const step=W/Math.min(n,2048), mid=H/2;
+
+  if (glow()) {
+    ctx.shadowBlur=18; ctx.shadowColor=palColor(0.7);
+    for (let pass=0;pass<2;pass++) {
+      ctx.beginPath();
+      for (let i=0;i<Math.min(n,2048);i++) {
+        const x=i*step, y=mid+(timeData[(start+i)%n]-128)/128*(H*0.42);
+        i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+      }
+      ctx.strokeStyle=palColor(0.7, pass===0?0.3:0.9);
+      ctx.lineWidth=pass===0?4:1.5; ctx.stroke();
+    }
+    ctx.shadowBlur=0;
+  } else {
+    ctx.beginPath();
+    for (let i=0;i<Math.min(n,2048);i++) {
+      const x=i*step, y=mid+(timeData[(start+i)%n]-128)/128*(H*0.42);
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    }
+    ctx.strokeStyle=palColor(0.7); ctx.lineWidth=1.5; ctx.stroke();
+  }
+  // Center line
+  ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(0,mid); ctx.lineTo(W,mid); ctx.stroke();
+}
+
+function drawSpectrum() {
+  const bins = Math.min(freqData.length, 512);
+  const bw = W/bins;
+  if (glow()) { ctx.shadowBlur=12; }
+  for (let i=0;i<bins;i++) {
+    const val=freqData[i]/255;
+    const h=val*H*0.88;
+    const t=i/bins;
+    ctx.fillStyle=palColor(val*0.8+t*0.2, 0.85);
+    ctx.fillRect(i*bw, H-h, Math.max(bw-0.5,0.5), h);
+    // Peak dot
+    if (val>0.02) { ctx.fillStyle=palColor(1,0.6); ctx.fillRect(i*bw,H-h-2,Math.max(bw-0.5,0.5),1.5); }
+  }
+  if (glow()) { ctx.shadowBlur=0; }
+}
+
+function drawRadial() {
+  const bins = Math.min(freqData.length, 256);
+  const cx=W/2, cy=H/2, baseR=Math.min(W,H)*0.14, maxR=Math.min(W,H)*0.44;
+  if (glow()) { ctx.shadowBlur=16; ctx.shadowColor=palColor(0.6); }
+  // Filled radial bars
+  for (let i=0;i<bins;i++) {
+    const val=freqData[i]/255;
+    const a=(i/bins)*Math.PI*2 - Math.PI/2;
+    const r1=baseR, r2=baseR+val*(maxR-baseR);
+    ctx.strokeStyle=palColor(val*0.7+(i/bins)*0.3, 0.8);
+    ctx.lineWidth=Math.max(1, W/bins*0.7);
+    ctx.beginPath(); ctx.moveTo(cx+Math.cos(a)*r1,cy+Math.sin(a)*r1);
+    ctx.lineTo(cx+Math.cos(a)*r2,cy+Math.sin(a)*r2); ctx.stroke();
+  }
+  // Inner circle
+  ctx.shadowBlur=0;
+  ctx.strokeStyle=palColor(0.5,0.3); ctx.lineWidth=1;
+  ctx.beginPath(); ctx.arc(cx,cy,baseR,0,Math.PI*2); ctx.stroke();
+  // Connecting line at top of bars
+  ctx.beginPath();
+  for (let i=0;i<=bins;i++) {
+    const val=freqData[i%bins]/255;
+    const a=(i/bins)*Math.PI*2 - Math.PI/2;
+    const r=baseR+val*(maxR-baseR);
+    const x=cx+Math.cos(a)*r, y=cy+Math.sin(a)*r;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+  ctx.strokeStyle=palColor(0.8,0.6); ctx.lineWidth=1.2;
+  if (glow()) { ctx.shadowBlur=10; } ctx.stroke(); ctx.shadowBlur=0;
+}
+
+function drawSpectrogram() {
+  updateSpectrogram();
+  ctx.drawImage(sgOff,0,0);
+  // Frequency axis labels
+  ctx.fillStyle='rgba(255,255,255,0.12)'; ctx.font='9px Courier New'; ctx.textAlign='left';
+  const nyq=AC?AC.sampleRate/2:22050;
+  [100,500,1000,5000,10000].forEach(f=>{
+    const y=H*(1-(f/nyq)*0.7/1);
+    if(y>0&&y<H){ ctx.fillText(f>=1000?`${f/1000}k`:f,4,y+3); }
+  });
+}
+
+function drawLissajous() {
+  const n = Math.min(timeData.length, 2048);
+  const cx=W/2, cy=H/2, sc=Math.min(W,H)*0.42;
+  // X = timeData, Y = timeData offset by n/4 (90° phase)
+  const off = n>>2;
+  ctx.lineWidth=1.2;
+  const pts=n;
+  if (glow()) { ctx.shadowBlur=14; ctx.shadowColor=palColor(0.7); }
+  // Draw as fading path segments
+  for (let i=1;i<pts;i++) {
+    const x=cx+(timeData[i]-128)/128*sc;
+    const y=cy+(timeData[(i+off)%n]-128)/128*sc;
+    const px=cx+(timeData[i-1]-128)/128*sc;
+    const py=cy+(timeData[(i-1+off)%n]-128)/128*sc;
+    const t=i/pts;
+    ctx.beginPath(); ctx.moveTo(px,py); ctx.lineTo(x,y);
+    ctx.strokeStyle=palColor(t, 0.5+t*0.4); ctx.stroke();
+  }
+  ctx.shadowBlur=0;
+  // Center crosshair
+  ctx.strokeStyle='rgba(255,255,255,0.04)'; ctx.lineWidth=0.5;
+  ctx.beginPath(); ctx.moveTo(cx,0); ctx.lineTo(cx,H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0,cy); ctx.lineTo(W,cy); ctx.stroke();
+}
+
+// ── Main loop ──────────────────────────────────────────────────────
+function loop() {
+  if (!started) {
+    ctx.fillStyle='#040406'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#333'; ctx.font='14px Courier New'; ctx.textAlign='center';
+    ctx.fillText('click anywhere to start', W/2, H/2);
+    requestAnimationFrame(loop); return;
+  }
+
+  analyser.smoothingTimeConstant = parseFloat(document.getElementById('smooth').value);
+  analyser.getByteFrequencyData(freqData);
+  analyser.getByteTimeDomainData(timeData);
+
+  const mode = document.getElementById('mode').value;
+  if (mode !== 'spectrogram') { ctx.fillStyle='#040406'; ctx.fillRect(0,0,W,H); }
+
+  if (mode==='waveform')    drawWaveform();
+  else if (mode==='spectrum')    drawSpectrum();
+  else if (mode==='radial')      drawRadial();
+  else if (mode==='spectrogram') drawSpectrogram();
+  else if (mode==='lissajous')   drawLissajous();
+
+  // Frequency label
+  const peak = freqData.indexOf(Math.max(...freqData));
+  if (AC) {
+    const hz=(peak/freqData.length)*(AC.sampleRate/2)|0;
+    document.getElementById('infoEl').textContent=`peak: ${hz}Hz  bins: ${freqData.length}  sr: ${AC.sampleRate}Hz`;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ── Controls ───────────────────────────────────────────────────────
+document.getElementById('source').addEventListener('change', e => {
+  if (started) startSource(e.target.value);
+});
+document.getElementById('fftSize').addEventListener('change', updateFFT);
+document.getElementById('btnGlow').addEventListener('click', ()=>{
+  document.getElementById('btnGlow').classList.toggle('active');
+});
+document.getElementById('btnMic').addEventListener('click', async ()=>{
+  initAudio();
+  try {
+    stopSource();
+    const stream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    micStream = stream;
+    const src = AC.createMediaStreamSource(stream);
+    src.connect(analyser); src.connect(analyserR);
+    document.getElementById('btnMic').classList.add('active');
+    document.getElementById('btnMic').textContent='Mic ●';
+    document.getElementById('infoEl').textContent='microphone active';
+    // Override stop to disconnect properly
+    currentSource = { stop:()=>{ src.disconnect(); } };
+  } catch(e) {
+    document.getElementById('infoEl').textContent='mic denied — using synth';
+    startSource(document.getElementById('source').value);
+  }
+});
+document.getElementById('mode').addEventListener('change', ()=>{
+  if (document.getElementById('mode').value==='spectrogram') initSpectrogram();
+});
+document.addEventListener('keydown', e=>{
+  if(e.code==='KeyG') document.getElementById('btnGlow').click();
+  const modes=['waveform','spectrum','radial','spectrogram','lissajous'];
+  const keys=['Digit1','Digit2','Digit3','Digit4','Digit5'];
+  const idx=keys.indexOf(e.code);
+  if(idx>=0) document.getElementById('mode').value=modes[idx];
+});
+
+// Start on first click
+function onFirstClick() {
+  initAudio();
+  document.removeEventListener('click', onFirstClick);
+  document.removeEventListener('keydown', onFirstClick);
+}
+document.addEventListener('click', onFirstClick);
+document.addEventListener('keydown', onFirstClick);
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

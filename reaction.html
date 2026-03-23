@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reaction Diffusion</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #080808;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+  }
+  h1 { font-size: 1rem; letter-spacing: 0.25em; color: #555; text-transform: uppercase; padding: 8px 0 5px; }
+  #controls {
+    display: flex; gap: 7px; flex-wrap: wrap; justify-content: center;
+    padding: 3px 0 7px; align-items: center;
+  }
+  button {
+    background: #141414; color: #999; border: 1px solid #222;
+    padding: 3px 11px; cursor: pointer; font-family: inherit;
+    font-size: 0.71rem; border-radius: 3px; transition: all 0.12s;
+  }
+  button:hover { background: #1e1e1e; color: #fff; }
+  button.active { background: #2a1a3a; color: #d0a0ff; border-color: #6a4a9a; }
+  label { font-size: 0.71rem; color: #555; display: flex; align-items: center; gap: 5px; }
+  input[type=range] { width: 65px; accent-color: #6a4a9a; }
+  select {
+    background: #141414; color: #aaa; border: 1px solid #222;
+    padding: 3px 8px; font-family: inherit; font-size: 0.71rem; border-radius: 3px;
+  }
+  #info { font-size: 0.66rem; color: #333; padding-bottom: 4px; }
+  canvas { display: block; cursor: crosshair; image-rendering: pixelated; }
+  #fallback { display: none; color: #c06060; font-size: 0.8rem; padding: 20px; text-align: center; }
+</style>
+</head>
+<body>
+<h1>Reaction Diffusion</h1>
+<div id="controls">
+  <label>Preset
+    <select id="preset">
+      <option value="coral">Coral</option>
+      <option value="spots">Leopard Spots</option>
+      <option value="stripes">Stripes</option>
+      <option value="worms">Worms</option>
+      <option value="mitosis">Mitosis</option>
+      <option value="holes">Holes</option>
+      <option value="maze">Maze</option>
+      <option value="bubbles">Bubbles</option>
+    </select>
+  </label>
+  <label>f <input type="range" id="f" min="0.01" max="0.1" step="0.001" value="0.055"><span id="fVal">0.055</span></label>
+  <label>k <input type="range" id="k" min="0.04" max="0.075" step="0.001" value="0.062"><span id="kVal">0.062</span></label>
+  <button id="btnReset">Reset</button>
+  <button id="btnSeed">Re-seed</button>
+  <label>Palette
+    <select id="palette">
+      <option value="fire">Fire</option>
+      <option value="ice">Ice</option>
+      <option value="plasma">Plasma</option>
+      <option value="earth">Earth</option>
+      <option value="bw">B&W</option>
+    </select>
+  </label>
+  <label>Brush <input type="range" id="brush" min="2" max="30" value="10"></label>
+</div>
+<div id="info">Click/drag to seed chemicals &nbsp;|&nbsp; <span id="fps">0</span> fps &nbsp;|&nbsp; Gray-Scott model</div>
+<canvas id="c"></canvas>
+<div id="fallback">WebGL not available — try a different browser.</div>
+
+<script>
+// ── Gray-Scott parameters per preset ─────────────────────────────
+const PRESETS = {
+  coral:    { f: 0.055, k: 0.062 },
+  spots:    { f: 0.035, k: 0.065 },
+  stripes:  { f: 0.060, k: 0.058 },
+  worms:    { f: 0.078, k: 0.061 },
+  mitosis:  { f: 0.028, k: 0.053 },
+  holes:    { f: 0.039, k: 0.058 },
+  maze:     { f: 0.029, k: 0.057 },
+  bubbles:  { f: 0.098, k: 0.057 },
+};
+
+const canvas = document.getElementById('c');
+let W, H, gl, progSim, progRender;
+let texA, texB, fbA, fbB;
+let quadVAO;
+let mouseDown = false;
+
+function resize() {
+  const maxW = Math.min(window.innerWidth - 8, 1300);
+  const maxH = window.innerHeight - 112;
+  // Use power-of-2-ish size for texture; sim at half res
+  W = Math.floor(maxW / 2) * 2;
+  H = Math.floor(maxH / 2) * 2;
+  canvas.width = W; canvas.height = H;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+}
+
+// ── WebGL setup ───────────────────────────────────────────────────
+function initGL() {
+  gl = canvas.getContext('webgl2', { antialias: false });
+  if (!gl) {
+    gl = canvas.getContext('webgl', { antialias: false });
+    if (!gl) { document.getElementById('fallback').style.display='block'; return false; }
+  }
+  return true;
+}
+
+function compileShader(type, src) {
+  const s = gl.createShader(type);
+  gl.shaderSource(s, src);
+  gl.compileShader(s);
+  if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+    console.error(gl.getShaderInfoLog(s));
+    return null;
+  }
+  return s;
+}
+
+function makeProgram(vsrc, fsrc) {
+  const p = gl.createProgram();
+  gl.attachShader(p, compileShader(gl.VERTEX_SHADER, vsrc));
+  gl.attachShader(p, compileShader(gl.FRAGMENT_SHADER, fsrc));
+  gl.linkProgram(p);
+  return p;
+}
+
+const VS = `
+  attribute vec2 aPos;
+  varying vec2 vUV;
+  void main() {
+    vUV = aPos * 0.5 + 0.5;
+    gl_Position = vec4(aPos, 0.0, 1.0);
+  }
+`;
+
+const FS_SIM = `
+  precision highp float;
+  varying vec2 vUV;
+  uniform sampler2D uTex;
+  uniform vec2 uTexel;
+  uniform float uF, uK, uDu, uDv;
+
+  void main() {
+    vec2 uv = vUV;
+    vec4 c  = texture2D(uTex, uv);
+    vec4 n  = texture2D(uTex, uv + vec2(0.0,  uTexel.y));
+    vec4 s2 = texture2D(uTex, uv + vec2(0.0, -uTexel.y));
+    vec4 e  = texture2D(uTex, uv + vec2( uTexel.x, 0.0));
+    vec4 w  = texture2D(uTex, uv + vec2(-uTexel.x, 0.0));
+
+    float u = c.r, v = c.g;
+    float lapU = (n.r + s2.r + e.r + w.r - 4.0*u);
+    float lapV = (n.g + s2.g + e.g + w.g - 4.0*v);
+
+    float uvv = u * v * v;
+    float du = uDu * lapU - uvv + uF * (1.0 - u);
+    float dv = uDv * lapV + uvv - (uF + uK) * v;
+
+    gl_FragColor = vec4(clamp(u + du, 0.0, 1.0), clamp(v + dv, 0.0, 1.0), 0.0, 1.0);
+  }
+`;
+
+const FS_RENDER = `
+  precision mediump float;
+  varying vec2 vUV;
+  uniform sampler2D uTex;
+  uniform int uPalette;
+
+  vec3 fire(float t) {
+    return vec3(
+      clamp(t * 3.0, 0.0, 1.0),
+      clamp(t * 3.0 - 1.0, 0.0, 1.0),
+      clamp(t * 3.0 - 2.0, 0.0, 1.0)
+    );
+  }
+  vec3 ice(float t) {
+    return vec3(t*0.2, t*0.6, t);
+  }
+  vec3 plasma(float t) {
+    float a = t * 6.28318;
+    return vec3(0.5+0.5*sin(a), 0.5+0.5*sin(a+2.094), 0.5+0.5*sin(a+4.189));
+  }
+  vec3 earth(float t) {
+    vec3 a = vec3(0.04, 0.1, 0.3);
+    vec3 b = vec3(0.8, 0.7, 0.3);
+    return mix(a, b, t);
+  }
+  vec3 bw(float t) { return vec3(t); }
+
+  void main() {
+    vec4 c = texture2D(uTex, vUV);
+    float v = c.g;
+    vec3 col;
+    if      (uPalette == 0) col = fire(v);
+    else if (uPalette == 1) col = ice(v);
+    else if (uPalette == 2) col = plasma(v);
+    else if (uPalette == 3) col = earth(v);
+    else                    col = bw(v);
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+function makeTexture(data) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, data);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+  return tex;
+}
+
+function makeFB(tex) {
+  const fb = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return fb;
+}
+
+function checkFloatTex() {
+  const ext = gl.getExtension('OES_texture_float');
+  if (!ext) {
+    // Fall back to half float
+    const hext = gl.getExtension('OES_texture_half_float');
+    return hext ? gl.HALF_FLOAT_OES : null;
+  }
+  return gl.FLOAT;
+}
+
+let floatType;
+
+function initBuffers() {
+  const quad = new Float32Array([-1,-1, 1,-1, -1,1, 1,1]);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+  return buf;
+}
+
+function seedData() {
+  const data = new Float32Array(W * H * 4);
+  // Fill with u=1, v=0
+  for (let i = 0; i < W * H; i++) {
+    data[i*4]   = 1.0; // u
+    data[i*4+1] = 0.0; // v
+    data[i*4+2] = 0.0;
+    data[i*4+3] = 1.0;
+  }
+  // Random seeds of v
+  const numSeeds = 80;
+  const r = 8;
+  for (let s = 0; s < numSeeds; s++) {
+    const cx = Math.random() * W | 0, cy = Math.random() * H | 0;
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx*dx+dy*dy > r*r) continue;
+        const x = ((cx+dx)+W)%W, y = ((cy+dy)+H)%H;
+        const i = y*W+x;
+        data[i*4]   = 0.5;
+        data[i*4+1] = 0.25;
+      }
+    }
+  }
+  return data;
+}
+
+let quadBuf;
+
+function init() {
+  if (!initGL()) return;
+
+  floatType = gl.FLOAT;
+  // Check float texture support
+  const floatExt = gl.getExtension('OES_texture_float');
+  if (!floatExt) {
+    document.getElementById('fallback').style.display = 'block';
+    document.getElementById('fallback').textContent = 'Float textures not supported. Try Chrome or Firefox.';
+    return;
+  }
+  gl.getExtension('OES_texture_float_linear');
+
+  progSim    = makeProgram(VS, FS_SIM);
+  progRender = makeProgram(VS, FS_RENDER);
+  quadBuf    = initBuffers();
+
+  reset();
+}
+
+function reset() {
+  if (texA) { gl.deleteTexture(texA); gl.deleteTexture(texB); }
+  if (fbA)  { gl.deleteFramebuffer(fbA); gl.deleteFramebuffer(fbB); }
+
+  const data = seedData();
+  texA = makeTexture(data);
+  texB = makeTexture(null);
+  fbA  = makeFB(texA);
+  fbB  = makeFB(texB);
+}
+
+function reseed() {
+  if (!gl) return;
+  const data = seedData();
+  gl.bindTexture(gl.TEXTURE_2D, texA);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.FLOAT, data);
+}
+
+// ── Brush: paint v at mouse position ─────────────────────────────
+function paint(px, py) {
+  if (!gl || !fbA) return;
+  const r = parseInt(document.getElementById('brush').value);
+  const data = new Float32Array(r*2 * r*2 * 4);
+  for (let i = 0; i < r*2 * r*2; i++) {
+    data[i*4]   = 0.5;
+    data[i*4+1] = 0.25;
+    data[i*4+2] = 0;
+    data[i*4+3] = 1;
+  }
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbA);
+  gl.bindTexture(gl.TEXTURE_2D, texA);
+  const x = Math.max(0, px - r), y = Math.max(0, H - py - r);
+  const w = Math.min(r*2, W-x), h = Math.min(r*2, H-y);
+  if (w > 0 && h > 0) {
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, x, y, w, h, gl.RGBA, gl.FLOAT, data);
+  }
+}
+
+// ── Simulation step ───────────────────────────────────────────────
+const STEPS_PER_FRAME = 8;
+
+function simulate() {
+  const fVal = parseFloat(document.getElementById('f').value);
+  const kVal = parseFloat(document.getElementById('k').value);
+
+  gl.useProgram(progSim);
+
+  const aPos = gl.getAttribLocation(progSim, 'aPos');
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  gl.uniform1i(gl.getUniformLocation(progSim, 'uTex'), 0);
+  gl.uniform2f(gl.getUniformLocation(progSim, 'uTexel'), 1/W, 1/H);
+  gl.uniform1f(gl.getUniformLocation(progSim, 'uF'), fVal);
+  gl.uniform1f(gl.getUniformLocation(progSim, 'uK'), kVal);
+  gl.uniform1f(gl.getUniformLocation(progSim, 'uDu'), 0.2097);
+  gl.uniform1f(gl.getUniformLocation(progSim, 'uDv'), 0.1050);
+
+  gl.viewport(0, 0, W, H);
+
+  for (let s = 0; s < STEPS_PER_FRAME; s++) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbB);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, texA);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    // Swap
+    [texA, texB] = [texB, texA];
+    [fbA,  fbB ] = [fbB,  fbA ];
+  }
+}
+
+const PAL_IDX = { fire:0, ice:1, plasma:2, earth:3, bw:4 };
+
+function render() {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0, 0, W, H);
+  gl.useProgram(progRender);
+
+  const aPos = gl.getAttribLocation(progRender, 'aPos');
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, texA);
+  gl.uniform1i(gl.getUniformLocation(progRender, 'uTex'), 0);
+  gl.uniform1i(gl.getUniformLocation(progRender, 'uPalette'), PAL_IDX[document.getElementById('palette').value] ?? 0);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// ── Loop ──────────────────────────────────────────────────────────
+let lastFPS = 0, frames = 0;
+function loop(ts) {
+  if (!gl) return;
+  simulate();
+  render();
+  frames++;
+  if (ts - lastFPS > 1000) {
+    document.getElementById('fps').textContent = frames;
+    frames = 0; lastFPS = ts;
+  }
+  requestAnimationFrame(loop);
+}
+
+// ── Controls ──────────────────────────────────────────────────────
+document.getElementById('preset').addEventListener('change', () => {
+  const p = PRESETS[document.getElementById('preset').value];
+  document.getElementById('f').value = p.f;
+  document.getElementById('k').value = p.k;
+  document.getElementById('fVal').textContent = p.f.toFixed(3);
+  document.getElementById('kVal').textContent = p.k.toFixed(3);
+  reseed();
+});
+
+['f','k'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    document.getElementById(id+'Val').textContent = parseFloat(document.getElementById(id).value).toFixed(3);
+  });
+});
+
+document.getElementById('btnReset').addEventListener('click', reset);
+document.getElementById('btnSeed').addEventListener('click', reseed);
+document.getElementById('palette').addEventListener('change', () => {});
+
+canvas.addEventListener('mousedown', e => { mouseDown = true; const r=canvas.getBoundingClientRect(); paint(e.clientX-r.left|0, e.clientY-r.top|0); });
+canvas.addEventListener('mousemove', e => { if(!mouseDown)return; const r=canvas.getBoundingClientRect(); paint(e.clientX-r.left|0, e.clientY-r.top|0); });
+canvas.addEventListener('mouseup', () => mouseDown=false);
+canvas.addEventListener('touchstart', e=>{ e.preventDefault(); const r=canvas.getBoundingClientRect(),t=e.touches[0]; paint(t.clientX-r.left|0,t.clientY-r.top|0); }, {passive:false});
+canvas.addEventListener('touchmove', e=>{ e.preventDefault(); const r=canvas.getBoundingClientRect(),t=e.touches[0]; paint(t.clientX-r.left|0,t.clientY-r.top|0); }, {passive:false});
+
+window.addEventListener('resize', () => { resize(); reset(); });
+
+resize();
+init();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

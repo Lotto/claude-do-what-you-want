@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Type or Die</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #060608;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    height: 100vh; overflow: hidden; user-select: none;
+  }
+
+  #header {
+    width: 100%; display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 20px; border-bottom: 1px solid #141418;
+    font-size: 0.75rem;
+  }
+  #header .title { letter-spacing: 0.2em; text-transform: uppercase; color: #555; }
+  #stats { display: flex; gap: 20px; }
+  #stats span { color: #888; }
+  #stats b { color: #e0e0e0; }
+  .lives { color: #c06060 !important; }
+  .combo-disp { color: #c0a020 !important; }
+  .hi { color: #6060c0 !important; }
+
+  #arena {
+    flex: 1; width: 100%; position: relative; overflow: hidden;
+    cursor: default;
+  }
+
+  .word-el {
+    position: absolute;
+    font-size: 1rem;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    transition: none;
+    pointer-events: none;
+  }
+  .word-el .typed { color: #60c080; }
+  .word-el .remaining { color: #c8c8c8; }
+  .word-el.targeted .remaining { color: #e8e840; }
+  .word-el.danger { animation: pulse 0.4s ease-in-out infinite alternate; }
+  @keyframes pulse { from { opacity: 1; } to { opacity: 0.5; } }
+
+  .particle {
+    position: absolute; pointer-events: none;
+    font-size: 0.8rem; font-family: 'Courier New', monospace;
+    color: #60c080; animation: pop 0.5s ease-out forwards;
+  }
+  @keyframes pop {
+    0%   { transform: scale(1) translateY(0); opacity: 1; }
+    100% { transform: scale(1.8) translateY(-30px); opacity: 0; }
+  }
+  .miss-particle {
+    color: #c06060; animation: misspop 0.4s ease-out forwards;
+  }
+  @keyframes misspop {
+    0%   { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0.5) translateY(20px); opacity: 0; }
+  }
+
+  #input-row {
+    width: 100%; padding: 10px 20px; border-top: 1px solid #141418;
+    display: flex; align-items: center; gap: 10px;
+  }
+  #prompt { color: #444; font-size: 0.9rem; }
+  #typebox {
+    flex: 1; background: transparent; border: none; outline: none;
+    color: #e8e840; font-family: 'Courier New', monospace; font-size: 0.9rem;
+    caret-color: #e8e840;
+  }
+  #wpm-display { font-size: 0.7rem; color: #444; min-width: 70px; text-align: right; }
+
+  /* Overlay screens */
+  #overlay {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    background: rgba(6,6,8,0.92); z-index: 10;
+  }
+  #overlay h2 { font-size: 1.4rem; letter-spacing: 0.2em; text-transform: uppercase; }
+  #overlay .sub { font-size: 0.75rem; color: #555; letter-spacing: 0.1em; }
+  #overlay .big { font-size: 1rem; color: #888; }
+  #overlay button {
+    background: #141420; color: #aaa; border: 1px solid #2a2a4a;
+    padding: 8px 24px; cursor: pointer; font-family: inherit; font-size: 0.8rem;
+    border-radius: 3px; letter-spacing: 0.1em; margin-top: 8px;
+    transition: all 0.15s;
+  }
+  #overlay button:hover { background: #1e1e36; color: #fff; border-color: #4a4a8a; }
+  #level-flash {
+    position: absolute; top: 40%; left: 50%; transform: translate(-50%,-50%);
+    font-size: 1.5rem; letter-spacing: 0.3em; color: #e8e840;
+    opacity: 0; pointer-events: none; z-index: 5;
+    text-transform: uppercase;
+    animation: none;
+  }
+  .flash-anim { animation: flashIn 1.2s ease-out forwards !important; }
+  @keyframes flashIn { 0%{opacity:1;transform:translate(-50%,-50%) scale(1)} 100%{opacity:0;transform:translate(-50%,-70%) scale(1.3)} }
+
+  #danger-bar {
+    position: absolute; bottom: 0; left: 0; height: 3px;
+    background: #c06060; width: 0%; transition: width 0.3s;
+    z-index: 3;
+  }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <div class="title">Type or Die</div>
+  <div id="stats">
+    <span>Score <b id="score">0</b></span>
+    <span>Level <b id="level">1</b></span>
+    <span class="combo-disp">Combo <b id="combo">x1</b></span>
+    <span class="lives">Lives <b id="lives">❤❤❤</b></span>
+    <span class="hi">Best <b id="hi">0</b></span>
+  </div>
+</div>
+
+<div id="arena">
+  <div id="level-flash"></div>
+  <div id="danger-bar"></div>
+  <div id="overlay">
+    <h2 style="color:#e8e840">Type or Die</h2>
+    <div class="sub">Words fall. Type them. Don't let them reach the bottom.</div>
+    <div class="big">↑ combo multiplier &nbsp;·&nbsp; ↓ lives on miss</div>
+    <button id="btnStart">Start Game</button>
+  </div>
+</div>
+
+<div id="input-row">
+  <span id="prompt">&gt;</span>
+  <input id="typebox" type="text" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="start typing..." disabled>
+  <div id="wpm-display">— wpm</div>
+</div>
+
+<script>
+// ── Word list ─────────────────────────────────────────────────────
+const WORDS_EASY   = 'cat dog run fly hot red sun fun bit map key log bug net set use fix mix top low end get put try big new old add day way for out one two'.split(' ');
+const WORDS_MED    = 'cloud pixel break magic score chain ghost power level combo quick fetch spawn watch stack build craft plant flame smoke storm drift slide'.split(' ');
+const WORDS_HARD   = 'fractal voronoi diffuse quantum cascade entropy lattice crystal prism vector matrix scalar vertex shader buffer kernel tensor spiral vortex cipher beacon'.split(' ');
+const WORDS_EXPERT = 'procedural generative algorithm recursive mandelbrot simulation bifurcation stochastic chaotic oscillator triangulate isometric hyperbolic fibonacci'.split(' ');
+
+function pickWord(level) {
+  if (level <= 2)  return pick(WORDS_EASY);
+  if (level <= 5)  return pick(Math.random()<0.5 ? WORDS_EASY : WORDS_MED);
+  if (level <= 8)  return pick(Math.random()<0.6 ? WORDS_MED  : WORDS_HARD);
+  if (level <= 12) return pick(Math.random()<0.6 ? WORDS_HARD : WORDS_EXPERT);
+  return pick(WORDS_EXPERT);
+}
+function pick(arr) { return arr[Math.random()*arr.length|0]; }
+
+// ── Audio ─────────────────────────────────────────────────────────
+let audioCtx = null;
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new AudioContext();
+}
+function playTone(freq, dur, type='sine', vol=0.15) {
+  if (!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  o.start(); o.stop(audioCtx.currentTime + dur);
+}
+function playHit(combo) {
+  const base = 440 * Math.pow(2, (combo-1)/12);
+  playTone(base, 0.12, 'triangle', 0.2);
+  setTimeout(() => playTone(base*1.5, 0.08, 'triangle', 0.1), 40);
+}
+function playMiss() {
+  playTone(110, 0.25, 'sawtooth', 0.15);
+}
+function playLevelUp() {
+  [523, 659, 784, 1047].forEach((f,i) => setTimeout(() => playTone(f, 0.15, 'triangle', 0.18), i*80));
+}
+function playGameOver() {
+  [220,185,165,130].forEach((f,i) => setTimeout(() => playTone(f, 0.3, 'sawtooth', 0.2), i*120));
+}
+
+// ── Game state ────────────────────────────────────────────────────
+const arena    = document.getElementById('arena');
+const typebox  = document.getElementById('typebox');
+const flash    = document.getElementById('level-flash');
+const dangerBar = document.getElementById('danger-bar');
+
+let words      = [];   // {el, word, y, speed, typed}
+let score      = 0;
+let lives      = 3;
+let combo      = 1;
+let level      = 1;
+let running    = false;
+let spawnTimer = 0;
+let wpmStart   = null;
+let wpmChars   = 0;
+let frameId;
+let lastTime   = 0;
+let wordsKilled= 0;
+let hiScore    = parseInt(localStorage.getItem('typing_hi') || '0');
+let maxWords;  // per level
+
+const LIVES_ICONS = ['', '❤', '❤❤', '❤❤❤', '❤❤❤❤', '❤❤❤❤❤'];
+
+function arenaH() { return arena.offsetHeight; }
+function arenaW() { return arena.offsetWidth; }
+
+// ── Spawn ─────────────────────────────────────────────────────────
+function spawnWord() {
+  const word = pickWord(level);
+  const el = document.createElement('div');
+  el.className = 'word-el';
+  const x = 20 + Math.random() * (arenaW() - 140);
+  el.style.left = x + 'px';
+  el.style.top  = '-28px';
+  el.innerHTML = `<span class="typed"></span><span class="remaining">${word}</span>`;
+  arena.appendChild(el);
+  const speed = 0.025 + level * 0.008 + Math.random() * 0.015;
+  words.push({ el, word, y: -28, speed, typed: 0, x });
+}
+
+// ── Update loop ───────────────────────────────────────────────────
+function update(ts) {
+  if (!running) return;
+  const dt = Math.min(ts - lastTime, 50);
+  lastTime = ts;
+  spawnTimer += dt;
+
+  // Spawn rate
+  const spawnInterval = Math.max(600, 2400 - level * 120);
+  maxWords = Math.min(3 + level, 12);
+  if (spawnTimer > spawnInterval && words.length < maxWords) {
+    spawnWord(); spawnTimer = 0;
+  }
+
+  const H = arenaH();
+  const dead = [];
+
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i];
+    w.y += w.speed * dt;
+    w.el.style.top = w.y + 'px';
+
+    // Danger highlight
+    const danger = w.y / H;
+    if (danger > 0.75) w.el.classList.add('danger');
+    else w.el.classList.remove('danger');
+
+    // Miss: word reached bottom
+    if (w.y > H - 10) {
+      dead.push(i);
+      showMiss(w);
+      loseLife();
+    }
+  }
+
+  // Update danger bar (worst word)
+  if (words.length) {
+    const worst = Math.max(...words.map(w => w.y / H));
+    dangerBar.style.width = (Math.min(1, worst) * 100) + '%';
+    dangerBar.style.opacity = worst > 0.5 ? '1' : '0';
+  } else {
+    dangerBar.style.width = '0%';
+  }
+
+  // Remove dead words (reverse)
+  for (let i = dead.length-1; i >= 0; i--) {
+    words[i === dead[i] ? i : dead[i]].el.remove();
+    words.splice(dead[i], 1);
+  }
+
+  // Level up
+  const threshold = 5 + level * 3;
+  if (wordsKilled >= threshold) {
+    wordsKilled = 0;
+    level++;
+    document.getElementById('level').textContent = level;
+    showLevelFlash();
+    playLevelUp();
+  }
+
+  // WPM
+  if (wpmStart && ts - wpmStart > 3000) {
+    const mins = (ts - wpmStart) / 60000;
+    const wpm = Math.round((wpmChars / 5) / mins);
+    document.getElementById('wpm-display').textContent = wpm + ' wpm';
+  }
+
+  updateStats();
+  frameId = requestAnimationFrame(update);
+}
+
+// ── Typing ────────────────────────────────────────────────────────
+function findTarget(partial) {
+  // Find word starting with typed partial
+  return words.find(w => w.word.startsWith(partial) && w.typed < w.word.length)
+      || words.find(w => w.word.startsWith(partial));
+}
+
+typebox.addEventListener('input', () => {
+  if (!running) return;
+  const val = typebox.value.replace(/\s/g,'').toLowerCase();
+  if (!val) { clearTargets(); return; }
+
+  // Find match
+  const target = findTarget(val);
+  clearTargets();
+
+  if (target) {
+    target.el.classList.add('targeted');
+    target.typed = val.length;
+    target.el.querySelector('.typed').textContent = target.word.slice(0, val.length);
+    target.el.querySelector('.remaining').textContent = target.word.slice(val.length);
+
+    // Word complete
+    if (val === target.word) {
+      hitWord(target);
+      typebox.value = '';
+      clearTargets();
+    }
+  }
+});
+
+typebox.addEventListener('keydown', e => {
+  if (e.key === ' ') { e.preventDefault(); typebox.value = ''; clearTargets(); }
+});
+
+function clearTargets() {
+  words.forEach(w => {
+    w.el.classList.remove('targeted');
+    if (w.typed > 0 && typebox.value === '') {
+      w.typed = 0;
+      w.el.querySelector('.typed').textContent = '';
+      w.el.querySelector('.remaining').textContent = w.word;
+    }
+  });
+}
+
+function hitWord(w) {
+  const idx = words.indexOf(w);
+  if (idx === -1) return;
+
+  // Score
+  const pts = (w.word.length * 10 + 5) * combo;
+  score += pts;
+  combo = Math.min(combo + 1, 8);
+  wordsKilled++;
+  wpmChars += w.word.length + 1;
+  if (!wpmStart) wpmStart = performance.now();
+
+  playHit(combo);
+
+  // Particle
+  const p = document.createElement('div');
+  p.className = 'particle';
+  p.textContent = '+' + pts + (combo > 2 ? ' x'+combo+'!' : '');
+  p.style.left = (w.x + 10) + 'px';
+  p.style.top  = w.y + 'px';
+  arena.appendChild(p);
+  setTimeout(() => p.remove(), 600);
+
+  w.el.remove();
+  words.splice(idx, 1);
+
+  if (score > hiScore) {
+    hiScore = score;
+    localStorage.setItem('typing_hi', hiScore);
+  }
+}
+
+function showMiss(w) {
+  combo = 1;
+  const p = document.createElement('div');
+  p.className = 'particle miss-particle';
+  p.textContent = w.word;
+  p.style.left = (w.x + 10) + 'px';
+  p.style.top  = (arenaH() - 40) + 'px';
+  arena.appendChild(p);
+  setTimeout(() => p.remove(), 500);
+  playMiss();
+}
+
+function loseLife() {
+  lives--;
+  if (lives <= 0) { endGame(); return; }
+  document.getElementById('lives').textContent = LIVES_ICONS[lives] || '';
+  // Flash screen red
+  arena.style.background = '#200808';
+  setTimeout(() => arena.style.background = '', 200);
+}
+
+function updateStats() {
+  document.getElementById('score').textContent = score;
+  document.getElementById('combo').textContent = 'x' + combo;
+  document.getElementById('hi').textContent = hiScore;
+}
+
+function showLevelFlash() {
+  flash.textContent = 'Level ' + level;
+  flash.classList.remove('flash-anim');
+  void flash.offsetWidth;
+  flash.classList.add('flash-anim');
+}
+
+// ── Start / End ───────────────────────────────────────────────────
+function startGame() {
+  initAudio();
+  // Clear
+  words.forEach(w => w.el.remove()); words = [];
+  score=0; lives=3; combo=1; level=1;
+  wordsKilled=0; spawnTimer=0; wpmStart=null; wpmChars=0;
+  running = true;
+  lastTime = performance.now();
+  typebox.disabled = false; typebox.value = ''; typebox.focus();
+  document.getElementById('score').textContent = '0';
+  document.getElementById('level').textContent = '1';
+  document.getElementById('combo').textContent = 'x1';
+  document.getElementById('lives').textContent = '❤❤❤';
+  document.getElementById('hi').textContent = hiScore;
+  dangerBar.style.width = '0';
+  const ov = document.getElementById('overlay');
+  if (ov) ov.remove();
+  cancelAnimationFrame(frameId);
+  frameId = requestAnimationFrame(update);
+}
+
+function endGame() {
+  running = false;
+  cancelAnimationFrame(frameId);
+  words.forEach(w => w.el.remove()); words = [];
+  typebox.disabled = true;
+  playGameOver();
+
+  const ov = document.createElement('div');
+  ov.id = 'overlay';
+  ov.innerHTML = `
+    <h2 style="color:#c06060">Game Over</h2>
+    <div class="big">Score: <b style="color:#e0e0e0">${score}</b></div>
+    <div class="big">Level: <b style="color:#e0e0e0">${level}</b> &nbsp;·&nbsp; Best: <b style="color:#6060c0">${hiScore}</b></div>
+    <div class="sub">${score >= hiScore && score > 0 ? '★ New high score! ★' : 'Type faster next time.'}</div>
+    <button id="btnStart">Play Again</button>
+  `;
+  arena.appendChild(ov);
+  ov.querySelector('#btnStart').addEventListener('click', startGame);
+}
+
+document.getElementById('btnStart').addEventListener('click', startGame);
+document.getElementById('hi').textContent = hiScore;
+
+// Keep focus on typebox
+document.addEventListener('keydown', e => {
+  if (running && document.activeElement !== typebox) typebox.focus();
+});
+</script>
+</body>
+</html>

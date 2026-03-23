@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L-System Plants</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #080808;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+  }
+  h1 { font-size: 1rem; letter-spacing: 0.25em; color: #666; text-transform: uppercase; padding: 10px 0 6px; }
+  #controls {
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+    padding: 4px 0 8px; align-items: center;
+  }
+  button {
+    background: #141414; color: #aaa; border: 1px solid #2a2a2a;
+    padding: 4px 11px; cursor: pointer; font-family: inherit;
+    font-size: 0.72rem; border-radius: 3px; transition: all 0.12s;
+  }
+  button:hover { background: #1e1e1e; color: #fff; }
+  button.active { background: #1a3a1a; color: #7fff7f; border-color: #3a6a3a; }
+  select {
+    background: #141414; color: #aaa; border: 1px solid #2a2a2a;
+    padding: 3px 8px; font-family: inherit; font-size: 0.72rem; border-radius: 3px;
+  }
+  label { font-size: 0.72rem; color: #666; display: flex; align-items: center; gap: 5px; }
+  input[type=range] { width: 65px; accent-color: #3a6a3a; }
+  #info { font-size: 0.68rem; color: #333; padding-bottom: 4px; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<h1>L-System Plants</h1>
+<div id="controls">
+  <label>Preset
+    <select id="preset">
+      <option value="fern">Barnsley Fern</option>
+      <option value="tree1">Fractal Tree</option>
+      <option value="bush">Bush</option>
+      <option value="weed">Weed</option>
+      <option value="snowflake">Koch Snowflake</option>
+      <option value="sierpinski">Sierpinski</option>
+      <option value="dragon">Dragon Curve</option>
+      <option value="hilbert">Hilbert Curve</option>
+    </select>
+  </label>
+  <label>Depth <input type="range" id="depth" min="1" max="8" value="5"><span id="depthVal">5</span></label>
+  <label>Angle <input type="range" id="angle" min="5" max="90" value="25"><span id="angleVal">25</span>&deg;</label>
+  <label>Length <input type="range" id="len" min="2" max="30" value="8"><span id="lenVal">8</span></label>
+  <button id="btnDraw">Redraw</button>
+  <button id="btnAnim" class="active">Animate</button>
+</div>
+<div id="info"><span id="strLen">0</span> symbols &mdash; hover to pan</div>
+<canvas id="c"></canvas>
+
+<script>
+const PRESETS = {
+  fern: {
+    axiom: 'X',
+    rules: { X: 'F+[[X]-X]-F[-FX]+X', F: 'FF' },
+    angle: 25, depth: 5, len: 5, startAngle: -90,
+    color: () => `hsl(${100 + Math.random()*40},60%,${35+Math.random()*25}%)`,
+    lineWidth: (d, maxD) => Math.max(0.5, (maxD - d) * 0.6),
+  },
+  tree1: {
+    axiom: 'F',
+    rules: { F: 'FF+[+F-F-F]-[-F+F+F]' },
+    angle: 22, depth: 4, len: 8, startAngle: -90,
+    color: (d, maxD) => d < 2 ? `hsl(30,50%,30%)` : `hsl(${110+Math.random()*30},55%,${30+Math.random()*20}%)`,
+    lineWidth: (d, maxD) => Math.max(0.5, (maxD - d + 1) * 1.2),
+  },
+  bush: {
+    axiom: 'F',
+    rules: { F: 'FF-[-F+F+F]+[+F-F-F]' },
+    angle: 20, depth: 4, len: 7, startAngle: -90,
+    color: () => `hsl(${100+Math.random()*50},55%,${28+Math.random()*22}%)`,
+    lineWidth: (d, maxD) => Math.max(0.5, (maxD - d) * 0.8),
+  },
+  weed: {
+    axiom: 'F',
+    rules: { F: 'F[+FF][-FF]F[-F][+F]F' },
+    angle: 35, depth: 3, len: 8, startAngle: -90,
+    color: () => `hsl(${90+Math.random()*60},60%,${30+Math.random()*20}%)`,
+    lineWidth: () => 1,
+  },
+  snowflake: {
+    axiom: 'F++F++F',
+    rules: { F: 'F-F++F-F' },
+    angle: 60, depth: 5, len: 5, startAngle: 0,
+    color: () => `hsl(200,70%,${60+Math.random()*20}%)`,
+    lineWidth: () => 1,
+  },
+  sierpinski: {
+    axiom: 'F-G-G',
+    rules: { F: 'F-G+F+G-F', G: 'GG' },
+    angle: 120, depth: 6, len: 6, startAngle: 0,
+    color: () => `hsl(${270+Math.random()*40},60%,${55+Math.random()*20}%)`,
+    lineWidth: () => 1,
+  },
+  dragon: {
+    axiom: 'FX',
+    rules: { X: 'X+YF+', Y: '-FX-Y' },
+    angle: 90, depth: 12, len: 8, startAngle: 0,
+    color: (_, __, progress) => `hsl(${progress * 300},70%,55%)`,
+    lineWidth: () => 1,
+  },
+  hilbert: {
+    axiom: 'A',
+    rules: { A: '+BF-AFA-FB+', B: '-AF+BFB+FA-' },
+    angle: 90, depth: 6, len: 8, startAngle: 0,
+    color: (_, __, progress) => `hsl(${180 + progress * 180},65%,55%)`,
+    lineWidth: () => 1,
+  },
+};
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let animFrame = null;
+let doAnimate = true;
+
+function resize() {
+  canvas.width = Math.min(window.innerWidth - 8, 1200);
+  canvas.height = window.innerHeight - 130;
+}
+
+function expand(axiom, rules, depth) {
+  let s = axiom;
+  for (let i = 0; i < depth; i++) {
+    let next = '';
+    for (const ch of s) next += rules[ch] || ch;
+    s = next;
+    if (s.length > 400000) break; // safety cap
+  }
+  return s;
+}
+
+// Turtle interpret — returns array of line segments with metadata
+function interpret(str, stepLen, startAngle, angleDeg) {
+  const angleRad = angleDeg * Math.PI / 180;
+  let x = 0, y = 0, a = startAngle * Math.PI / 180;
+  const stack = [];
+  const segments = [];
+  let depth = 0;
+  let idx = 0;
+
+  for (const ch of str) {
+    if (ch === 'F' || ch === 'G') {
+      const nx = x + Math.cos(a) * stepLen;
+      const ny = y + Math.sin(a) * stepLen;
+      segments.push({ x1: x, y1: y, x2: nx, y2: ny, depth, progress: idx / str.length });
+      x = nx; y = ny;
+      idx++;
+    } else if (ch === 'f') {
+      x += Math.cos(a) * stepLen; y += Math.sin(a) * stepLen;
+    } else if (ch === '+') { a += angleRad; }
+    else if (ch === '-') { a -= angleRad; }
+    else if (ch === '[') { stack.push({ x, y, a, depth }); depth++; }
+    else if (ch === ']') { const s = stack.pop(); x = s.x; y = s.y; a = s.a; depth = s.depth; }
+  }
+  return segments;
+}
+
+function drawPlant(animated) {
+  if (animFrame) cancelAnimationFrame(animFrame);
+
+  const presetKey = document.getElementById('preset').value;
+  const p = PRESETS[presetKey];
+  const depth = parseInt(document.getElementById('depth').value);
+  const angleDeg = parseInt(document.getElementById('angle').value);
+  const stepLen = parseInt(document.getElementById('len').value);
+
+  const str = expand(p.axiom, p.rules, depth);
+  document.getElementById('strLen').textContent = str.length.toLocaleString();
+
+  const segs = interpret(str, stepLen, p.startAngle, angleDeg);
+  if (!segs.length) return;
+
+  // Compute bounding box to center
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const s of segs) {
+    minX = Math.min(minX, s.x1, s.x2); maxX = Math.max(maxX, s.x1, s.x2);
+    minY = Math.min(minY, s.y1, s.y2); maxY = Math.max(maxY, s.y1, s.y2);
+  }
+  const W = canvas.width, H = canvas.height;
+  const pw = maxX - minX, ph = maxY - minY;
+  const scale = Math.min((W * 0.9) / (pw || 1), (H * 0.9) / (ph || 1));
+  const ox = W / 2 - (minX + pw / 2) * scale;
+  const oy = H / 2 - (minY + ph / 2) * scale;
+
+  ctx.fillStyle = '#080808';
+  ctx.fillRect(0, 0, W, H);
+
+  const maxDepth = depth;
+
+  if (!animated) {
+    for (const seg of segs) {
+      ctx.strokeStyle = p.color(seg.depth, maxDepth, seg.progress);
+      ctx.lineWidth = p.lineWidth(seg.depth, maxDepth);
+      ctx.beginPath();
+      ctx.moveTo(seg.x1 * scale + ox, seg.y1 * scale + oy);
+      ctx.lineTo(seg.x2 * scale + ox, seg.y2 * scale + oy);
+      ctx.stroke();
+    }
+    return;
+  }
+
+  // Animated: draw segments progressively
+  let i = 0;
+  const batchSize = Math.max(1, segs.length / 120 | 0);
+
+  function frame() {
+    const end = Math.min(i + batchSize, segs.length);
+    for (; i < end; i++) {
+      const seg = segs[i];
+      ctx.strokeStyle = p.color(seg.depth, maxDepth, seg.progress);
+      ctx.lineWidth = p.lineWidth(seg.depth, maxDepth);
+      ctx.beginPath();
+      ctx.moveTo(seg.x1 * scale + ox, seg.y1 * scale + oy);
+      ctx.lineTo(seg.x2 * scale + ox, seg.y2 * scale + oy);
+      ctx.stroke();
+    }
+    if (i < segs.length) animFrame = requestAnimationFrame(frame);
+  }
+  animFrame = requestAnimationFrame(frame);
+}
+
+// ── Controls ─────────────────────────────────────────────────────
+function syncPreset() {
+  const p = PRESETS[document.getElementById('preset').value];
+  document.getElementById('angle').value = p.angle;
+  document.getElementById('angleVal').textContent = p.angle;
+  document.getElementById('depth').value = p.depth;
+  document.getElementById('depthVal').textContent = p.depth;
+  document.getElementById('len').value = p.len;
+  document.getElementById('lenVal').textContent = p.len;
+}
+
+document.getElementById('preset').addEventListener('change', () => { syncPreset(); drawPlant(doAnimate); });
+document.getElementById('btnDraw').addEventListener('click', () => drawPlant(doAnimate));
+document.getElementById('btnAnim').addEventListener('click', () => {
+  doAnimate = !doAnimate;
+  document.getElementById('btnAnim').classList.toggle('active', doAnimate);
+  document.getElementById('btnAnim').textContent = doAnimate ? 'Animate' : 'Instant';
+});
+
+['depth','angle','len'].forEach(id => {
+  document.getElementById(id).addEventListener('input', () => {
+    document.getElementById(id + 'Val').textContent = document.getElementById(id).value;
+  });
+  document.getElementById(id).addEventListener('change', () => drawPlant(doAnimate));
+});
+
+window.addEventListener('resize', () => { resize(); drawPlant(doAnimate); });
+
+resize();
+syncPreset();
+drawPlant(true);
+</script>
+</body>
+</html>

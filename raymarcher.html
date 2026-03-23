@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Raymarcher</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #040406;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    height: 100vh; overflow: hidden;
+  }
+  #controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; padding: 8px 0 6px; align-items: center; }
+  button {
+    background: #0c0c10; color: #888; border: 1px solid #1c1c24;
+    padding: 3px 11px; cursor: pointer; font-family: inherit;
+    font-size: 0.7rem; border-radius: 3px; transition: all 0.12s;
+  }
+  button:hover { background: #14141c; color: #ccc; }
+  button.active { background: #10101e; color: #8888ff; border-color: #28286a; }
+  label { font-size: 0.7rem; color: #444; display: flex; align-items: center; gap: 4px; }
+  select { background: #0c0c10; color: #888; border: 1px solid #1c1c24; padding: 2px 7px; font-family: inherit; font-size: 0.7rem; border-radius: 3px; }
+  #info { font-size: 0.64rem; color: #2a2a3a; padding-bottom: 4px; letter-spacing: 0.08em; }
+  canvas { display: block; cursor: grab; }
+  canvas:active { cursor: grabbing; }
+</style>
+</head>
+<body>
+<div id="controls">
+  <label>Scene
+    <select id="scene">
+      <option value="0">Metaballs</option>
+      <option value="1">Torus + Cube</option>
+      <option value="2">Menger Sponge</option>
+      <option value="3">Alien Terrain</option>
+      <option value="4">Infinite Tunnel</option>
+      <option value="5">Cornell Box</option>
+    </select>
+  </label>
+  <button id="btnAO"      class="active">AO</button>
+  <button id="btnShadow"  class="active">Shadows</button>
+  <button id="btnReflect" class="active">Reflect</button>
+  <button id="btnFog"     class="active">Fog</button>
+  <button id="btnAnim"    class="active">Animate</button>
+  <label>Quality
+    <select id="quality">
+      <option value="1.0">Full</option>
+      <option value="0.75" selected>¾</option>
+      <option value="0.5">½</option>
+    </select>
+  </label>
+</div>
+<div id="info">Drag to orbit &nbsp;·&nbsp; Scroll to zoom &nbsp;·&nbsp; <span id="fps">0</span> fps</div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+let W, H, gl, prog, quadBuf, uLocs;
+let camTheta = 0.4, camPhi = 1.1, camDist = 5.0;
+let animTime = 0;
+let useAO = true, useShadow = true, useReflect = true, useFog = true, doAnim = true;
+let lastFPS = 0, frameCount = 0;
+
+function resize() {
+  const q = parseFloat(document.getElementById('quality').value);
+  W = Math.min(window.innerWidth - 6, 1400) * q | 0;
+  H = (window.innerHeight - 86) * q | 0;
+  canvas.width = W; canvas.height = H;
+  canvas.style.width  = (W / q) + 'px';
+  canvas.style.height = (H / q) + 'px';
+  if (gl) gl.viewport(0, 0, W, H);
+}
+
+// ── Shaders ────────────────────────────────────────────────────────
+const VS = `
+attribute vec2 aPos;
+void main() { gl_Position = vec4(aPos, 0.0, 1.0); }
+`;
+
+const FS = `
+precision highp float;
+uniform vec2  uRes;
+uniform float uTime;
+uniform vec3  uCamPos;
+uniform mat3  uCamMat;
+uniform int   uScene;
+uniform int   uAO, uShadow, uReflect, uFog;
+
+#define MAX_STEPS 96
+#define MAX_DIST  40.0
+#define SURF_DIST 0.002
+#define PI        3.14159265
+
+// ── SDF primitives ─────────────────────────────────────────────────
+float sdSphere(vec3 p, float r) { return length(p) - r; }
+float sdBox(vec3 p, vec3 b) { vec3 q=abs(p)-b; return length(max(q,0.0))+min(max(q.x,max(q.y,q.z)),0.0); }
+float sdTorus(vec3 p, vec2 t) { vec2 q=vec2(length(p.xz)-t.x,p.y); return length(q)-t.y; }
+float sdPlane(vec3 p, vec3 n, float h) { return dot(p,n)+h; }
+float sdCylinder(vec3 p, float r, float h) { vec2 d=abs(vec2(length(p.xz),p.y))-vec2(r,h); return min(max(d.x,d.y),0.0)+length(max(d,0.0)); }
+
+float opSmoothUnion(float a, float b, float k) {
+  float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0);
+  return mix(b,a,h)-k*h*(1.0-h);
+}
+float opSmoothSub(float a, float b, float k) {
+  float h=clamp(0.5-0.5*(b+a)/k,0.0,1.0);
+  return mix(b,-a,h)+k*h*(1.0-h);
+}
+vec3 opRepXZ(vec3 p, float s) { return vec3(mod(p.x+s*0.5,s)-s*0.5, p.y, mod(p.z+s*0.5,s)-s*0.5); }
+
+mat2 rot2(float a) { float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
+
+// ── Noise ──────────────────────────────────────────────────────────
+float hash(vec2 p) { return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float noise2(vec2 p) {
+  vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);
+}
+float fbm(vec2 p) {
+  float v=0.0,a=0.5; for(int i=0;i<5;i++){v+=a*noise2(p);p*=2.0;a*=0.5;} return v;
+}
+
+// ── Scene SDFs ─────────────────────────────────────────────────────
+vec2 mapScene0(vec3 p) { // Metaballs
+  float t=uTime*0.6;
+  vec3 p1=vec3(sin(t)*1.2,cos(t*0.7)*0.5,cos(t)*0.8);
+  vec3 p2=vec3(cos(t*1.3)*1.1,sin(t*0.9)*0.6,sin(t*1.1)*0.9);
+  vec3 p3=vec3(sin(t*0.8+1.0)*0.9,cos(t*1.2)*0.8,cos(t*0.6)*1.0);
+  float d=sdSphere(p-p1,0.7);
+  d=opSmoothUnion(d,sdSphere(p-p2,0.65),0.5);
+  d=opSmoothUnion(d,sdSphere(p-p3,0.6),0.5);
+  d=opSmoothUnion(d,sdPlane(p,vec3(0,1,0),1.5),0.1);
+  return vec2(d,1.0);
+}
+
+vec2 mapScene1(vec3 p) { // Torus + cube
+  float t=uTime*0.4;
+  vec3 pt=p; pt.xz*=rot2(t); pt.xy*=rot2(t*0.7);
+  float d=sdTorus(pt,vec2(1.1,0.38));
+  vec3 pb=p; pb.xz*=rot2(-t*0.5); pb.xy*=rot2(t*0.3);
+  float b=sdBox(pb,vec3(0.55));
+  d=opSmoothUnion(d,b,0.15);
+  d=opSmoothSub(d,sdSphere(p,1.6),0.1);
+  d=opSmoothUnion(d,sdPlane(p,vec3(0,1,0),1.8),0.05);
+  return vec2(d,2.0);
+}
+
+vec2 mapScene2(vec3 p) { // Menger sponge
+  float t=uTime*0.25;
+  vec3 q=p; q.xz*=rot2(t); q.xy*=rot2(t*0.4);
+  float d=sdBox(q,vec3(1.5));
+  for(int i=0;i<3;i++){
+    vec3 r=abs(mod(q*pow(3.0,float(i))+1.5,3.0)-1.5);
+    float c=sdCylinder(r.xyz,0.5/pow(3.0,float(i)),10.0);
+    float c2=sdCylinder(r.yzx,0.5/pow(3.0,float(i)),10.0);
+    float c3=sdCylinder(r.zxy,0.5/pow(3.0,float(i)),10.0);
+    d=max(d,-min(c,min(c2,c3)));
+  }
+  d=opSmoothUnion(d,sdPlane(p,vec3(0,1,0),2.2),0.05);
+  return vec2(d,3.0);
+}
+
+vec2 mapScene3(vec3 p) { // Alien terrain
+  float t=uTime*0.2;
+  float terrain=fbm(p.xz*0.4+t*0.1)*2.5-0.5;
+  float d=p.y-terrain;
+  // Floating crystal shards
+  for(int i=0;i<4;i++){
+    float fi=float(i);
+    vec3 cp=p-vec3(sin(fi*2.1)*2.5, 1.0+sin(uTime*0.5+fi)*0.3, cos(fi*1.7)*2.5);
+    cp.xz*=rot2(uTime*0.3+fi);
+    d=opSmoothUnion(d, sdBox(cp, vec3(0.15,0.6+fi*0.1,0.15)), 0.05);
+  }
+  return vec2(d, 4.0);
+}
+
+vec2 mapScene4(vec3 p) { // Infinite tunnel
+  float t=uTime*0.5;
+  vec3 q=p; q.z=mod(q.z+t*3.0,4.0)-2.0;
+  float tunnel=-(sdCylinder(p.xzy,1.8,1e9));  // inside of cylinder
+  float ring=sdCylinder(q.xzy,1.8,0.08)-0.04;
+  float d=max(tunnel,-sdPlane(p,vec3(0,0,1),100.0));
+  // Pillars along tunnel
+  vec3 rp=opRepXZ(p+vec3(0,0,t*3.0),4.0);
+  float pillars=sdCylinder(rp,0.1,1.8);
+  d=min(d,min(ring,pillars));
+  return vec2(d,5.0);
+}
+
+vec2 mapScene5(vec3 p) { // Cornell box
+  float t=uTime*0.5;
+  float d=sdBox(p,vec3(2,2,2));
+  d=max(-d+0.1, -1e9);  // interior walls
+  d=-abs(d)-0.02;
+  // Two boxes inside
+  vec3 b1=p-vec3(-0.8,-0.5,-0.5); b1.xz*=rot2(0.4);
+  vec3 b2=p-vec3(0.7,-1.0,0.3);   b2.xz*=rot2(-0.5+sin(t)*0.3);
+  float inner=min(sdBox(b1,vec3(0.55,1.0,0.55)), sdBox(b2,vec3(0.55,0.55,0.55)));
+  d=max(d,-inner-0.02);
+  d=min(d,inner);
+  d=min(d, sdPlane(p,vec3(0,-1,0),2.0));
+  return vec2(d,6.0);
+}
+
+vec2 map(vec3 p) {
+  if(uScene==0) return mapScene0(p);
+  if(uScene==1) return mapScene1(p);
+  if(uScene==2) return mapScene2(p);
+  if(uScene==3) return mapScene3(p);
+  if(uScene==4) return mapScene4(p);
+  return mapScene5(p);
+}
+
+// ── Raymarching ────────────────────────────────────────────────────
+vec2 rayMarch(vec3 ro, vec3 rd) {
+  float t=0.02; float mat=-1.0;
+  for(int i=0;i<MAX_STEPS;i++){
+    vec2 d=map(ro+rd*t);
+    if(abs(d.x)<SURF_DIST*t){mat=d.y;break;}
+    t+=d.x*0.85;
+    if(t>MAX_DIST) break;
+  }
+  return vec2(t,mat);
+}
+
+vec3 getNormal(vec3 p) {
+  float e=0.001;
+  return normalize(vec3(
+    map(p+vec3(e,0,0)).x - map(p-vec3(e,0,0)).x,
+    map(p+vec3(0,e,0)).x - map(p-vec3(0,e,0)).x,
+    map(p+vec3(0,0,e)).x - map(p-vec3(0,0,e)).x
+  ));
+}
+
+float softShadow(vec3 ro, vec3 rd, float tmin, float tmax) {
+  float res=1.0, t=tmin;
+  for(int i=0;i<32;i++){
+    float h=map(ro+rd*t).x;
+    if(h<0.001) return 0.0;
+    res=min(res,8.0*h/t);
+    t+=clamp(h,0.02,0.3);
+    if(t>tmax) break;
+  }
+  return clamp(res,0.0,1.0);
+}
+
+float ambientOcclusion(vec3 p, vec3 n) {
+  float occ=0.0, sca=1.0;
+  for(int i=0;i<5;i++){
+    float h=0.01+0.12*float(i)/4.0;
+    float d=map(p+h*n).x;
+    occ+=(h-d)*sca;
+    sca*=0.95;
+  }
+  return clamp(1.0-3.0*occ,0.0,1.0);
+}
+
+// ── Material colors ────────────────────────────────────────────────
+vec3 getMaterial(float mat, vec3 p, vec3 n) {
+  if(uScene==0){
+    if(mat<1.5){
+      float stripe=sin(p.x*8.0)*sin(p.y*8.0)*sin(p.z*8.0);
+      return mix(vec3(0.3,0.6,1.0),vec3(1.0,0.3,0.5),clamp(stripe*0.5+0.5,0.,1.));
+    }
+    return vec3(0.3)*abs(mod(floor(p.x*2.0)+floor(p.z*2.0),2.0)-0.5)*2.0+0.15;
+  }
+  if(uScene==1){
+    float stripe=sin(dot(n,p)*12.0)*0.5+0.5;
+    return mix(vec3(0.9,0.5,0.1),vec3(0.1,0.5,0.9),stripe);
+  }
+  if(uScene==2){
+    vec3 col=vec3(abs(n.x),abs(n.y),abs(n.z));
+    return col*0.6+0.2;
+  }
+  if(uScene==3){
+    if(mat<4.5){
+      float h=fbm(p.xz*0.4)*0.5+0.5;
+      vec3 rock=vec3(0.4,0.35,0.3);
+      vec3 moss=vec3(0.2,0.4,0.15);
+      return mix(rock,moss,clamp(h*2.0-0.5,0.,1.));
+    }
+    return vec3(0.5,0.8,1.0)*0.8+vec3(0.1,0.0,0.2);
+  }
+  if(uScene==4){
+    float a=atan(p.y,p.x)/PI*0.5+0.5;
+    return mix(vec3(0.1,0.3,0.6),vec3(0.6,0.1,0.3),a)*0.8+0.1;
+  }
+  // Cornell
+  if(p.x<-1.8) return vec3(0.8,0.15,0.15);
+  if(p.x> 1.8) return vec3(0.15,0.7,0.15);
+  return vec3(0.85);
+}
+
+// ── Main render ────────────────────────────────────────────────────
+void main() {
+  vec2 uv=(gl_FragCoord.xy-uRes*0.5)/uRes.y;
+  vec3 rd=normalize(uCamMat*vec3(uv,1.5));
+  vec3 ro=uCamPos;
+
+  vec3 lightDir=normalize(vec3(0.6,0.9,0.4));
+  vec3 skyCol=vec3(0.05,0.05,0.1);
+
+  vec2 hit=rayMarch(ro,rd);
+  vec3 col=skyCol;
+
+  if(hit.y>0.0){
+    vec3 p=ro+rd*hit.x;
+    vec3 n=getNormal(p);
+    vec3 matCol=getMaterial(hit.y,p,n);
+
+    float diff=max(dot(n,lightDir),0.0);
+    float spec=pow(max(dot(reflect(-lightDir,n),-rd),0.0),32.0);
+    float ao=uAO==1?ambientOcclusion(p,n):1.0;
+    float sha=useShadow==1?softShadow(p+n*0.01,lightDir,0.02,8.0):1.0;
+
+    vec3 ambient=matCol*vec3(0.15,0.18,0.22)*ao;
+    vec3 diffuse=matCol*diff*sha*vec3(1.0,0.95,0.85);
+    vec3 specular=vec3(1.0)*spec*sha*0.4;
+    col=ambient+diffuse+specular;
+
+    // Reflection
+    if(uReflect==1 && hit.y<=2.0){
+      vec3 rdir=reflect(rd,n);
+      vec2 rhit=rayMarch(p+n*0.01,rdir);
+      if(rhit.y>0.0){
+        vec3 rp2=p+rdir*rhit.x;
+        vec3 rn=getNormal(rp2);
+        vec3 rmat=getMaterial(rhit.y,rp2,rn);
+        float rdiff=max(dot(rn,lightDir),0.0);
+        float rsha=useShadow==1?softShadow(rp2+rn*0.01,lightDir,0.02,8.0):1.0;
+        col=mix(col,rmat*rdiff*rsha+vec3(0.1),0.2);
+      }
+    }
+
+    // Fog
+    if(uFog==1){
+      float fogAmt=1.0-exp(-hit.x*hit.x*0.012);
+      col=mix(col,skyCol,fogAmt);
+    }
+  }
+
+  // Gamma & vignette
+  col=pow(max(col,0.0),vec3(0.4545));
+  float vig=1.0-dot(uv*0.8,uv*0.8);
+  col*=mix(0.5,1.0,vig);
+
+  gl_FragColor=vec4(col,1.0);
+}
+`;
+
+// ── WebGL setup ────────────────────────────────────────────────────
+function initGL() {
+  gl = canvas.getContext('webgl', {antialias:false});
+  if (!gl) return false;
+
+  function shader(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) {
+      console.error(gl.getShaderInfoLog(s)); return null;
+    }
+    return s;
+  }
+  prog = gl.createProgram();
+  gl.attachShader(prog, shader(gl.VERTEX_SHADER,   VS));
+  gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error(gl.getProgramInfoLog(prog)); return false;
+  }
+
+  const quad = new Float32Array([-1,-1,1,-1,-1,1,1,1]);
+  quadBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, quad, gl.STATIC_DRAW);
+
+  // Cache uniform locations
+  const locs = ['uRes','uTime','uCamPos','uCamMat','uScene','uAO','uShadow','uReflect','uFog'];
+  uLocs = {};
+  locs.forEach(n => uLocs[n] = gl.getUniformLocation(prog, n));
+  return true;
+}
+
+function cameraMatrix() {
+  const sinT = Math.sin(camTheta), cosT = Math.cos(camTheta);
+  const sinP = Math.sin(camPhi),   cosP = Math.cos(camPhi);
+  const fw = [-sinT*cosP, -sinP, -cosT*cosP]; // forward (normalized)
+  const right = [cosT, 0, -sinT];
+  const up = [
+    right[1]*fw[2]-right[2]*fw[1],
+    right[2]*fw[0]-right[0]*fw[2],
+    right[0]*fw[1]-right[1]*fw[0],
+  ];
+  return new Float32Array([right[0],right[1],right[2], up[0],up[1],up[2], fw[0],fw[1],fw[2]]);
+}
+
+function render(ts) {
+  if (doAnim) animTime = ts * 0.001;
+
+  const sinT = Math.sin(camTheta), cosT = Math.cos(camTheta);
+  const sinP = Math.sin(camPhi),   cosP = Math.cos(camPhi);
+  const camPos = new Float32Array([sinT*cosP*camDist, sinP*camDist, cosT*cosP*camDist]);
+
+  gl.useProgram(prog);
+  const aPos = gl.getAttribLocation(prog, 'aPos');
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+
+  gl.uniform2f(uLocs.uRes, W, H);
+  gl.uniform1f(uLocs.uTime, animTime);
+  gl.uniform3fv(uLocs.uCamPos, camPos);
+  gl.uniformMatrix3fv(uLocs.uCamMat, false, cameraMatrix());
+  gl.uniform1i(uLocs.uScene, parseInt(document.getElementById('scene').value));
+  gl.uniform1i(uLocs.uAO,      useAO      ? 1 : 0);
+  gl.uniform1i(uLocs.uShadow,  useShadow  ? 1 : 0);
+  gl.uniform1i(uLocs.uReflect, useReflect ? 1 : 0);
+  gl.uniform1i(uLocs.uFog,     useFog     ? 1 : 0);
+
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  frameCount++;
+  if (ts - lastFPS > 1000) {
+    document.getElementById('fps').textContent = frameCount + ' fps';
+    frameCount = 0; lastFPS = ts;
+  }
+  requestAnimationFrame(render);
+}
+
+// ── Orbit controls ─────────────────────────────────────────────────
+let dragging = false, lastMX = 0, lastMY = 0;
+canvas.addEventListener('mousedown', e => { dragging=true; lastMX=e.clientX; lastMY=e.clientY; });
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  camTheta += (e.clientX-lastMX)*0.008;
+  camPhi   -= (e.clientY-lastMY)*0.008;
+  camPhi    = Math.max(-1.5, Math.min(1.5, camPhi));
+  lastMX=e.clientX; lastMY=e.clientY;
+});
+window.addEventListener('mouseup', ()=>dragging=false);
+canvas.addEventListener('wheel', e=>{
+  e.preventDefault();
+  camDist = Math.max(1.5, Math.min(12, camDist*(1+e.deltaY*0.001)));
+}, {passive:false});
+
+// Touch
+let lastTouchDist=0;
+canvas.addEventListener('touchstart', e=>{ if(e.touches.length===1){dragging=true;lastMX=e.touches[0].clientX;lastMY=e.touches[0].clientY;} if(e.touches.length===2) lastTouchDist=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY); });
+canvas.addEventListener('touchmove', e=>{ e.preventDefault(); if(e.touches.length===1&&dragging){camTheta+=(e.touches[0].clientX-lastMX)*0.01;camPhi-=(e.touches[0].clientY-lastMY)*0.01;camPhi=Math.max(-1.5,Math.min(1.5,camPhi));lastMX=e.touches[0].clientX;lastMY=e.touches[0].clientY;} if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);camDist=Math.max(1.5,Math.min(12,camDist*(lastTouchDist/d)));lastTouchDist=d;} },{passive:false});
+canvas.addEventListener('touchend',()=>dragging=false);
+
+// ── Toggle controls ────────────────────────────────────────────────
+[['btnAO','useAO'],['btnShadow','useShadow'],['btnReflect','useReflect'],['btnFog','useFog']].forEach(([id,varName])=>{
+  document.getElementById(id).addEventListener('click', ()=>{
+    if(varName==='useAO')      useAO      = !useAO;
+    if(varName==='useShadow')  useShadow  = !useShadow;
+    if(varName==='useReflect') useReflect = !useReflect;
+    if(varName==='useFog')     useFog     = !useFog;
+    document.getElementById(id).classList.toggle('active');
+  });
+});
+document.getElementById('btnAnim').addEventListener('click', ()=>{
+  doAnim=!doAnim; document.getElementById('btnAnim').classList.toggle('active',doAnim);
+});
+document.getElementById('scene').addEventListener('change',()=>{ camTheta=0.4;camPhi=0.6;camDist=5.0; });
+document.getElementById('quality').addEventListener('change',resize);
+
+window.addEventListener('resize',resize);
+
+resize();
+if (initGL()) requestAnimationFrame(render);
+else document.getElementById('info').textContent = 'WebGL not available.';
+</script>
+</body>
+</html>

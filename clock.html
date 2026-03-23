@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Orbital Clock</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #050507;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    height: 100vh; overflow: hidden;
+  }
+  #controls {
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+    padding: 10px 0 6px; align-items: center; flex-shrink: 0;
+  }
+  button {
+    background: #101014; color: #888; border: 1px solid #1e1e28;
+    padding: 4px 12px; cursor: pointer; font-family: inherit;
+    font-size: 0.71rem; border-radius: 3px; transition: all 0.15s;
+    letter-spacing: 0.05em;
+  }
+  button:hover { background: #18181e; color: #ccc; }
+  button.active { background: #141428; color: #9090ff; border-color: #30306a; }
+  label { font-size: 0.71rem; color: #444; display: flex; align-items: center; gap: 5px; }
+  select { background: #101014; color: #888; border: 1px solid #1e1e28; padding: 3px 8px; font-family: inherit; font-size: 0.71rem; border-radius: 3px; }
+  canvas { display: block; flex-shrink: 0; }
+  #daterow {
+    font-size: 0.68rem; color: #333; padding: 5px 0 0;
+    letter-spacing: 0.12em; text-align: center;
+  }
+</style>
+</head>
+<body>
+<div id="controls">
+  <label>Theme
+    <select id="theme">
+      <option value="cosmos">Cosmos</option>
+      <option value="ember">Ember</option>
+      <option value="aurora">Aurora</option>
+      <option value="mono">Mono</option>
+      <option value="void">Void</option>
+    </select>
+  </label>
+  <button id="btnBreath" >Breathe</button>
+  <button id="btnTrails" class="active">Trails</button>
+  <button id="btnLabels" class="active">Labels</button>
+  <button id="btnSweep"  class="active">Sweep</button>
+</div>
+<canvas id="c"></canvas>
+<div id="daterow" id="daterow"></div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W, H, cx, cy, maxR;
+
+function resize() {
+  const avail = window.innerHeight - 78;
+  W = Math.min(window.innerWidth - 8, avail);
+  H = avail;
+  canvas.width  = W;
+  canvas.height = H;
+  cx = W/2; cy = H/2;
+  maxR = Math.min(W, H) * 0.46;
+}
+
+// ── Themes ────────────────────────────────────────────────────────
+const THEMES = {
+  cosmos: {
+    bg: '#050507',
+    rings: ['#1a1a2e','#16213e','#0f3460','#1a3a4a','#1a4a3a','#3a2a1a','#2a1a3a'],
+    dots:  ['#9090ff','#60b0ff','#40d0e0','#40e0a0','#80e060','#e0c040','#e07040'],
+    text:  '#555',
+    sweep: 'rgba(120,120,255,0.06)',
+    glow:  true,
+  },
+  ember: {
+    bg: '#080502',
+    rings: ['#2a1a08','#3a1a08','#4a1808','#3a1818','#2a1820','#201828','#181830'],
+    dots:  ['#ff9040','#ff6020','#ff4010','#e03030','#c03050','#a04070','#8060a0'],
+    text:  '#554433',
+    sweep: 'rgba(255,120,40,0.06)',
+    glow:  true,
+  },
+  aurora: {
+    bg: '#030810',
+    rings: ['#081820','#0a2010','#081810','#102008','#181008','#200810','#180820'],
+    dots:  ['#00ffcc','#00e880','#40ff40','#a0ff00','#ffee00','#ff8800','#ff4488'],
+    text:  '#2a4a3a',
+    sweep: 'rgba(0,255,160,0.05)',
+    glow:  true,
+  },
+  mono: {
+    bg: '#050505',
+    rings: ['#141414','#161616','#181818','#1a1a1a','#1c1c1c','#1e1e1e','#202020'],
+    dots:  ['#ffffff','#e0e0e0','#c0c0c0','#a0a0a0','#808080','#606060','#404040'],
+    text:  '#383838',
+    sweep: 'rgba(255,255,255,0.04)',
+    glow:  false,
+  },
+  void: {
+    bg: '#000000',
+    rings: ['#0a0a12','#0a0a10','#0a0a0e','#080a0c','#08080c','#08080a','#080808'],
+    dots:  ['#3030ff','#2060e0','#2080c0','#20a080','#20c040','#60e020','#c0c000'],
+    text:  '#222233',
+    sweep: 'rgba(40,40,180,0.07)',
+    glow:  true,
+  },
+};
+
+// ── Ring definitions ──────────────────────────────────────────────
+// { label, period (ms), fn: () => [0,1] fraction of period elapsed }
+function getDayOfYear(now) {
+  const start = new Date(now.getFullYear(), 0, 0);
+  const diff  = now - start;
+  return Math.floor(diff / 86400000);
+}
+function getDaysInYear(now) {
+  const y = now.getFullYear();
+  return ((y%4===0&&y%100!==0)||y%400===0) ? 366 : 365;
+}
+
+function ringData(now) {
+  const ms   = now.getMilliseconds();
+  const sec  = now.getSeconds()   + ms/1000;
+  const min  = now.getMinutes()   + sec/60;
+  const hr   = now.getHours()%12  + min/60;
+  const hr24 = now.getHours()     + min/60;
+  const dow  = now.getDay()       + hr24/24;
+  const dom  = now.getDate()-1    + hr24/24;
+  const doy  = getDayOfYear(now)  + hr24/24;
+  const mon  = now.getMonth()     + dom/31;
+
+  const daysInYear = getDaysInYear(now);
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth()+1, 0).getDate();
+
+  return [
+    { label:'SEC',  frac: sec/60,           period: '60s',    radius: maxR * 0.95 },
+    { label:'MIN',  frac: min/60,           period: '60m',    radius: maxR * 0.80 },
+    { label:'HR',   frac: hr/12,            period: '12h',    radius: maxR * 0.65 },
+    { label:'DAY',  frac: hr24/24,          period: '24h',    radius: maxR * 0.52 },
+    { label:'WEEK', frac: dow/7,            period: '7d',     radius: maxR * 0.40 },
+    { label:'MON',  frac: (now.getDate()-1+(hr24/24))/daysInMonth, period: 'month', radius: maxR * 0.29 },
+    { label:'YEAR', frac: doy/daysInYear,   period: '365d',   radius: maxR * 0.18 },
+  ];
+}
+
+// ── State ─────────────────────────────────────────────────────────
+let showTrails  = true;
+let showLabels  = true;
+let showSweep   = true;
+let breathing   = false;
+let breathPhase = 0;
+let trailBufs   = Array.from({length:7}, () => []);
+const TRAIL_LEN = 120;
+
+// ── Draw ──────────────────────────────────────────────────────────
+function draw(ts) {
+  const now   = new Date();
+  const theme = THEMES[document.getElementById('theme').value];
+  const rings = ringData(now);
+
+  // Breathing: scale the whole view
+  let breathScale = 1;
+  if (breathing) {
+    breathPhase += 0.008;
+    breathScale = 0.92 + 0.08 * Math.sin(breathPhase);
+  }
+
+  ctx.fillStyle = theme.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(breathScale, breathScale);
+
+  // ── Background rings ──────────────────────────────────────────
+  rings.forEach((r, i) => {
+    ctx.beginPath();
+    ctx.arc(0, 0, r.radius, 0, Math.PI*2);
+    ctx.strokeStyle = theme.rings[i];
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+  });
+
+  // ── Sweep arcs ────────────────────────────────────────────────
+  if (showSweep) {
+    rings.forEach((r, i) => {
+      const angle = r.frac * Math.PI * 2 - Math.PI/2;
+      const grad = ctx.createConicalGradient
+        ? null // not widely supported; use arc instead
+        : null;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, r.radius, -Math.PI/2, angle, false);
+      ctx.closePath();
+      ctx.fillStyle = theme.sweep;
+      ctx.fill();
+    });
+  }
+
+  // ── Trails ────────────────────────────────────────────────────
+  if (showTrails) {
+    rings.forEach((r, i) => {
+      const angle = r.frac * Math.PI * 2 - Math.PI/2;
+      const x = Math.cos(angle) * r.radius;
+      const y = Math.sin(angle) * r.radius;
+      trailBufs[i].push({x, y});
+      if (trailBufs[i].length > TRAIL_LEN) trailBufs[i].shift();
+
+      if (trailBufs[i].length > 1) {
+        for (let t = 1; t < trailBufs[i].length; t++) {
+          const alpha = (t / trailBufs[i].length) * 0.35;
+          ctx.beginPath();
+          ctx.arc(trailBufs[i][t].x, trailBufs[i][t].y, 1.5, 0, Math.PI*2);
+          ctx.fillStyle = theme.dots[i].replace(')', `,${alpha})`).replace('rgb','rgba').replace(/^#/, () => {
+            // parse hex color to rgba
+            const c = theme.dots[i];
+            const r2 = parseInt(c.slice(1,3),16), g2 = parseInt(c.slice(3,5),16), b2 = parseInt(c.slice(5,7),16);
+            return `rgba(${r2},${g2},${b2},`;
+          }) + ')';
+          // Simpler: just use the dot color with reduced alpha
+          const hex = theme.dots[i];
+          const rr=parseInt(hex.slice(1,3),16), gg=parseInt(hex.slice(3,5),16), bb=parseInt(hex.slice(5,7),16);
+          ctx.fillStyle = `rgba(${rr},${gg},${bb},${alpha})`;
+          ctx.fill();
+        }
+      }
+    });
+  }
+
+  // ── Dots ──────────────────────────────────────────────────────
+  rings.forEach((r, i) => {
+    const angle = r.frac * Math.PI * 2 - Math.PI/2;
+    const x = Math.cos(angle) * r.radius;
+    const y = Math.sin(angle) * r.radius;
+    const hex = theme.dots[i];
+    const rr=parseInt(hex.slice(1,3),16), gg=parseInt(hex.slice(3,5),16), bb=parseInt(hex.slice(5,7),16);
+
+    if (theme.glow) {
+      const grd = ctx.createRadialGradient(x, y, 0, x, y, 10);
+      grd.addColorStop(0, `rgba(${rr},${gg},${bb},0.6)`);
+      grd.addColorStop(1, `rgba(${rr},${gg},${bb},0)`);
+      ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI*2);
+      ctx.fillStyle = grd; ctx.fill();
+    }
+
+    ctx.beginPath();
+    ctx.arc(x, y, 4.5, 0, Math.PI*2);
+    ctx.fillStyle = hex; ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x, y, 2, 0, Math.PI*2);
+    ctx.fillStyle = '#fff'; ctx.fill();
+  });
+
+  // ── Center ────────────────────────────────────────────────────
+  // Draw actual time in center
+  const timeStr = now.toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  ctx.fillStyle = theme.dots[0];
+  ctx.font = `${maxR*0.09}px Courier New`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(timeStr, 0, 0);
+
+  // ── Labels ────────────────────────────────────────────────────
+  if (showLabels) {
+    ctx.font = `${maxR*0.038}px Courier New`;
+    ctx.fillStyle = theme.text;
+    rings.forEach((r, i) => {
+      ctx.fillText(r.label, 0, -(r.radius + 10));
+    });
+  }
+
+  // ── Tick marks on second ring ──────────────────────────────────
+  for (let t = 0; t < 60; t++) {
+    const a = (t/60) * Math.PI*2 - Math.PI/2;
+    const isMaj = t % 5 === 0;
+    const r0 = maxR * 0.95, r1 = r0 - (isMaj ? 6 : 3);
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a)*r0, Math.sin(a)*r0);
+    ctx.lineTo(Math.cos(a)*r1, Math.sin(a)*r1);
+    const hex = theme.dots[0];
+    const rr=parseInt(hex.slice(1,3),16), gg=parseInt(hex.slice(3,5),16), bb=parseInt(hex.slice(5,7),16);
+    ctx.strokeStyle = `rgba(${rr},${gg},${bb},${isMaj?0.4:0.15})`;
+    ctx.lineWidth = isMaj ? 1.5 : 0.8;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  // ── Progress bars (bottom) ────────────────────────────────────
+  const now2 = new Date();
+  const pct = now2.getSeconds() / 60;
+  const barH = 2, barY = H - 5;
+  ctx.fillStyle = '#111'; ctx.fillRect(0, barY, W, barH);
+  const hex0 = theme.dots[0];
+  const rr=parseInt(hex0.slice(1,3),16), gg=parseInt(hex0.slice(3,5),16), bb=parseInt(hex0.slice(5,7),16);
+  ctx.fillStyle = `rgba(${rr},${gg},${bb},0.5)`;
+  ctx.fillRect(0, barY, W * pct, barH);
+
+  // ── Date row ──────────────────────────────────────────────────
+  const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const doy = getDayOfYear(now), diy = getDaysInYear(now);
+  const yearPct = ((doy / diy) * 100).toFixed(1);
+  document.getElementById('daterow').textContent =
+    `${days[now.getDay()]}  ·  ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}  ·  day ${doy} of ${diy}  ·  ${yearPct}% of year elapsed`;
+
+  requestAnimationFrame(draw);
+}
+
+// ── Controls ──────────────────────────────────────────────────────
+document.getElementById('btnBreath').addEventListener('click', () => {
+  breathing = !breathing;
+  document.getElementById('btnBreath').classList.toggle('active', breathing);
+  if (!breathing) breathPhase = 0;
+});
+document.getElementById('btnTrails').addEventListener('click', () => {
+  showTrails = !showTrails;
+  document.getElementById('btnTrails').classList.toggle('active', showTrails);
+  if (!showTrails) trailBufs = Array.from({length:7}, ()=>[]);
+});
+document.getElementById('btnLabels').addEventListener('click', () => {
+  showLabels = !showLabels;
+  document.getElementById('btnLabels').classList.toggle('active', showLabels);
+});
+document.getElementById('btnSweep').addEventListener('click', () => {
+  showSweep = !showSweep;
+  document.getElementById('btnSweep').classList.toggle('active', showSweep);
+});
+document.getElementById('theme').addEventListener('change', () => {
+  trailBufs = Array.from({length:7}, ()=>[]);
+});
+
+window.addEventListener('resize', resize);
+
+resize();
+requestAnimationFrame(draw);
+</script>
+</body>
+</html>

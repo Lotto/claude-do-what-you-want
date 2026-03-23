@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fractal Explorer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #040406; color: #a0a0b0; font: 11px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { padding: 7px 14px; background: #06060a; border-bottom: 1px solid #10101c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; }
+  button:hover { background: #12122a; color: #a0a0c8; border-color: #3a3a60; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  input[type=range] { width: 72px; accent-color: #4060c0; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  #views { display: flex; flex: 1; min-height: 0; }
+  .view { flex: 1; position: relative; overflow: hidden; }
+  .view + .view { border-left: 1px solid #141428; }
+  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+  .vinfo { position: absolute; bottom: 8px; left: 8px; right: 8px; font-size: 10px; color: #28284a; pointer-events: none; display: flex; justify-content: space-between; }
+  .vtitle { position: absolute; top: 8px; left: 8px; font-size: 10px; color: #303060; pointer-events: none; letter-spacing: 0.1em; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Fractal</h1>
+  <div class="sep"></div>
+  <select id="selPreset">
+    <option value="-1">— Presets —</option>
+    <option value="0">Full Set</option>
+    <option value="1">Seahorse Valley</option>
+    <option value="2">Elephant Valley</option>
+    <option value="3">Double Spiral</option>
+    <option value="4">Mini Mandelbrot</option>
+    <option value="5">Antenna Tip</option>
+  </select>
+  <div class="sep"></div>
+  <label>Iter
+    <input type="range" id="rngIter" min="64" max="2000" value="256" step="16">
+    <span id="lblIter">256</span>
+  </label>
+  <label>Cycles
+    <input type="range" id="rngCycles" min="1" max="20" value="5" step="1">
+    <span id="lblCycles">5</span>
+  </label>
+  <div class="sep"></div>
+  <select id="selPal">
+    <option value="0">Electric</option>
+    <option value="1">Fire</option>
+    <option value="2">Ice</option>
+    <option value="3">Rainbow</option>
+    <option value="4">Twilight</option>
+  </select>
+  <div class="sep"></div>
+  <button id="btnReset">Reset</button>
+  <span id="lblCoords" style="font-size:10px;color:#252545;margin-left:6px;min-width:260px"></span>
+</div>
+<div id="views">
+  <div class="view">
+    <canvas id="mandCanvas"></canvas>
+    <div class="vtitle">MANDELBROT</div>
+    <div class="vinfo">
+      <span>scroll=zoom · drag=pan · hover→Julia</span>
+      <span id="mandScale"></span>
+    </div>
+  </div>
+  <div class="view">
+    <canvas id="juliaCanvas"></canvas>
+    <div class="vtitle">JULIA SET</div>
+    <div class="vinfo">
+      <span id="juliaLabel">c = hover Mandelbrot</span>
+      <span id="juliaScale"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── Shaders ───────────────────────────────────────────────────────
+const VS = `#version 300 es
+in vec2 a_pos;
+void main() { gl_Position = vec4(a_pos, 0.0, 1.0); }`;
+
+const FS = `#version 300 es
+precision highp float;
+
+uniform vec2  u_center;
+uniform float u_scale;
+uniform int   u_maxIter;
+uniform vec2  u_res;
+uniform vec2  u_juliaC;
+uniform bool  u_isJulia;
+uniform int   u_palette;
+uniform float u_cycles;
+
+out vec4 fragColor;
+
+vec3 pal(float t, vec3 a, vec3 b, vec3 c, vec3 d) {
+  return a + b * cos(6.28318 * (c * t + d));
+}
+vec3 getColor(float t) {
+  if (u_palette == 0) return pal(t, vec3(.5,.5,.5), vec3(.5,.5,.5), vec3(1.,1.,1.),  vec3(.00,.33,.67));
+  if (u_palette == 1) return pal(t, vec3(.5,.2,.0), vec3(.5,.3,.1), vec3(1.5,.7,.3), vec3(.00,.15,.70));
+  if (u_palette == 2) return pal(t, vec3(.1,.3,.5), vec3(.2,.3,.5), vec3(1.,1.,1.),  vec3(.30,.50,.90));
+  if (u_palette == 3) return pal(t, vec3(.5,.5,.5), vec3(.5,.5,.5), vec3(1.,.7,.4),  vec3(.00,.15,.20));
+                      return pal(t, vec3(.4,.1,.5), vec3(.5,.3,.5), vec3(.8,.5,1.),  vec3(.00,.20,.50));
+}
+
+void main() {
+  vec2 uv = (gl_FragCoord.xy - u_res * 0.5) / (u_res.y * 0.5) * u_scale + u_center;
+
+  vec2 z = u_isJulia ? uv : vec2(0.0);
+  vec2 c = u_isJulia ? u_juliaC : uv;
+
+  int escaped = u_maxIter;
+  for (int k = 0; k < u_maxIter; k++) {
+    float x = z.x*z.x - z.y*z.y + c.x;
+    float y = 2.0*z.x*z.y + c.y;
+    z = vec2(x, y);
+    if (dot(z,z) > 256.0) { escaped = k; break; }
+  }
+
+  if (escaped == u_maxIter) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+
+  // Smooth escape count (Hubbard-Douady potential)
+  float log2zn = log2(max(dot(z,z), 1e-20)) * 0.5;
+  float nu     = log2(max(log2zn, 1e-10));
+  float smooth = float(escaped) + 1.0 - nu;
+  float t      = fract(smooth / float(u_maxIter) * u_cycles);
+
+  fragColor = vec4(getColor(t), 1.0);
+}`;
+
+// ── Renderer factory ──────────────────────────────────────────────
+function makeRenderer(canvas) {
+  const gl = canvas.getContext('webgl2');
+  if (!gl) {
+    canvas.parentElement.insertAdjacentHTML('beforeend',
+      '<p style="color:#e05050;padding:20px;position:absolute;top:40px">WebGL2 not supported</p>');
+    return null;
+  }
+
+  const compile = (type, src) => {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+    return s;
+  };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VS));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FS));
+  gl.linkProgram(prog); gl.useProgram(prog);
+
+  const vbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+  const al = gl.getAttribLocation(prog, 'a_pos');
+  gl.enableVertexAttribArray(al);
+  gl.vertexAttribPointer(al, 2, gl.FLOAT, false, 0, 0);
+
+  const U = {};
+  ['u_center','u_scale','u_maxIter','u_res','u_juliaC','u_isJulia','u_palette','u_cycles'].forEach(n => {
+    U[n] = gl.getUniformLocation(prog, n);
+  });
+
+  return function draw(st) {
+    const W = canvas.clientWidth  * devicePixelRatio | 0;
+    const H = canvas.clientHeight * devicePixelRatio | 0;
+    if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
+    gl.viewport(0, 0, W, H);
+    gl.uniform2f(U.u_center,  st.cx,    st.cy);
+    gl.uniform1f(U.u_scale,   st.scale);
+    gl.uniform1i(U.u_maxIter, st.iter);
+    gl.uniform2f(U.u_res,     W, H);
+    gl.uniform2f(U.u_juliaC,  st.jx,    st.jy);
+    gl.uniform1i(U.u_isJulia, st.julia ? 1 : 0);
+    gl.uniform1i(U.u_palette, st.pal);
+    gl.uniform1f(U.u_cycles,  st.cycles);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  };
+}
+
+// ── State ─────────────────────────────────────────────────────────
+const MS = { cx:-0.5, cy:0,  scale:1.8, iter:256, jx:-0.7, jy:0.27, julia:false, pal:0, cycles:5 };
+const JS = { cx:0,   cy:0,  scale:1.5, iter:256, jx:-0.7, jy:0.27, julia:true,  pal:0, cycles:5 };
+
+const PRESETS = [
+  { cx:-0.5,    cy:0.0,    scale:1.8   },
+  { cx:-0.7453, cy:0.1127, scale:0.018 },
+  { cx:0.2929,  cy:0.0118, scale:0.15  },
+  { cx:-0.7269, cy:0.1889, scale:0.006 },
+  { cx:-1.7543, cy:0.0,    scale:0.030 },
+  { cx:-1.2510, cy:0.0003, scale:0.055 },
+];
+
+let dirty = true;
+const mandCanvas  = document.getElementById('mandCanvas');
+const juliaCanvas = document.getElementById('juliaCanvas');
+const drawMand    = makeRenderer(mandCanvas);
+const drawJulia   = makeRenderer(juliaCanvas);
+
+// ── Interaction ───────────────────────────────────────────────────
+function canvasToComplex(canvas, ex, ey, state) {
+  const r   = canvas.getBoundingClientRect();
+  const mx  = (ex - r.left) / r.width;
+  const my  = (ey - r.top)  / r.height;
+  const asp = r.width / r.height;
+  return {
+    x: (mx - 0.5) * asp * 2 * state.scale + state.cx,
+    y: (0.5 - my) * 2 * state.scale + state.cy,
+  };
+}
+
+function attachInteract(canvas, state, scaleEl) {
+  let drag = null;
+
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const pt  = canvasToComplex(canvas, e.clientX, e.clientY, state);
+    const fac = e.deltaY > 0 ? 1.22 : 0.82;
+    const r   = canvas.getBoundingClientRect();
+    const mx  = (e.clientX - r.left) / r.width;
+    const my  = (e.clientY - r.top)  / r.height;
+    const asp = r.width / r.height;
+    state.scale *= fac;
+    state.cx = pt.x - (mx - 0.5) * asp * 2 * state.scale;
+    state.cy = pt.y - (0.5 - my) * 2 * state.scale;
+    dirty = true;
+    scaleEl.textContent = `zoom ${(1.8 / state.scale).toExponential(1)}×`;
+  }, { passive: false });
+
+  canvas.addEventListener('mousedown', e => {
+    drag = { ex: e.clientX, ey: e.clientY, cx: state.cx, cy: state.cy };
+    e.preventDefault();
+  });
+  window.addEventListener('mouseup',   () => drag = null);
+  canvas.addEventListener('mousemove', e => {
+    if (!drag) return;
+    const r   = canvas.getBoundingClientRect();
+    const asp = r.width / r.height;
+    state.cx  = drag.cx - (e.clientX - drag.ex) / r.height * 2 * state.scale;
+    state.cy  = drag.cy + (e.clientY - drag.ey) / r.height * 2 * state.scale;
+    dirty = true;
+  });
+
+  // Touch zoom (pinch)
+  let touches = [];
+  canvas.addEventListener('touchstart', e => { e.preventDefault(); touches = [...e.touches]; }, { passive: false });
+  canvas.addEventListener('touchmove',  e => {
+    e.preventDefault();
+    if (e.touches.length === 1 && touches.length === 1) {
+      const r = canvas.getBoundingClientRect(), asp = r.width / r.height;
+      state.cx -= (e.touches[0].clientX - touches[0].clientX) / r.height * 2 * state.scale;
+      state.cy += (e.touches[0].clientY - touches[0].clientY) / r.height * 2 * state.scale;
+      dirty = true;
+    } else if (e.touches.length === 2 && touches.length === 2) {
+      const d0 = Math.hypot(touches[1].clientX - touches[0].clientX, touches[1].clientY - touches[0].clientY);
+      const d1 = Math.hypot(e.touches[1].clientX - e.touches[0].clientX, e.touches[1].clientY - e.touches[0].clientY);
+      state.scale *= d0 / d1;
+      dirty = true;
+    }
+    touches = [...e.touches];
+  }, { passive: false });
+}
+
+// Mandelbrot hover → update Julia c
+mandCanvas.addEventListener('mousemove', e => {
+  if (e.buttons) return;
+  const pt = canvasToComplex(mandCanvas, e.clientX, e.clientY, MS);
+  JS.jx = pt.x; JS.jy = pt.y;
+  document.getElementById('juliaLabel').textContent =
+    `c = ${pt.x.toFixed(5)} ${pt.y >= 0 ? '+' : ''}${pt.y.toFixed(5)}i`;
+  document.getElementById('lblCoords').textContent =
+    `Mandelbrot · c = ${pt.x.toFixed(7)} ${pt.y >= 0 ? '+' : ''}${pt.y.toFixed(7)}i`;
+  dirty = true;
+});
+
+attachInteract(mandCanvas,  MS, document.getElementById('mandScale'));
+attachInteract(juliaCanvas, JS, document.getElementById('juliaScale'));
+
+// ── Controls ──────────────────────────────────────────────────────
+document.getElementById('selPreset').addEventListener('change', e => {
+  const i = parseInt(e.target.value); if (i < 0) return;
+  const p = PRESETS[i];
+  MS.cx = p.cx; MS.cy = p.cy; MS.scale = p.scale;
+  dirty = true; e.target.value = '-1';
+});
+
+document.getElementById('rngIter').addEventListener('input', e => {
+  const v = parseInt(e.target.value);
+  document.getElementById('lblIter').textContent = v;
+  MS.iter = JS.iter = v; dirty = true;
+});
+
+document.getElementById('rngCycles').addEventListener('input', e => {
+  const v = parseInt(e.target.value);
+  document.getElementById('lblCycles').textContent = v;
+  MS.cycles = JS.cycles = v; dirty = true;
+});
+
+document.getElementById('selPal').addEventListener('change', e => {
+  MS.pal = JS.pal = parseInt(e.target.value); dirty = true;
+});
+
+document.getElementById('btnReset').addEventListener('click', () => {
+  MS.cx = -0.5; MS.cy = 0; MS.scale = 1.8;
+  JS.cx =  0;   JS.cy = 0; JS.scale = 1.5;
+  dirty = true;
+});
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  if (e.key === 'r') document.getElementById('btnReset').click();
+  if (e.key === '+' || e.key === '=') { MS.scale *= 0.8; dirty = true; }
+  if (e.key === '-') { MS.scale *= 1.25; dirty = true; }
+});
+
+// ── Render loop ───────────────────────────────────────────────────
+let prevW = 0, prevH = 0;
+function loop() {
+  if (window.innerWidth !== prevW || window.innerHeight !== prevH) {
+    prevW = window.innerWidth; prevH = window.innerHeight; dirty = true;
+  }
+  if (dirty && drawMand && drawJulia) {
+    drawMand(MS); drawJulia(JS);
+    dirty = false;
+  }
+  requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+</body>
+</html>

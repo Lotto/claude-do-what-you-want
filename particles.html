@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Particle Physics</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #080808;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+  }
+  h1 { font-size: 1rem; letter-spacing: 0.25em; color: #555; text-transform: uppercase; padding: 8px 0 5px; }
+  #controls {
+    display: flex; gap: 7px; flex-wrap: wrap; justify-content: center;
+    padding: 3px 0 6px; align-items: center;
+  }
+  button {
+    background: #141414; color: #999; border: 1px solid #222;
+    padding: 3px 10px; cursor: pointer; font-family: inherit;
+    font-size: 0.71rem; border-radius: 3px; transition: all 0.12s;
+  }
+  button:hover { background: #1e1e1e; color: #fff; }
+  button.active { background: #1a2a3a; color: #7ab4ff; border-color: #2a4a7a; }
+  button.mode { }
+  button.mode.active { background: #1a3a2a; color: #7affa0; border-color: #2a6a4a; }
+  label { font-size: 0.71rem; color: #555; display: flex; align-items: center; gap: 5px; }
+  input[type=range] { width: 60px; accent-color: #3a6a8a; }
+  #info { font-size: 0.66rem; color: #333; padding-bottom: 4px; }
+  canvas { display: block; cursor: crosshair; }
+</style>
+</head>
+<body>
+<h1>Particle Physics</h1>
+<div id="controls">
+  <button class="mode active" data-mode="gravity">Gravity</button>
+  <button class="mode" data-mode="attract">Attract</button>
+  <button class="mode" data-mode="repel">Repel</button>
+  <button class="mode" data-mode="orbit">Orbit</button>
+  <button class="mode" data-mode="fluid">Fluid</button>
+  <button class="mode" data-mode="fireworks">Fireworks</button>
+  <button id="btnClear">Clear</button>
+  <button id="btnTrails" class="active">Trails</button>
+  <label>Count <input type="range" id="spawnCount" min="1" max="50" value="10"></label>
+  <label>Size <input type="range" id="pSize" min="1" max="8" value="3"></label>
+</div>
+<div id="info"><span id="pCount">0</span> particles &mdash; click or drag to spawn &mdash; <span id="modeName">Gravity</span> mode</div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = Math.min(window.innerWidth - 8, 1300);
+  H = window.innerHeight - 112;
+  canvas.width = W; canvas.height = H;
+}
+
+let mode = 'gravity';
+let trails = true;
+let particles = [];
+let mouseX = W/2, mouseY = H/2;
+let mouseDown = false;
+let spawnTimer = 0;
+
+// ── Particle factory ─────────────────────────────────────────────
+function hsl(h, s, l) { return `hsl(${h},${s}%,${l}%)`; }
+
+function makeParticle(x, y, vx, vy, opts = {}) {
+  const hue = opts.hue ?? Math.random() * 360;
+  return {
+    x, y, vx, vy,
+    ax: 0, ay: 0,
+    life: opts.life ?? Infinity,
+    maxLife: opts.life ?? Infinity,
+    r: opts.r ?? parseFloat(document.getElementById('pSize').value),
+    hue,
+    mass: opts.mass ?? 1,
+    trail: [],
+  };
+}
+
+function spawnAt(x, y) {
+  const count = parseInt(document.getElementById('spawnCount').value);
+  const size = parseFloat(document.getElementById('pSize').value);
+
+  if (mode === 'gravity') {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = Math.random() * 2;
+      particles.push(makeParticle(
+        x + (Math.random()-0.5)*10, y + (Math.random()-0.5)*10,
+        Math.cos(a)*sp, Math.sin(a)*sp,
+        { r: size * (0.5 + Math.random()*0.8), hue: Math.random()*360 }
+      ));
+    }
+  } else if (mode === 'attract' || mode === 'repel') {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 1 + Math.random() * 3;
+      particles.push(makeParticle(x, y, Math.cos(a)*sp, Math.sin(a)*sp,
+        { r: size, hue: 180 + Math.random()*60 }));
+    }
+  } else if (mode === 'orbit') {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const dist = 20 + Math.random() * 80;
+      const px = x + Math.cos(a) * dist, py = y + Math.sin(a) * dist;
+      const speed = Math.sqrt(20 / Math.max(dist, 10)) * 2.5;
+      particles.push(makeParticle(px, py,
+        -Math.sin(a) * speed, Math.cos(a) * speed,
+        { r: size * 0.8, hue: a * 180/Math.PI }));
+    }
+  } else if (mode === 'fluid') {
+    for (let i = 0; i < count; i++) {
+      particles.push(makeParticle(
+        x + (Math.random()-0.5)*20, y + (Math.random()-0.5)*20,
+        (Math.random()-0.5)*2, (Math.random()-0.5)*2,
+        { r: size * 1.2, hue: 200 + Math.random()*40, mass: 2 }
+      ));
+    }
+  } else if (mode === 'fireworks') {
+    launchFirework(x, y);
+  }
+}
+
+function launchFirework(tx, ty) {
+  // Shell
+  const shell = makeParticle(
+    tx + (Math.random()-0.5)*60, H,
+    (Math.random()-0.5)*1.5, -(8 + Math.random()*4),
+    { r: 3, hue: Math.random()*360, life: 60 + Math.random()*30, mass: 0 }
+  );
+  shell._isShell = true;
+  shell._tx = tx; shell._ty = ty;
+  particles.push(shell);
+}
+
+function explode(x, y, hue) {
+  const count = 60 + Math.random() * 40 | 0;
+  for (let i = 0; i < count; i++) {
+    const a = (i / count) * Math.PI * 2 + (Math.random()-0.5)*0.3;
+    const sp = 1.5 + Math.random() * 3.5;
+    particles.push(makeParticle(x, y, Math.cos(a)*sp, Math.sin(a)*sp,
+      { r: 1.5 + Math.random()*1.5, hue: hue + (Math.random()-0.5)*40,
+        life: 40 + Math.random()*50, mass: 0.3 }));
+  }
+}
+
+// ── Physics update ───────────────────────────────────────────────
+const GRAVITY = 0.25;
+const DAMPING = 0.98;
+const BOUNCE  = 0.55;
+const TRAIL_MAX = 18;
+
+function update() {
+  const dead = [];
+
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+
+    // Lifetime
+    if (p.life !== Infinity) {
+      p.life--;
+      if (p.life <= 0) { dead.push(i); continue; }
+    }
+
+    // Firework shell: explode near apex
+    if (p._isShell) {
+      if (p.vy >= -0.5) {
+        explode(p.x, p.y, p.hue);
+        dead.push(i); continue;
+      }
+      p.ay = GRAVITY * 0.4;
+    } else {
+      // Forces per mode
+      if (mode === 'gravity') {
+        p.ay = GRAVITY;
+      } else if (mode === 'attract') {
+        const dx = mouseX - p.x, dy = mouseY - p.y;
+        const d2 = dx*dx + dy*dy + 100;
+        const f = Math.min(300 / d2, 2);
+        p.ax = dx * f; p.ay = dy * f;
+      } else if (mode === 'repel') {
+        const dx = mouseX - p.x, dy = mouseY - p.y;
+        const d2 = dx*dx + dy*dy + 100;
+        const f = Math.min(300 / d2, 2);
+        p.ax = -dx * f; p.ay = -dy * f;
+      } else if (mode === 'orbit') {
+        const dx = mouseX - p.x, dy = mouseY - p.y;
+        const d = Math.sqrt(dx*dx + dy*dy) + 1;
+        const f = Math.min(500 / (d*d), 1.5);
+        p.ax = dx/d * f; p.ay = dy/d * f;
+      } else if (mode === 'fluid') {
+        // SPH-lite: push away from nearby particles, pull to cursor
+        p.ax = 0; p.ay = 0.05;
+        for (let j = 0; j < particles.length; j++) {
+          if (i === j) continue;
+          const q = particles[j];
+          const dx = p.x - q.x, dy = p.y - q.y;
+          const d2 = dx*dx + dy*dy;
+          if (d2 < 900 && d2 > 0) {
+            const d = Math.sqrt(d2);
+            const f = (30 - d) / d * 0.15;
+            p.ax += dx * f; p.ay += dy * f;
+          }
+        }
+        const cdx = mouseX - p.x, cdy = mouseY - p.y;
+        const cd = Math.sqrt(cdx*cdx+cdy*cdy)+1;
+        p.ax += cdx/cd * 0.3; p.ay += cdy/cd * 0.3;
+      } else if (mode === 'fireworks') {
+        p.ay = GRAVITY * 0.6 * p.mass;
+        p.ax = 0;
+      }
+    }
+
+    // Integrate
+    p.vx = (p.vx + p.ax) * DAMPING;
+    p.vy = (p.vy + p.ay) * DAMPING;
+
+    // Trail
+    if (trails) {
+      p.trail.push({ x: p.x, y: p.y });
+      if (p.trail.length > TRAIL_MAX) p.trail.shift();
+    } else {
+      p.trail = [];
+    }
+
+    p.x += p.vx; p.y += p.vy;
+
+    // Boundary: bounce for gravity/fluid, wrap for orbit/attract/repel
+    if (mode === 'gravity' || mode === 'fluid') {
+      if (p.y + p.r > H) { p.y = H - p.r; p.vy *= -BOUNCE; p.vx *= 0.92; }
+      if (p.y - p.r < 0) { p.y = p.r; p.vy *= -BOUNCE; }
+      if (p.x - p.r < 0) { p.x = p.r; p.vx *= -BOUNCE; }
+      if (p.x + p.r > W) { p.x = W - p.r; p.vx *= -BOUNCE; }
+    } else {
+      if (p.x < -20) p.x = W + 20;
+      if (p.x > W+20) p.x = -20;
+      if (p.y < -20) p.y = H + 20;
+      if (p.y > H+20) p.y = -20;
+    }
+
+    // Firework sparks: fade out near edges
+    if (mode === 'fireworks' && !p._isShell) {
+      if (p.y > H - 2) dead.push(i);
+    }
+  }
+
+  // Remove dead (reverse order)
+  for (let i = dead.length - 1; i >= 0; i--) particles.splice(dead[i], 1);
+
+  // Cap
+  if (particles.length > 4000) particles.splice(0, particles.length - 4000);
+}
+
+// ── Render ───────────────────────────────────────────────────────
+function draw() {
+  if (trails) {
+    ctx.fillStyle = 'rgba(8,8,8,0.18)';
+    ctx.fillRect(0, 0, W, H);
+  } else {
+    ctx.fillStyle = '#080808';
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  for (const p of particles) {
+    const alpha = p.life === Infinity ? 1 : Math.min(1, p.life / 20);
+
+    // Draw trail
+    if (trails && p.trail.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(p.trail[0].x, p.trail[0].y);
+      for (let i = 1; i < p.trail.length; i++) ctx.lineTo(p.trail[i].x, p.trail[i].y);
+      ctx.strokeStyle = `hsla(${p.hue},70%,55%,${alpha * 0.35})`;
+      ctx.lineWidth = p.r * 0.5;
+      ctx.stroke();
+    }
+
+    // Draw particle
+    const light = p._isShell ? 80 : 55 + (1 - Math.min(1, p.life/40)) * 20;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = `hsla(${p.hue},75%,${light}%,${alpha})`;
+    ctx.fill();
+  }
+
+  document.getElementById('pCount').textContent = particles.length;
+}
+
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+// ── Input ────────────────────────────────────────────────────────
+canvas.addEventListener('mousemove', e => {
+  const r = canvas.getBoundingClientRect();
+  mouseX = e.clientX - r.left; mouseY = e.clientY - r.top;
+  if (mouseDown && mode !== 'fireworks') {
+    spawnTimer++;
+    if (spawnTimer % 3 === 0) spawnAt(mouseX, mouseY);
+  }
+});
+canvas.addEventListener('mousedown', e => {
+  mouseDown = true;
+  const r = canvas.getBoundingClientRect();
+  mouseX = e.clientX - r.left; mouseY = e.clientY - r.top;
+  spawnAt(mouseX, mouseY);
+});
+canvas.addEventListener('mouseup', () => { mouseDown = false; spawnTimer = 0; });
+
+// Touch
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const r = canvas.getBoundingClientRect();
+  mouseX = e.touches[0].clientX - r.left; mouseY = e.touches[0].clientY - r.top;
+  spawnAt(mouseX, mouseY);
+}, { passive: false });
+canvas.addEventListener('touchstart', e => {
+  const r = canvas.getBoundingClientRect();
+  mouseX = e.touches[0].clientX - r.left; mouseY = e.touches[0].clientY - r.top;
+  spawnAt(mouseX, mouseY);
+});
+
+// Mode buttons
+document.querySelectorAll('.mode').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mode').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    mode = btn.dataset.mode;
+    document.getElementById('modeName').textContent = btn.textContent;
+    if (mode === 'fireworks') particles = [];
+  });
+});
+
+document.getElementById('btnClear').addEventListener('click', () => { particles = []; });
+document.getElementById('btnTrails').addEventListener('click', () => {
+  trails = !trails;
+  document.getElementById('btnTrails').classList.toggle('active', trails);
+});
+
+window.addEventListener('resize', () => { resize(); });
+
+// Auto-spawn fireworks when in that mode
+setInterval(() => {
+  if (mode === 'fireworks') spawnAt(80 + Math.random() * (W - 160), H * 0.2 + Math.random() * H * 0.4);
+}, 1200);
+
+resize();
+loop();
+</script>
+</body>
+</html>

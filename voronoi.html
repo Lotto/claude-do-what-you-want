@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voronoi</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #080808;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    height: 100vh; overflow: hidden;
+  }
+  h1 { font-size: 1rem; letter-spacing: 0.25em; color: #555; text-transform: uppercase; padding: 8px 0 5px; }
+  #controls { display: flex; gap: 7px; flex-wrap: wrap; justify-content: center; padding: 3px 0 7px; align-items: center; }
+  button {
+    background: #141414; color: #999; border: 1px solid #222;
+    padding: 3px 11px; cursor: pointer; font-family: inherit;
+    font-size: 0.71rem; border-radius: 3px; transition: all 0.12s;
+  }
+  button:hover { background: #1e1e1e; color: #fff; }
+  button.active { background: #1a2a3a; color: #80c8ff; border-color: #2a5a8a; }
+  label { font-size: 0.71rem; color: #555; display: flex; align-items: center; gap: 5px; }
+  input[type=range] { width: 65px; accent-color: #3a6a9a; }
+  select { background: #141414; color: #aaa; border: 1px solid #222; padding: 3px 8px; font-family: inherit; font-size: 0.71rem; border-radius: 3px; }
+  #info { font-size: 0.66rem; color: #333; padding-bottom: 4px; }
+  #wrap { position: relative; }
+  canvas { display: block; }
+  #overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+<h1>Voronoi / Lloyd Relaxation</h1>
+<div id="controls">
+  <button id="btnRelax" class="active">Relax</button>
+  <button id="btnReset">Reset</button>
+  <label>Seeds <input type="range" id="nSeeds" min="4" max="128" value="40"><span id="nVal">40</span></label>
+  <label>Palette
+    <select id="palette">
+      <option value="pastel">Pastel</option>
+      <option value="vivid">Vivid</option>
+      <option value="heat">Heat</option>
+      <option value="ice">Ice</option>
+      <option value="mono">Mono</option>
+    </select>
+  </label>
+  <button id="btnDelaunay" class="active">Delaunay</button>
+  <button id="btnSeeds">Show Seeds</button>
+  <button id="btnEdges" class="active">Edges</button>
+</div>
+<div id="info">Click to add seed &nbsp;|&nbsp; Right-click to remove nearest &nbsp;|&nbsp; <span id="stepInfo">step: 0</span></div>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <canvas id="overlay"></canvas>
+</div>
+
+<script>
+const glCanvas  = document.getElementById('c');
+const ovCanvas  = document.getElementById('overlay');
+const ovCtx     = ovCanvas.getContext('2d');
+let gl, prog, quadBuf;
+let W, H;
+let seeds = [];         // [{x,y,r,g,b}]
+let relaxing = true;
+let showDelaunay = true;
+let showSeeds    = false;
+let showEdges    = true;
+let stepCount    = 0;
+let animFrame;
+
+// ── Resize ────────────────────────────────────────────────────────
+function resize() {
+  W = Math.min(window.innerWidth - 8, 1300);
+  H = window.innerHeight - 112;
+  glCanvas.width  = ovCanvas.width  = W;
+  glCanvas.height = ovCanvas.height = H;
+  glCanvas.style.width = ovCanvas.style.width  = W + 'px';
+  glCanvas.style.height = ovCanvas.style.height = H + 'px';
+}
+
+// ── Seed generation ───────────────────────────────────────────────
+const PALETTES = {
+  pastel: () => { const h=Math.random()*360; return hslToRgb(h,60,75); },
+  vivid:  () => { const h=Math.random()*360; return hslToRgb(h,85,55); },
+  heat:   (i,n) => hslToRgb(30 + (i/n)*60, 90, 50),
+  ice:    (i,n) => hslToRgb(190 + (i/n)*40, 70, 60),
+  mono:   (i,n) => { const v=(i/n*180+60)|0; return [v,v,v]; },
+};
+
+function hslToRgb(h,s,l) {
+  s/=100; l/=100;
+  const k=n=>((n+h/30)%12);
+  const a=s*Math.min(l,1-l);
+  const f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));
+  return [f(0),f(8),f(4)].map(v=>Math.round(v*255));
+}
+
+function makeSeeds(n) {
+  const pal = document.getElementById('palette').value;
+  const fn = PALETTES[pal];
+  seeds = Array.from({length:n}, (_,i) => {
+    const [r,g,b] = fn(i, n);
+    return { x: Math.random()*W, y: Math.random()*H, r:r/255, g:g/255, b:b/255 };
+  });
+  stepCount = 0;
+}
+
+function recolor() {
+  const pal = document.getElementById('palette').value;
+  const fn = PALETTES[pal];
+  seeds.forEach((s,i) => {
+    const [r,g,b] = fn(i, seeds.length);
+    s.r=r/255; s.g=g/255; s.b=b/255;
+  });
+}
+
+// ── WebGL Voronoi ─────────────────────────────────────────────────
+const VS = `
+  attribute vec2 aPos;
+  void main() { gl_Position = vec4(aPos,0,1); }
+`;
+
+// Brute-force nearest-seed in fragment shader (up to 128 seeds)
+const FS = `
+  precision highp float;
+  uniform vec2  uRes;
+  uniform int   uN;
+  uniform vec2  uPos[128];
+  uniform vec3  uCol[128];
+  uniform int   uEdges;
+
+  void main() {
+    vec2 p = gl_FragCoord.xy;
+    float best1 = 1e9, best2 = 1e9;
+    int   idx   = 0;
+    for (int i = 0; i < 128; i++) {
+      if (i >= uN) break;
+      float d = distance(p, uPos[i]);
+      if (d < best1) { best2 = best1; best1 = d; idx = i; }
+      else if (d < best2) { best2 = d; }
+    }
+    vec3 col = uCol[idx];
+    if (uEdges == 1) {
+      float edge = best2 - best1;
+      float t = smoothstep(0.0, 2.5, edge);
+      col = mix(vec3(0.12,0.12,0.14), col, t);
+    }
+    gl_FragColor = vec4(col, 1.0);
+  }
+`;
+
+function initGL() {
+  gl = glCanvas.getContext('webgl', { antialias: false, preserveDrawingBuffer: true });
+  if (!gl) return;
+  prog = makeProgram(VS, FS);
+  const q = new Float32Array([-1,-1,1,-1,-1,1,1,1]);
+  quadBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, q, gl.STATIC_DRAW);
+}
+
+function makeProgram(vs, fs) {
+  const p = gl.createProgram();
+  [gl.VERTEX_SHADER,gl.FRAGMENT_SHADER].forEach((t,i)=>{
+    const s=gl.createShader(t); gl.shaderSource(s,[vs,fs][i]); gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s));
+    gl.attachShader(p,s);
+  });
+  gl.linkProgram(p); return p;
+}
+
+function renderVoronoi() {
+  if (!gl || !seeds.length) return;
+  gl.viewport(0,0,W,H);
+  gl.useProgram(prog);
+  const aPos = gl.getAttribLocation(prog,'aPos');
+  gl.bindBuffer(gl.ARRAY_BUFFER, quadBuf);
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+
+  const n = Math.min(seeds.length, 128);
+  gl.uniform2f(gl.getUniformLocation(prog,'uRes'), W, H);
+  gl.uniform1i(gl.getUniformLocation(prog,'uN'), n);
+  gl.uniform1i(gl.getUniformLocation(prog,'uEdges'), showEdges ? 1 : 0);
+
+  const pos = new Float32Array(128*2), col = new Float32Array(128*3);
+  for (let i=0;i<n;i++) {
+    pos[i*2]=seeds[i].x; pos[i*2+1]=seeds[i].y;
+    col[i*3]=seeds[i].r; col[i*3+1]=seeds[i].g; col[i*3+2]=seeds[i].b;
+  }
+  gl.uniform2fv(gl.getUniformLocation(prog,'uPos'), pos);
+  gl.uniform3fv(gl.getUniformLocation(prog,'uCol'), col);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+}
+
+// ── Delaunay triangulation (Bowyer-Watson) ────────────────────────
+function triangulate(pts) {
+  // Super-triangle large enough to contain all points
+  const minX=Math.min(...pts.map(p=>p.x)), maxX=Math.max(...pts.map(p=>p.x));
+  const minY=Math.min(...pts.map(p=>p.y)), maxY=Math.max(...pts.map(p=>p.y));
+  const dx=maxX-minX, dy=maxY-minY, dmax=Math.max(dx,dy)*3;
+  const mid={x:(minX+maxX)/2, y:(minY+maxY)/2};
+  const st=[
+    {x:mid.x-dmax*2, y:mid.y-dmax},
+    {x:mid.x,        y:mid.y+dmax*2},
+    {x:mid.x+dmax*2, y:mid.y-dmax},
+  ];
+  const superIdx = pts.length;
+  const allPts = [...pts, ...st];
+
+  let triangles = [{a:superIdx, b:superIdx+1, c:superIdx+2}];
+
+  for (let pi=0; pi<pts.length; pi++) {
+    const p = allPts[pi];
+    const badTris = [], polygon = [];
+
+    for (const tri of triangles) {
+      if (inCircumcircle(allPts[tri.a], allPts[tri.b], allPts[tri.c], p)) {
+        badTris.push(tri);
+      }
+    }
+    // Find boundary polygon
+    for (const tri of badTris) {
+      const edges = [[tri.a,tri.b],[tri.b,tri.c],[tri.c,tri.a]];
+      for (const [e0,e1] of edges) {
+        const shared = badTris.some(t => t!==tri && hasEdge(t,e0,e1));
+        if (!shared) polygon.push([e0,e1]);
+      }
+    }
+    for (const bt of badTris) triangles.splice(triangles.indexOf(bt),1);
+    for (const [e0,e1] of polygon) triangles.push({a:e0,b:e1,c:pi});
+  }
+  // Remove triangles sharing a super-triangle vertex
+  return triangles.filter(t => t.a<superIdx && t.b<superIdx && t.c<superIdx);
+}
+
+function hasEdge(tri, a, b) {
+  return (tri.a===a&&tri.b===b)||(tri.b===a&&tri.c===b)||(tri.c===a&&tri.a===b)||
+         (tri.a===b&&tri.b===a)||(tri.b===b&&tri.c===a)||(tri.c===b&&tri.a===a);
+}
+
+function inCircumcircle(a, b, c, p) {
+  const ax=a.x-p.x,ay=a.y-p.y,bx=b.x-p.x,by=b.y-p.y,cx=c.x-p.x,cy=c.y-p.y;
+  return (ax*(by*(ax*ax+ay*ay)-ay*(bx*bx+by*by)) -
+          bx*(ay*(ax*ax+ay*ay)-ax*(bx*bx+by*by)) +   // fixed sign
+          (ax*ax+ay*ay)*(bx*by-by*bx)) > 0;            // simplified: use determinant
+  // Proper determinant:
+}
+
+function circumcircleCheck(a,b,c,p) {
+  const ax=a.x-p.x,ay=a.y-p.y;
+  const bx=b.x-p.x,by=b.y-p.y;
+  const cx=c.x-p.x,cy=c.y-p.y;
+  return (ax*(by*( cx*cx+cy*cy) - cy*(bx*bx+by*by)) -
+          bx*(ay*(cx*cx+cy*cy) - cy*(ax*ax+ay*ay)) +
+          cx*(ay*(bx*bx+by*by) - by*(ax*ax+ay*ay))) > 0;
+}
+
+// Use the correct one
+function inCC(a,b,c,p) { return circumcircleCheck(a,b,c,p); }
+function triangulateFixed(pts) {
+  if (pts.length < 3) return [];
+  const minX=Math.min(...pts.map(p=>p.x))-1, maxX=Math.max(...pts.map(p=>p.x))+1;
+  const minY=Math.min(...pts.map(p=>p.y))-1, maxY=Math.max(...pts.map(p=>p.y))+1;
+  const dx=(maxX-minX)*10, dy=(maxY-minY)*10;
+  const mid={x:(minX+maxX)/2, y:(minY+maxY)/2};
+  const st=[
+    {x:mid.x-dx, y:minY-dy},
+    {x:mid.x,    y:maxY+dy},
+    {x:mid.x+dx, y:minY-dy},
+  ];
+  const sI=pts.length;
+  const all=[...pts,...st];
+  let tris=[{a:sI,b:sI+1,c:sI+2}];
+  for(let pi=0;pi<pts.length;pi++){
+    const p=all[pi],bad=[],poly=[];
+    for(const t of tris) if(inCC(all[t.a],all[t.b],all[t.c],p)) bad.push(t);
+    for(const t of bad){
+      for(const[e0,e1]of[[t.a,t.b],[t.b,t.c],[t.c,t.a]]){
+        if(!bad.some(t2=>t2!==t&&hasEdge(t2,e0,e1))) poly.push([e0,e1]);
+      }
+    }
+    tris=tris.filter(t=>!bad.includes(t));
+    for(const[e0,e1]of poly) tris.push({a:e0,b:e1,c:pi});
+  }
+  return tris.filter(t=>t.a<sI&&t.b<sI&&t.c<sI);
+}
+
+// ── Lloyd relaxation step ─────────────────────────────────────────
+// Approximate by sampling pixels from the WebGL render
+function lloydStep() {
+  if (!gl) return;
+  const n = seeds.length;
+  const sumX=new Float64Array(n), sumY=new Float64Array(n), cnt=new Int32Array(n);
+
+  // Read pixels — sample every 4px for speed
+  const step=4;
+  const pw=Math.ceil(W/step), ph=Math.ceil(H/step);
+  const buf=new Uint8Array(pw*ph*4);
+  // Render at reduced resolution to a temporary framebuffer
+  const fbTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, fbTex);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,pw,ph,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);
+  const fb=gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER,fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,fbTex,0);
+
+  // Render scaled voronoi
+  gl.viewport(0,0,pw,ph);
+  gl.useProgram(prog);
+  const aPos=gl.getAttribLocation(prog,'aPos');
+  gl.bindBuffer(gl.ARRAY_BUFFER,quadBuf);
+  gl.enableVertexAttribArray(aPos);
+  gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+  const pos=new Float32Array(128*2),col=new Float32Array(128*3);
+  // Scale seed positions for reduced res
+  const sx=pw/W, sy=ph/H;
+  for(let i=0;i<n&&i<128;i++){
+    pos[i*2]=seeds[i].x*sx; pos[i*2+1]=seeds[i].y*sy;
+    col[i*3]=seeds[i].r; col[i*3+1]=seeds[i].g; col[i*3+2]=seeds[i].b;
+  }
+  gl.uniform2f(gl.getUniformLocation(prog,'uRes'),pw,ph);
+  gl.uniform1i(gl.getUniformLocation(prog,'uN'),Math.min(n,128));
+  gl.uniform1i(gl.getUniformLocation(prog,'uEdges'),0);
+  gl.uniform2fv(gl.getUniformLocation(prog,'uPos'),pos);
+  gl.uniform3fv(gl.getUniformLocation(prog,'uCol'),col);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+
+  // Identify nearest seed per pixel by color matching
+  gl.readPixels(0,0,pw,ph,gl.RGBA,gl.UNSIGNED_BYTE,buf);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  gl.deleteFramebuffer(fb); gl.deleteTexture(fbTex);
+
+  for(let py=0;py<ph;py++){
+    for(let px=0;px<pw;px++){
+      const off=(py*pw+px)*4;
+      const pr=buf[off]/255, pg=buf[off+1]/255, pb2=buf[off+2]/255;
+      // Find closest seed by color
+      let best=1e9,bi=0;
+      for(let i=0;i<n;i++){
+        const dr=pr-seeds[i].r,dg=pg-seeds[i].g,db=pb2-seeds[i].b;
+        const d=dr*dr+dg*dg+db*db;
+        if(d<best){best=d;bi=i;}
+      }
+      sumX[bi]+=px/sx; sumY[bi]+=py/sy; cnt[bi]++;
+    }
+  }
+
+  // Move seeds toward centroids
+  for(let i=0;i<n;i++){
+    if(cnt[i]>0){
+      seeds[i].x+=(sumX[i]/cnt[i]-seeds[i].x)*0.4;
+      seeds[i].y+=(sumY[i]/cnt[i]-seeds[i].y)*0.4;
+    }
+  }
+  stepCount++;
+}
+
+// ── Overlay (Delaunay + seed dots) ────────────────────────────────
+function drawOverlay() {
+  ovCtx.clearRect(0,0,W,H);
+  if (showDelaunay && seeds.length >= 3) {
+    const tris = triangulateFixed(seeds);
+    ovCtx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ovCtx.lineWidth = 0.8;
+    for (const t of tris) {
+      ovCtx.beginPath();
+      ovCtx.moveTo(seeds[t.a].x, seeds[t.a].y);
+      ovCtx.lineTo(seeds[t.b].x, seeds[t.b].y);
+      ovCtx.lineTo(seeds[t.c].x, seeds[t.c].y);
+      ovCtx.closePath();
+      ovCtx.stroke();
+    }
+  }
+  if (showSeeds) {
+    for (const s of seeds) {
+      ovCtx.beginPath();
+      ovCtx.arc(s.x, s.y, 3.5, 0, Math.PI*2);
+      ovCtx.fillStyle = `rgba(255,255,255,0.85)`;
+      ovCtx.fill();
+      ovCtx.strokeStyle='rgba(0,0,0,0.5)'; ovCtx.lineWidth=1; ovCtx.stroke();
+    }
+  }
+}
+
+// ── Main loop ─────────────────────────────────────────────────────
+function loop() {
+  if (relaxing) lloydStep();
+  renderVoronoi();
+  drawOverlay();
+  document.getElementById('stepInfo').textContent = `step: ${stepCount}`;
+  animFrame = requestAnimationFrame(loop);
+}
+
+// ── Controls ──────────────────────────────────────────────────────
+document.getElementById('btnRelax').addEventListener('click', () => {
+  relaxing = !relaxing;
+  document.getElementById('btnRelax').classList.toggle('active', relaxing);
+  document.getElementById('btnRelax').textContent = relaxing ? 'Relax' : 'Frozen';
+});
+document.getElementById('btnReset').addEventListener('click', () => {
+  makeSeeds(parseInt(document.getElementById('nSeeds').value));
+  stepCount = 0;
+});
+document.getElementById('nSeeds').addEventListener('input', () => {
+  document.getElementById('nVal').textContent = document.getElementById('nSeeds').value;
+});
+document.getElementById('nSeeds').addEventListener('change', () => {
+  makeSeeds(parseInt(document.getElementById('nSeeds').value));
+});
+document.getElementById('palette').addEventListener('change', recolor);
+document.getElementById('btnDelaunay').addEventListener('click', () => {
+  showDelaunay = !showDelaunay;
+  document.getElementById('btnDelaunay').classList.toggle('active', showDelaunay);
+});
+document.getElementById('btnSeeds').addEventListener('click', () => {
+  showSeeds = !showSeeds;
+  document.getElementById('btnSeeds').classList.toggle('active', showSeeds);
+});
+document.getElementById('btnEdges').addEventListener('click', () => {
+  showEdges = !showEdges;
+  document.getElementById('btnEdges').classList.toggle('active', showEdges);
+});
+
+// Click to add/remove seeds
+glCanvas.addEventListener('click', e => {
+  if (e.button !== 0) return;
+  const r=glCanvas.getBoundingClientRect();
+  const x=e.clientX-r.left, y=e.clientY-r.top;
+  const pal=document.getElementById('palette').value;
+  const [rv,gv,bv]=PALETTES[pal](seeds.length, seeds.length+1);
+  seeds.push({x,y,r:rv/255,g:gv/255,b:bv/255});
+  document.getElementById('nSeeds').value = Math.min(128, seeds.length);
+  document.getElementById('nVal').textContent = seeds.length;
+});
+glCanvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const r=glCanvas.getBoundingClientRect();
+  const x=e.clientX-r.left, y=e.clientY-r.top;
+  let best=1e9,bi=0;
+  seeds.forEach((s,i)=>{ const d=(s.x-x)**2+(s.y-y)**2; if(d<best){best=d;bi=i;} });
+  seeds.splice(bi,1);
+});
+
+window.addEventListener('resize', () => { resize(); makeSeeds(parseInt(document.getElementById('nSeeds').value)); });
+
+resize();
+initGL();
+makeSeeds(40);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

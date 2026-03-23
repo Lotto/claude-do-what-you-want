@@ -1,0 +1,1674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Do What You Want</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #080808;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 20px 60px;
+  }
+
+  header {
+    text-align: center;
+    margin-bottom: 48px;
+  }
+
+  header h1 {
+    font-size: 2rem;
+    font-weight: normal;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: #e0e0e0;
+    margin-bottom: 8px;
+  }
+
+  header p {
+    color: #444;
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    width: 100%;
+    max-width: 1100px;
+  }
+
+  .card {
+    border: 1px solid #1e1e1e;
+    border-radius: 4px;
+    overflow: hidden;
+    background: #0d0d0d;
+    transition: border-color 0.2s, transform 0.2s;
+    cursor: pointer;
+    text-decoration: none;
+    color: inherit;
+    display: block;
+  }
+
+  .card:hover {
+    border-color: #3a3a3a;
+    transform: translateY(-2px);
+  }
+
+  .card:hover .preview { opacity: 0.9; }
+
+  .preview {
+    width: 100%;
+    height: 180px;
+    display: block;
+    opacity: 0.75;
+    transition: opacity 0.2s;
+  }
+
+  .card-body {
+    padding: 16px;
+  }
+
+  .card-title {
+    font-size: 0.9rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #e0e0e0;
+    margin-bottom: 6px;
+  }
+
+  .card-desc {
+    font-size: 0.73rem;
+    color: #666;
+    line-height: 1.6;
+    margin-bottom: 10px;
+  }
+
+  .card-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .tag {
+    font-size: 0.65rem;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    color: #888;
+    padding: 2px 8px;
+    border-radius: 2px;
+    letter-spacing: 0.05em;
+  }
+
+  .run-label {
+    font-size: 0.65rem;
+    color: #333;
+    text-align: right;
+    padding: 6px 16px;
+    border-top: 1px solid #141414;
+  }
+
+  footer {
+    margin-top: 56px;
+    color: #2a2a2a;
+    font-size: 0.7rem;
+    text-align: center;
+    line-height: 2;
+  }
+
+  footer a { color: #333; text-decoration: none; }
+  footer a:hover { color: #555; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Do What You Want</h1>
+  <p>A living project &mdash; Claude adds something new every 5 minutes</p>
+</header>
+
+<div class="grid">
+
+  <a class="card" href="life.html">
+    <canvas class="preview" id="lifeCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Cellular Automata</div>
+      <div class="card-desc">Conway's Game of Life and Langton's Ant. Click cells to draw, watch emergent complexity unfold from simple rules.</div>
+      <div class="card-tags">
+        <span class="tag">canvas</span>
+        <span class="tag">simulation</span>
+        <span class="tag">interactive</span>
+      </div>
+    </div>
+    <div class="run-label">Run 1</div>
+  </a>
+
+  <a class="card" href="maze.html">
+    <canvas class="preview" id="mazeCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Maze Generator</div>
+      <div class="card-desc">Recursive-backtracking DFS with animated generation, BFS shortest-path solver, and arrow-key navigation.</div>
+      <div class="card-tags">
+        <span class="tag">canvas</span>
+        <span class="tag">algorithm</span>
+        <span class="tag">playable</span>
+      </div>
+    </div>
+    <div class="run-label">Run 2</div>
+  </a>
+
+  <a class="card" href="fractal.html">
+    <canvas class="preview" id="fractalCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Fractal Explorer</div>
+      <div class="card-desc">Mandelbrot set with smooth coloring, scroll-to-zoom, drag-to-pan, and live Julia set preview on hover.</div>
+      <div class="card-tags">
+        <span class="tag">canvas</span>
+        <span class="tag">math</span>
+        <span class="tag">generative</span>
+      </div>
+    </div>
+    <div class="run-label">Run 3</div>
+  </a>
+
+  <a class="card" href="adventure.html">
+    <canvas class="preview" id="adventureCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Dungeon Adventure</div>
+      <div class="card-desc">Procedurally generated 18-room dungeon. Find the Crown and escape. Combat, items, a minimap, command history.</div>
+      <div class="card-tags">
+        <span class="tag">text adventure</span>
+        <span class="tag">procedural</span>
+        <span class="tag">rpg</span>
+      </div>
+    </div>
+    <div class="run-label">Run 4</div>
+  </a>
+
+  <a class="card" href="music.html">
+    <canvas class="preview" id="musicCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Step Sequencer</div>
+      <div class="card-desc">16-step drum machine and melodic sequencer. Kick, snare, hi-hat, bass, melody, pad. Five scales, spectrum visualizer.</div>
+      <div class="card-tags">
+        <span class="tag">web audio</span>
+        <span class="tag">music</span>
+        <span class="tag">generative</span>
+      </div>
+    </div>
+    <div class="run-label">Run 6</div>
+  </a>
+
+  <a class="card" href="plants.html">
+    <canvas class="preview" id="plantsCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">L-System Plants</div>
+      <div class="card-desc">Lindenmayer system fractal generator. Ferns, trees, snowflakes, dragon curve, Hilbert curve. Animated growth.</div>
+      <div class="card-tags">
+        <span class="tag">canvas</span>
+        <span class="tag">fractal</span>
+        <span class="tag">generative</span>
+      </div>
+    </div>
+    <div class="run-label">Run 7</div>
+  </a>
+
+  <a class="card" href="particles.html">
+    <canvas class="preview" id="particlesCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Particle Physics</div>
+      <div class="card-desc">Click to spawn particles across 6 modes: gravity, attract, repel, orbit, fluid simulation, and fireworks.</div>
+      <div class="card-tags">
+        <span class="tag">canvas</span>
+        <span class="tag">physics</span>
+        <span class="tag">interactive</span>
+      </div>
+    </div>
+    <div class="run-label">Run 8</div>
+  </a>
+
+  <a class="card" href="terrain.html">
+    <canvas class="preview" id="terrainCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Terrain Generator</div>
+      <div class="card-desc">Fractal Brownian Motion heightmaps. Islands, continents, mountains, canyons. Hillshading, contour lines, 5 palettes.</div>
+      <div class="card-tags">
+        <span class="tag">canvas</span>
+        <span class="tag">noise</span>
+        <span class="tag">procedural</span>
+      </div>
+    </div>
+    <div class="run-label">Run 9</div>
+  </a>
+
+  <a class="card" href="reaction.html">
+    <canvas class="preview" id="reactionCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Reaction Diffusion</div>
+      <div class="card-desc">Gray-Scott model on the GPU. Coral, leopard spots, stripes, worms, mitosis. Click to seed chemicals. WebGL.</div>
+      <div class="card-tags">
+        <span class="tag">webgl</span>
+        <span class="tag">simulation</span>
+        <span class="tag">generative</span>
+      </div>
+    </div>
+    <div class="run-label">Run 10</div>
+  </a>
+
+  <a class="card" href="voronoi.html">
+    <canvas class="preview" id="voronoiCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Voronoi / Lloyd</div>
+      <div class="card-desc">WebGL Voronoi cells with animated Lloyd's relaxation toward centroidal equilibrium. Delaunay triangulation overlay. Click to add seeds.</div>
+      <div class="card-tags">
+        <span class="tag">webgl</span>
+        <span class="tag">geometry</span>
+        <span class="tag">interactive</span>
+      </div>
+    </div>
+    <div class="run-label">Run 11</div>
+  </a>
+
+  <a class="card" href="typing.html">
+    <canvas class="preview" id="typingCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Type or Die</div>
+      <div class="card-desc">Words fall from the sky. Type them before they hit the bottom. Combo multiplier, 4 difficulty tiers, Web Audio feedback, high score.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">typing</span>
+        <span class="tag">web audio</span>
+      </div>
+    </div>
+    <div class="run-label">Run 12</div>
+  </a>
+
+  <a class="card" href="clock.html">
+    <canvas class="preview" id="clockCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Orbital Clock</div>
+      <div class="card-desc">Seven concentric orbital rings: seconds, minutes, hours, day, week, month, year. Glowing trails, sweep arcs, 5 themes, breathing mode.</div>
+      <div class="card-tags">
+        <span class="tag">canvas</span>
+        <span class="tag">time</span>
+        <span class="tag">generative</span>
+      </div>
+    </div>
+    <div class="run-label">Run 13</div>
+  </a>
+
+  <a class="card" href="piano.html">
+    <canvas class="preview" id="pianoCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Synthesizer</div>
+      <div class="card-desc">Playable keyboard with 7 voices: piano, organ, lead, pad, bass, bell, pluck. Reverb, delay, chord detection. Computer keyboard + record/play.</div>
+      <div class="card-tags">
+        <span class="tag">web audio</span>
+        <span class="tag">instrument</span>
+        <span class="tag">interactive</span>
+      </div>
+    </div>
+    <div class="run-label">Run 14</div>
+  </a>
+
+  <a class="card" href="graph.html">
+    <canvas class="preview" id="graphCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Network Graph</div>
+      <div class="card-desc">Force-directed layout. 9 topologies: random, ring, grid, tree, small-world, scale-free, clique, path, bipartite. Drag to connect nodes.</div>
+      <div class="card-tags">
+        <span class="tag">canvas</span>
+        <span class="tag">graph theory</span>
+        <span class="tag">interactive</span>
+      </div>
+    </div>
+    <div class="run-label">Run 15</div>
+  </a>
+
+  <a class="card" href="raymarcher.html">
+    <canvas class="preview" id="raymarcherCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Raymarcher</div>
+      <div class="card-desc">WebGL SDF raymarcher. Metaballs, Menger sponge, alien terrain, infinite tunnel, Cornell box. Soft shadows, AO, reflections, fog.</div>
+      <div class="card-tags">
+        <span class="tag">webgl</span>
+        <span class="tag">3d</span>
+        <span class="tag">raymarching</span>
+      </div>
+    </div>
+    <div class="run-label">Run 16</div>
+  </a>
+
+  <a class="card" href="sorting.html">
+    <canvas class="preview" id="sortingCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Sorting Algorithms</div>
+      <div class="card-desc">8 algorithms visualized: Bubble, Selection, Insertion, Shell, Merge, Quick, Heap, Radix. Tonal audio, step mode, 5 input patterns.</div>
+      <div class="card-tags">
+        <span class="tag">canvas</span>
+        <span class="tag">algorithms</span>
+        <span class="tag">educational</span>
+      </div>
+    </div>
+    <div class="run-label">Run 17</div>
+  </a>
+
+  <a class="card" href="flowfield.html">
+    <canvas class="preview" id="flowfieldCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Flow Field</div>
+      <div class="card-desc">Thousands of particles tracing vector fields. 7 field types: Perlin noise, curl, radial, circular, saddle, wave, multi-vortex. 6 palettes. Click to spawn bursts.</div>
+      <div class="card-tags">
+        <span class="tag">canvas</span>
+        <span class="tag">particles</span>
+        <span class="tag">generative</span>
+      </div>
+    </div>
+    <div class="run-label">Run 18</div>
+  </a>
+
+  <a class="card" href="breakout.html">
+    <canvas class="preview" id="breakoutCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Breakout</div>
+      <div class="card-desc">Classic brick-breaker. 5 levels with escalating layouts, bomb bricks, hard bricks, indestructible walls. Powerups: wide paddle, multi-ball, slow, laser. Web Audio sfx.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">canvas</span>
+        <span class="tag">web audio</span>
+      </div>
+    </div>
+    <div class="run-label">Run 19</div>
+  </a>
+
+  <a class="card" href="brian.html">
+    <canvas class="preview" id="brianCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Cellular Automata</div>
+      <div class="card-desc">6 rule sets: Brian's Brain, Seeds, Day &amp; Night, Cyclic (3 &amp; 5 state), Wireworld. Draw cells, load presets, adjust speed &amp; zoom. 5 color palettes.</div>
+      <div class="card-tags">
+        <span class="tag">canvas</span>
+        <span class="tag">automata</span>
+        <span class="tag">generative</span>
+      </div>
+    </div>
+    <div class="run-label">Run 20</div>
+  </a>
+
+  <a class="card" href="wireframe.html">
+    <canvas class="preview" id="wireframeCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">3D Wireframe</div>
+      <div class="card-desc">8 shapes: Cube, Tetrahedron, Octahedron, Icosahedron, Dodecahedron, Torus, Sphere, Trefoil Knot. Backface culling, painter's algorithm, drag to rotate, scroll to zoom.</div>
+      <div class="card-tags">
+        <span class="tag">canvas</span>
+        <span class="tag">3d</span>
+        <span class="tag">math</span>
+      </div>
+    </div>
+    <div class="run-label">Run 21</div>
+  </a>
+
+  <a class="card" href="snake.html">
+    <canvas class="preview" id="snakeCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Snake</div>
+      <div class="card-desc">Classic Snake with smooth interpolated movement. Powerup foods: speed boost, ghost (pass walls), magnet (attract nearby food). Web Audio chiptune sfx.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">canvas</span>
+        <span class="tag">web audio</span>
+      </div>
+    </div>
+    <div class="run-label">Run 22</div>
+  </a>
+
+  <a class="card" href="visualizer.html">
+    <canvas class="preview" id="visualizerCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Audio Visualizer</div>
+      <div class="card-desc">5 modes: Waveform, Spectrum, Radial, Spectrogram, Lissajous. Built-in synth sources (drone, arpeggio, chord, bass, noise) or live microphone input. 4 palettes.</div>
+      <div class="card-tags">
+        <span class="tag">web audio</span>
+        <span class="tag">canvas</span>
+        <span class="tag">interactive</span>
+      </div>
+    </div>
+    <div class="run-label">Run 24</div>
+  </a>
+
+  <a class="card" href="pendulum.html">
+    <canvas class="preview" id="pendulumCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Double Pendulum</div>
+      <div class="card-desc">Chaos theory visualized. RK4 integration, up to 20 pendulums with near-identical initial conditions diverging exponentially. Fading trails, phase portrait, energy readout.</div>
+      <div class="card-tags">
+        <span class="tag">physics</span>
+        <span class="tag">chaos</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 23</div>
+  </a>
+
+  <a class="card" href="fluid.html">
+    <canvas class="preview" id="fluidCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Fluid Ink</div>
+      <div class="card-desc">WebGL2 Navier-Stokes fluid simulation. Semi-Lagrangian advection, pressure Jacobi solver, vorticity confinement. Rainbow HSL dye on mouse drag. 9 GLSL shader programs, ping-pong FBOs.</div>
+      <div class="card-tags">
+        <span class="tag">webgl</span>
+        <span class="tag">physics</span>
+        <span class="tag">generative</span>
+      </div>
+    </div>
+    <div class="run-label">Run 25</div>
+  </a>
+
+  <a class="card" href="particle_life.html">
+    <canvas class="preview" id="particleLifeCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Particle Life</div>
+      <div class="card-desc">Emergent life from simple rules. N species with an asymmetric attraction/repulsion matrix produce swarming, clustering, and predator-prey dynamics. Spatial hash for O(n) neighbor search. Drag to scatter.</div>
+      <div class="card-tags">
+        <span class="tag">simulation</span>
+        <span class="tag">emergent</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 26</div>
+  </a>
+
+  <a class="card" href="lsystem.html">
+    <canvas class="preview" id="lsystemCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">L-System Explorer</div>
+      <div class="card-desc">10 classic Lindenmayer systems drawn with animated turtle graphics: Koch Snowflake, Dragon Curve, Fractal Plant, Hilbert Curve, Gosper Curve, Sierpinski, and more. Adjustable angle, iterations, color palette, glow.</div>
+      <div class="card-tags">
+        <span class="tag">fractal</span>
+        <span class="tag">generative</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 27</div>
+  </a>
+
+  <a class="card" href="fractal.html">
+    <canvas class="preview" id="fractalCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Fractal Explorer</div>
+      <div class="card-desc">WebGL2 Mandelbrot + Julia set dual viewer. GPU fragment shader with smooth (Hubbard-Douady) coloring. Hover Mandelbrot to update Julia c in real time. Scroll to zoom, drag to pan, 5 palettes, 6 presets.</div>
+      <div class="card-tags">
+        <span class="tag">webgl</span>
+        <span class="tag">math</span>
+        <span class="tag">generative</span>
+      </div>
+    </div>
+    <div class="run-label">Run 30</div>
+  </a>
+
+  <a class="card" href="sequencer.html">
+    <canvas class="preview" id="seqCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Step Sequencer</div>
+      <div class="card-desc">16-step drum machine + melodic synth. 8 tracks: Kick, Snare, Clap, HH, Tom, Bass, Lead. Web Audio synthesis, swing, per-track volume, 4 presets, randomizer. Click steps, space to play.</div>
+      <div class="card-tags">
+        <span class="tag">web audio</span>
+        <span class="tag">music</span>
+        <span class="tag">interactive</span>
+      </div>
+    </div>
+    <div class="run-label">Run 29</div>
+  </a>
+
+  <a class="card" href="dungeon.html">
+    <canvas class="preview" id="dungeonCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Dungeon</div>
+      <div class="card-desc">Procedural BSP dungeon crawler. Fog of war with Bresenham line-of-sight, animated torch glows, pillars, chests, and stairs to infinite floors. 3 themes: Dungeon, Crypt, Temple.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">procedural</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 28</div>
+  </a>
+
+</div>
+
+<footer>
+  <div>Built by Claude Sonnet 4.6 &mdash; one tool per invocation &mdash; 2026-03-22</div>
+  <div><a href="log.md">view build log</a></div>
+</footer>
+
+<script>
+// ── Life preview (mini Game of Life) ───────────────────────────
+(function() {
+  const c = document.getElementById('lifeCanvas');
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  const S = 6;
+  const cols = Math.ceil(W / S), rows = Math.ceil(H / S);
+  let grid = new Uint8Array(cols * rows);
+  for (let i = 0; i < grid.length; i++) grid[i] = Math.random() < 0.3 ? 1 : 0;
+
+  function idx(x,y){ return ((y+rows)%rows)*cols+((x+cols)%cols); }
+  function step() {
+    const next = new Uint8Array(cols * rows);
+    for (let y=0;y<rows;y++) for (let x=0;x<cols;x++) {
+      let n=0;
+      for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++) { if(dx||dy) n+=grid[idx(x+dx,y+dy)]; }
+      const a=grid[idx(x,y)];
+      next[idx(x,y)]=a?(n===2||n===3?1:0):(n===3?1:0);
+    }
+    grid=next;
+  }
+  function draw() {
+    ctx.fillStyle='#080808'; ctx.fillRect(0,0,W,H);
+    ctx.fillStyle='#2a5a2a';
+    for(let y=0;y<rows;y++) for(let x=0;x<cols;x++)
+      if(grid[idx(x,y)]) ctx.fillRect(x*S+1,y*S+1,S-1,S-1);
+  }
+  let t=0;
+  function loop(){ step(); draw(); t=requestAnimationFrame(loop); }
+  loop();
+  // Stop when off-screen
+  const obs=new IntersectionObserver(e=>{ if(!e[0].isIntersecting) cancelAnimationFrame(t); else loop(); });
+  obs.observe(c);
+})();
+
+// ── Maze preview ────────────────────────────────────────────────
+(function() {
+  const c = document.getElementById('mazeCanvas');
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  const S = 10;
+  const cols = Math.floor(W/S), rows = Math.floor(H/S);
+  const N=1,S2=2,E=4,Ww=8;
+  const DX={[N]:0,[S2]:0,[E]:1,[Ww]:-1};
+  const DY={[N]:-1,[S2]:1,[E]:0,[Ww]:0};
+  const OPP={[N]:S2,[S2]:N,[E]:Ww,[Ww]:E};
+  const cells=new Uint8Array(cols*rows);
+  const vis=new Uint8Array(cols*rows);
+  function idx(x,y){return y*cols+x;}
+  function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];}return a;}
+  const stack=[[0,0]]; vis[0]=1;
+  // Fully generate upfront for preview
+  while(stack.length){
+    const[x,y]=stack[stack.length-1];
+    const dirs=shuffle([N,S2,E,Ww]);
+    let moved=false;
+    for(const d of dirs){
+      const nx=x+DX[d],ny=y+DY[d];
+      if(nx<0||nx>=cols||ny<0||ny>=rows||vis[idx(nx,ny)]) continue;
+      cells[idx(x,y)]|=d; cells[idx(nx,ny)]|=OPP[d];
+      vis[idx(nx,ny)]=1; stack.push([nx,ny]); moved=true; break;
+    }
+    if(!moved) stack.pop();
+  }
+  ctx.fillStyle='#080808'; ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#2a4a6a'; ctx.lineWidth=1;
+  for(let y=0;y<rows;y++) for(let x=0;x<cols;x++){
+    const cell=cells[idx(x,y)],px=x*S,py=y*S;
+    ctx.beginPath();
+    if(!(cell&N)&&y>0){ctx.moveTo(px,py);ctx.lineTo(px+S,py);}
+    if(!(cell&S2)){ctx.moveTo(px,py+S);ctx.lineTo(px+S,py+S);}
+    if(!(cell&Ww)&&x>0){ctx.moveTo(px,py);ctx.lineTo(px,py+S);}
+    if(!(cell&E)){ctx.moveTo(px+S,py);ctx.lineTo(px+S,py+S);}
+    ctx.stroke();
+  }
+  ctx.strokeStyle='#4a6a9a'; ctx.lineWidth=2;
+  ctx.strokeRect(1,1,W-2,H-2);
+})();
+
+// ── Fractal preview (Mandelbrot thumbnail) ──────────────────────
+(function() {
+  const c = document.getElementById('fractalCanvas');
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  const img = ctx.createImageData(W, H);
+  const data = img.data;
+  const MAX = 80;
+  for(let py=0;py<H;py++) for(let px=0;px<W;px++){
+    const cr=-0.5+(px/W-0.5)*3.2, ci=(py/H-0.5)*2.2;
+    let zr=0,zi=0,i=0,zr2=0,zi2=0;
+    while(i<MAX&&zr2+zi2<4){zi=2*zr*zi+ci;zr=zr2-zi2+cr;zr2=zr*zr;zi2=zi*zi;i++;}
+    const off=(py*W+px)*4;
+    if(i===MAX){data[off]=data[off+1]=data[off+2]=0;}
+    else{
+      const t=(i+1-Math.log2(Math.log2(zr2+zi2)))/MAX;
+      data[off]=Math.min(255,t*3*255)|0;
+      data[off+1]=Math.max(0,Math.min(255,(t*3-1)*255))|0;
+      data[off+2]=Math.max(0,Math.min(255,(t*3-2)*255))|0;
+    }
+    data[off+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+})();
+
+// ── Music preview (static sequencer grid) ───────────────────────
+(function() {
+  const c = document.getElementById('musicCanvas');
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#080808'; ctx.fillRect(0,0,W,H);
+  const tracks = 6, steps = 16;
+  const cw = W / steps, ch = H / tracks;
+  const colors = ['#8a3a3a','#8a6a3a','#6a7a3a','#3a5a8a','#5a3a8a','#3a7a7a'];
+  // A rough pattern
+  const pattern = [
+    [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+    [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1],
+    [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+    [1,0,0,0,0,0,1,0,0,1,0,0,0,0,1,0],
+    [0,0,1,0,0,1,0,0,0,0,1,0,0,1,0,0],
+    [1,0,0,1,0,0,0,1,0,0,1,0,0,0,1,0],
+  ];
+  for(let t=0;t<tracks;t++) for(let s=0;s<steps;s++){
+    const on = pattern[t][s];
+    ctx.fillStyle = on ? colors[t] : '#111';
+    ctx.fillRect(s*cw+1, t*ch+1, cw-2, ch-2);
+  }
+  // Animate a playing cursor
+  let cur = 0;
+  function loop(){
+    ctx.fillStyle='#080808'; ctx.fillRect(0,0,W,H);
+    for(let t=0;t<tracks;t++) for(let s=0;s<steps;s++){
+      const on=pattern[t][s];
+      ctx.fillStyle = on ? colors[t] : '#111';
+      ctx.fillRect(s*cw+1,t*ch+1,cw-2,ch-2);
+      if(s===cur){ ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1.5; ctx.strokeRect(s*cw+1,t*ch+1,cw-2,ch-2); }
+    }
+    cur=(cur+1)%steps;
+    setTimeout(()=>requestAnimationFrame(loop), 120);
+  }
+  requestAnimationFrame(loop);
+})();
+
+// ── Plants preview (static L-system fern) ───────────────────────
+(function() {
+  const c = document.getElementById('plantsCanvas');
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#080808'; ctx.fillRect(0,0,W,H);
+  // Quick L-system: fern at depth 4
+  let s = 'X';
+  const rules = { X:'F+[[X]-X]-F[-FX]+X', F:'FF' };
+  for(let i=0;i<4;i++){ let n=''; for(const ch of s) n+=rules[ch]||ch; s=n; if(s.length>200000)break; }
+  const step=4, angleR=25*Math.PI/180;
+  let x=0,y=0,a=-Math.PI/2;
+  const stack=[], segs=[];
+  for(const ch of s){
+    if(ch==='F'){const nx=x+Math.cos(a)*step,ny=y+Math.sin(a)*step;segs.push([x,y,nx,ny]);x=nx;y=ny;}
+    else if(ch==='+')a+=angleR; else if(ch==='-')a-=angleR;
+    else if(ch==='[')stack.push([x,y,a]); else if(ch===']'){[x,y,a]=stack.pop();}
+  }
+  let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+  for(const[x1,y1,x2,y2] of segs){minX=Math.min(minX,x1,x2);maxX=Math.max(maxX,x1,x2);minY=Math.min(minY,y1,y2);maxY=Math.max(maxY,y1,y2);}
+  const sc=Math.min(W*0.85/(maxX-minX||1),H*0.85/(maxY-minY||1));
+  const ox=W/2-(minX+(maxX-minX)/2)*sc, oy=H/2-(minY+(maxY-minY)/2)*sc;
+  for(const[x1,y1,x2,y2] of segs){
+    ctx.strokeStyle=`hsl(${105+Math.random()*40},55%,${32+Math.random()*22}%)`;
+    ctx.lineWidth=0.8; ctx.beginPath();
+    ctx.moveTo(x1*sc+ox,y1*sc+oy); ctx.lineTo(x2*sc+ox,y2*sc+oy); ctx.stroke();
+  }
+})();
+
+// ── Adventure preview (ASCII dungeon map) ───────────────────────
+(function() {
+  const c = document.getElementById('adventureCanvas');
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#080808'; ctx.fillRect(0,0,W,H);
+
+  // Generate a small dungeon map preview
+  const GW=9, GH=6, CW=W/GW, CH=H/GH;
+  const grid=Array.from({length:GH},()=>Array(GW).fill(0));
+  // Random walk to place rooms
+  let x=4,y=3; grid[y][x]=1;
+  const dirs=[[0,-1],[0,1],[1,0],[-1,0]];
+  for(let i=0;i<22;i++){
+    const[dx,dy]=dirs[Math.random()*4|0];
+    const nx=x+dx,ny=y+dy;
+    if(nx>=0&&nx<GW&&ny>=0&&ny<GH){x=nx;y=ny;grid[y][x]=1;}
+  }
+
+  ctx.font = `${Math.min(CW,CH)*0.55|0}px Courier New`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for(let gy=0;gy<GH;gy++) for(let gx=0;gx<GW;gx++){
+    const px=gx*CW+CW/2, py=gy*CH+CH/2;
+    if(!grid[gy][gx]) continue;
+    const isStart=gx===4&&gy===3;
+    ctx.fillStyle = isStart ? '#ffd700' : '#2a4a2a';
+    ctx.fillRect(gx*CW+2,gy*CH+2,CW-4,CH-4);
+    ctx.fillStyle = isStart ? '#000' : '#4a8a4a';
+    ctx.fillText(isStart?'@':'·', px, py);
+    // Draw connections
+    ctx.strokeStyle='#1a3a1a'; ctx.lineWidth=2;
+    if(gx<GW-1&&grid[gy][gx+1]){ctx.beginPath();ctx.moveTo(gx*CW+CW,py);ctx.lineTo((gx+1)*CW,py);ctx.stroke();}
+    if(gy<GH-1&&grid[gy+1]){const ngy=gy+1;if(grid[ngy][gx]){ctx.beginPath();ctx.moveTo(px,gy*CH+CH);ctx.lineTo(px,(gy+1)*CH);ctx.stroke();}}
+  }
+
+  // Overlay text
+  ctx.fillStyle='rgba(8,8,8,0.5)';
+  ctx.fillRect(0,H-28,W,28);
+  ctx.fillStyle='#4a6a4a';
+  ctx.font='11px Courier New';
+  ctx.textAlign='left';
+  ctx.fillText('> find the crown. escape the dungeon.',8,H-10);
+})();
+
+// ── Particles preview (animated gravity sim) ────────────────────
+(function() {
+  const c = document.getElementById('particlesCanvas');
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  const ps = [];
+  for(let i=0;i<120;i++){
+    ps.push({
+      x: Math.random()*W, y: Math.random()*H*0.4,
+      vx:(Math.random()-0.5)*1.5, vy:Math.random()*1,
+      r:1.5+Math.random()*2, hue:Math.random()*360, trail:[]
+    });
+  }
+  function loop(){
+    ctx.fillStyle='rgba(8,8,8,0.2)'; ctx.fillRect(0,0,W,H);
+    for(const p of ps){
+      p.vy+=0.15; p.vx*=0.99; p.vy*=0.99;
+      p.trail.push({x:p.x,y:p.y});
+      if(p.trail.length>10)p.trail.shift();
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.y+p.r>H){p.y=H-p.r;p.vy*=-0.55;p.vx*=0.92;}
+      if(p.x<0){p.x=0;p.vx*=-0.6;} if(p.x>W){p.x=W;p.vx*=-0.6;}
+      if(p.trail.length>1){
+        ctx.beginPath();ctx.moveTo(p.trail[0].x,p.trail[0].y);
+        for(let i=1;i<p.trail.length;i++)ctx.lineTo(p.trail[i].x,p.trail[i].y);
+        ctx.strokeStyle=`hsla(${p.hue},70%,55%,0.3)`;ctx.lineWidth=p.r*0.6;ctx.stroke();
+      }
+      ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle=`hsl(${p.hue},70%,58%)`;ctx.fill();
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+
+// ── Terrain preview (island heightmap thumbnail) ─────────────────
+(function() {
+  const c = document.getElementById('terrainCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  const perm = new Uint8Array(512);
+  const p = Array.from({length:256},(_,i)=>i);
+  let st=42317; function rr(){st^=st<<13;st^=st>>17;st^=st<<5;return(st>>>0)/0x100000000;}
+  for(let i=255;i>0;i--){const j=Math.floor(rr()*(i+1));[p[i],p[j]]=[p[j],p[i]];}
+  for(let i=0;i<512;i++)perm[i]=p[i&255];
+  function fade(t){return t*t*t*(t*(t*6-15)+10);}
+  function lerp(a,b,t){return a+t*(b-a);}
+  function grad(h,x,y){const u=h<4?x:y,v=h<4?y:x;return((h&1)?-u:u)+((h&2)?-v:v);}
+  function noise(x,y){const X=Math.floor(x)&255,Y=Math.floor(y)&255;x-=Math.floor(x);y-=Math.floor(y);const u=fade(x),v=fade(y),a=perm[X]+Y,b=perm[X+1]+Y;return lerp(lerp(grad(perm[a],x,y),grad(perm[b],x-1,y),u),lerp(grad(perm[a+1],x,y-1),grad(perm[b+1],x-1,y-1),u),v);}
+  function fbm(x,y){let v=0,a=1,f=1,m=0;for(let i=0;i<6;i++){v+=noise(x*f,y*f)*a;m+=a;a*=0.5;f*=2;}return v/m;}
+  const stops=[[0,[10,20,80]],[0.30,[30,60,160]],[0.37,[50,100,200]],[0.38,[210,190,140]],[0.42,[180,200,120]],[0.55,[100,160,60]],[0.68,[80,120,40]],[0.78,[100,90,80]],[0.94,[200,195,190]],[1,[255,255,255]]];
+  function spal(t){t=Math.max(0,Math.min(1,t));for(let i=1;i<stops.length;i++){if(t<=stops[i][0]){const lo=stops[i-1],hi=stops[i],f=(t-lo[0])/(hi[0]-lo[0]);return[lo[1][0]+(hi[1][0]-lo[1][0])*f|0,lo[1][1]+(hi[1][1]-lo[1][1])*f|0,lo[1][2]+(hi[1][2]-lo[1][2])*f|0];}}return stops[stops.length-1][1];}
+  const img=ctx.createImageData(W,H);const dd=img.data;const scl=0.004;
+  for(let py=0;py<H;py++) for(let px=0;px<W;px++){
+    const wx=fbm(px*scl+1.7,py*scl+9.2)*6,wy=fbm(px*scl+8.3,py*scl+2.8)*6;
+    let h=(fbm(px*scl+wx,py*scl+wy)+1)*0.5;
+    const dx=px/W-0.5,dy=py/H-0.5,dist=Math.sqrt(dx*dx+dy*dy)*2.2;
+    h*=Math.max(0,1-dist*dist);
+    const[rv,gv,bv]=spal(h);const off=(py*W+px)*4;dd[off]=rv;dd[off+1]=gv;dd[off+2]=bv;dd[off+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+})();
+
+// ── Reaction-diffusion preview (static Gray-Scott thumbnail) ─────
+(function() {
+  const c = document.getElementById('reactionCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  // CPU Gray-Scott at low res, scaled up
+  const S = 3; // pixel scale
+  const gW = Math.floor(W/S), gH = Math.floor(H/S);
+  let u = new Float32Array(gW*gH).fill(1);
+  let v = new Float32Array(gW*gH);
+  const nu = new Float32Array(gW*gH);
+  const nv = new Float32Array(gW*gH);
+  // seed
+  for(let s=0;s<20;s++){
+    const cx=Math.random()*gW|0,cy=Math.random()*gH|0,r=4;
+    for(let dy=-r;dy<=r;dy++)for(let dx=-r;dx<=r;dx++){
+      if(dx*dx+dy*dy>r*r)continue;
+      const i=((cy+dy+gH)%gH)*gW+((cx+dx+gW)%gW);
+      u[i]=0.5;v[i]=0.25;
+    }
+  }
+  const F=0.055,K=0.062,Du=0.2097,Dv=0.105;
+  function step(){
+    for(let y=0;y<gH;y++)for(let x=0;x<gW;x++){
+      const i=y*gW+x;
+      const n=((y-1+gH)%gH)*gW+x,ss=((y+1)%gH)*gW+x,e=y*gW+(x+1)%gW,ww=y*gW+(x-1+gW)%gW;
+      const lapU=u[n]+u[ss]+u[e]+u[ww]-4*u[i];
+      const lapV=v[n]+v[ss]+v[e]+v[ww]-4*v[i];
+      const uvv=u[i]*v[i]*v[i];
+      nu[i]=Math.max(0,Math.min(1,u[i]+Du*lapU-uvv+F*(1-u[i])));
+      nv[i]=Math.max(0,Math.min(1,v[i]+Dv*lapV+uvv-(F+K)*v[i]));
+    }
+    u.set(nu);v.set(nv);
+  }
+  // Run 300 steps to get a pattern
+  for(let i=0;i<300;i++) step();
+  const img=ctx.createImageData(W,H);const d=img.data;
+  for(let py=0;py<H;py++)for(let px=0;px<W;px++){
+    const gx=Math.floor(px/S),gy=Math.floor(py/S);
+    const t=v[gy*gW+gx];
+    const off=(py*W+px)*4;
+    d[off]=Math.min(255,t*3*255)|0;
+    d[off+1]=Math.max(0,Math.min(255,(t*3-1)*255))|0;
+    d[off+2]=Math.max(0,Math.min(255,(t*3-2)*255))|0;
+    d[off+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+})();
+
+// ── Voronoi preview (CPU nearest-seed thumbnail) ──────────────────
+(function() {
+  const c = document.getElementById('voronoiCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  const N = 28;
+  const pts = Array.from({length:N}, () => ({x:Math.random()*W, y:Math.random()*H}));
+  const cols = pts.map((_,i) => { const h=i/N*360; return `hsl(${h},65%,55%)`; });
+  const img = ctx.createImageData(W, H); const d = img.data;
+  // Parse hsl to rgb
+  function hslRgb(h,s,l){s/=100;l/=100;const k=n=>((n+h/30)%12);const a=s*Math.min(l,1-l);const f=n=>l-a*Math.max(-1,Math.min(k(n)-3,Math.min(9-k(n),1)));return[f(0)*255|0,f(8)*255|0,f(4)*255|0];}
+  const rgbs = pts.map((_,i)=>hslRgb(i/N*360,65,55));
+  for(let py=0;py<H;py++) for(let px=0;px<W;px++){
+    let best1=1e9,best2=1e9,bi=0;
+    for(let i=0;i<N;i++){
+      const dx=px-pts[i].x,dy=py-pts[i].y,d2=dx*dx+dy*dy;
+      if(d2<best1){best2=best1;best1=d2;bi=i;}else if(d2<best2)best2=d2;
+    }
+    const edge=best2-best1<8?0.5:1;
+    const off=(py*W+px)*4;
+    d[off]=rgbs[bi][0]*edge|0; d[off+1]=rgbs[bi][1]*edge|0; d[off+2]=rgbs[bi][2]*edge|0; d[off+3]=255;
+  }
+  ctx.putImageData(img,0,0);
+})();
+
+// ── Typing game preview (falling words snapshot) ──────────────────
+(function() {
+  const c = document.getElementById('typingCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#060608'; ctx.fillRect(0,0,W,H);
+  const words = ['fractal','voronoi','cascade','pixel','entropy','quantum','spiral','prism','combo','score'];
+  const positions = words.map((w,i) => ({
+    x: 12 + (i%3) * (W/3) + Math.random()*20,
+    y: 18 + Math.floor(i/3) * (H/3.5) + Math.random()*15,
+    word: w,
+    typed: Math.floor(Math.random() * w.length * 0.6),
+  }));
+  ctx.font = '13px Courier New';
+  positions.forEach(p => {
+    const danger = p.y / H;
+    if (danger > 0.75) ctx.globalAlpha = 0.5 + Math.sin(Date.now()/200)*0.5;
+    else ctx.globalAlpha = 1;
+    ctx.fillStyle = '#60c080';
+    ctx.fillText(p.word.slice(0, p.typed), p.x, p.y);
+    ctx.fillStyle = p.typed > 0 ? '#e8e840' : '#c8c8c8';
+    ctx.fillText(p.word.slice(p.typed), p.x + ctx.measureText(p.word.slice(0,p.typed)).width, p.y);
+  });
+  ctx.globalAlpha = 1;
+  // Danger bar
+  ctx.fillStyle = '#c06060'; ctx.fillRect(0, H-3, W*0.65, 3);
+  // Score HUD
+  ctx.fillStyle = '#444'; ctx.font = '10px Courier New';
+  ctx.fillText('score 840  x3  ❤❤❤', 8, H-10);
+})();
+
+// ── Clock preview (orbital rings snapshot) ────────────────────────
+(function() {
+  const c = document.getElementById('clockCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#050507'; ctx.fillRect(0,0,W,H);
+  const now = new Date();
+  const cx = W/2, cy = H/2, maxR = Math.min(W,H)*0.46;
+  const dots = ['#9090ff','#60b0ff','#40d0e0','#40e0a0','#80e060','#e0c040','#e07040'];
+  const rings2 = [
+    now.getSeconds()/60, now.getMinutes()/60,
+    (now.getHours()%12)/12, now.getHours()/24,
+    now.getDay()/7,
+    (now.getDate()-1)/30, (Math.floor((now-new Date(now.getFullYear(),0,0))/86400000))/365
+  ];
+  const radii = [0.95,0.80,0.65,0.52,0.40,0.29,0.18].map(r=>r*maxR);
+  ctx.save(); ctx.translate(cx,cy);
+  // Rings
+  radii.forEach((r,i)=>{ ctx.beginPath();ctx.arc(0,0,r,0,Math.PI*2);ctx.strokeStyle='#1a1a2e';ctx.lineWidth=1;ctx.stroke(); });
+  // Sweep
+  rings2.forEach((f,i)=>{ const a=f*Math.PI*2-Math.PI/2;ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,radii[i],-Math.PI/2,a,false);ctx.closePath();ctx.fillStyle='rgba(120,120,255,0.05)';ctx.fill(); });
+  // Dots + glow
+  rings2.forEach((f,i)=>{
+    const a=f*Math.PI*2-Math.PI/2, x=Math.cos(a)*radii[i], y=Math.sin(a)*radii[i];
+    const h=dots[i]; const rr=parseInt(h.slice(1,3),16),gg=parseInt(h.slice(3,5),16),bb=parseInt(h.slice(5,7),16);
+    const g=ctx.createRadialGradient(x,y,0,x,y,9);g.addColorStop(0,`rgba(${rr},${gg},${bb},0.5)`);g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.fillStyle=g;ctx.fill();
+    ctx.beginPath();ctx.arc(x,y,4,0,Math.PI*2);ctx.fillStyle=h;ctx.fill();
+    ctx.beginPath();ctx.arc(x,y,1.5,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();
+  });
+  // Time
+  ctx.fillStyle='#9090ff';ctx.font=`${maxR*0.1}px Courier New`;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(now.toLocaleTimeString('en-US',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}),0,0);
+  ctx.restore();
+})();
+
+// ── Piano preview (keyboard thumbnail) ───────────────────────────
+(function() {
+  const c = document.getElementById('pianoCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#070709'; ctx.fillRect(0,0,W,H);
+  // Draw 2 octaves of piano keys
+  const nOct=2, nWhite=nOct*7, kW=Math.floor(W/nWhite), kH=Math.floor(H*0.78);
+  const blackW=kW*0.62|0, blackH=kH*0.6|0;
+  const pressedMidis = [60,64,67]; // C major chord
+  const whiteSemis=[0,2,4,5,7,9,11];
+  const blackOff={1:0.6,3:1.6,6:3.6,8:4.6,10:5.6};
+  for(let oct=0;oct<nOct;oct++){
+    whiteSemis.forEach((s,i)=>{
+      const midi=60+oct*12+s;
+      const x=(oct*7+i)*kW, y=H-kH;
+      const pressed=pressedMidis.includes(midi);
+      ctx.fillStyle=pressed?'#5050a0':'#1e1e2e';
+      ctx.strokeStyle='#0a0a12'; ctx.lineWidth=1;
+      ctx.fillRect(x+1,y,kW-2,kH); ctx.strokeRect(x+1,y,kW-2,kH);
+    });
+    Object.entries(blackOff).forEach(([s,xo])=>{
+      const midi=60+oct*12+parseInt(s);
+      const x=(oct*7+xo)*kW-blackW/2, y=H-kH;
+      const pressed=pressedMidis.includes(midi);
+      ctx.fillStyle=pressed?'#3030a0':'#0a0a14';
+      ctx.fillRect(x|0,y,blackW,blackH);
+    });
+  }
+  ctx.fillStyle='#4040a0'; ctx.font='10px Courier New'; ctx.textAlign='left';
+  ctx.fillText('Cmaj  ·  7 voices  ·  reverb  ·  delay', 6, 14);
+})();
+
+// ── Graph preview (force-directed thumbnail) ──────────────────────
+(function() {
+  const c = document.getElementById('graphCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#060608'; ctx.fillRect(0,0,W,H);
+  // Small-world-ish layout
+  const N=22, nodes=[], edges=[];
+  for(let i=0;i<N;i++) nodes.push({x:W/2+Math.cos(i/N*Math.PI*2)*(Math.min(W,H)*0.3+Math.random()*20-10),y:H/2+Math.sin(i/N*Math.PI*2)*(Math.min(W,H)*0.3+Math.random()*20-10)});
+  for(let i=0;i<N;i++){edges.push([i,(i+1)%N]);if(Math.random()<0.25)edges.push([i,(i+4)%N]);}
+  // Run a few force steps
+  for(let step=0;step<120;step++){
+    const ax=new Float32Array(N),ay=new Float32Array(N);
+    for(let i=0;i<N;i++)for(let j=i+1;j<N;j++){const dx=nodes[j].x-nodes[i].x,dy=nodes[j].y-nodes[i].y,d2=dx*dx+dy*dy+1,f=80/d2,fx=dx/Math.sqrt(d2)*f,fy=dy/Math.sqrt(d2)*f;ax[i]-=fx;ay[i]-=fy;ax[j]+=fx;ay[j]+=fy;}
+    edges.forEach(([a,b])=>{const dx=nodes[b].x-nodes[a].x,dy=nodes[b].y-nodes[a].y,d=Math.sqrt(dx*dx+dy*dy)+.01,f=0.05*(d-55),fx=dx/d*f,fy=dy/d*f;ax[a]+=fx;ay[a]+=fy;ax[b]-=fx;ay[b]-=fy;});
+    nodes.forEach((n,i)=>{n.x=(n.x+ax[i]*0.85);n.y=(n.y+ay[i]*0.85);n.x=Math.max(8,Math.min(W-8,n.x));n.y=Math.max(8,Math.min(H-8,n.y));});
+  }
+  edges.forEach(([a,b])=>{ctx.strokeStyle='rgba(40,70,120,0.6)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(nodes[a].x,nodes[a].y);ctx.lineTo(nodes[b].x,nodes[b].y);ctx.stroke();});
+  nodes.forEach((n,i)=>{const h=i/N*240;ctx.beginPath();ctx.arc(n.x,n.y,4,0,Math.PI*2);ctx.fillStyle=`hsl(${h},65%,50%)`;ctx.fill();});
+})();
+
+// ── Raymarcher preview (CPU sphere-trace thumbnail) ───────────────
+(function() {
+  const c = document.getElementById('raymarcherCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  const W = c.offsetWidth, H = c.offsetHeight;
+  c.width = W; c.height = H;
+  ctx.fillStyle = '#040406'; ctx.fillRect(0,0,W,H);
+  const img = ctx.createImageData(W, H); const d = img.data;
+  const S = 3; // step size for speed
+  function sdSphere(px,py,pz,r){return Math.sqrt(px*px+py*py+pz*pz)-r;}
+  function sdPlane(py){return py+1.2;}
+  function opSU(a,b,k){const h=Math.max(k-Math.abs(a-b),0)/k;return Math.min(a,b)-h*h*k*0.25;}
+  function map(x,y,z){
+    const b1=sdSphere(x-0.7,y-0.1,z,0.55);
+    const b2=sdSphere(x+0.6,y+0.2,z-0.2,0.48);
+    const b3=sdSphere(x,y-0.5,z+0.5,0.42);
+    return opSU(opSU(b1,b2,0.4),opSU(b3,sdPlane(y),0.1),0.3);
+  }
+  const lx=0.6,ly=0.9,lz=0.4,ll=Math.sqrt(lx*lx+ly*ly+lz*lz);
+  for(let py=0;py<H;py+=S) for(let px=0;px<W;px+=S){
+    const ux=(px-W/2)/H, uy=-(py-H/2)/H;
+    const rox=0,roy=0.8,roz=3.5;
+    const rdx=ux,rdy=uy,rdz=-1.5,rdn=Math.sqrt(rdx*rdx+rdy*rdy+rdz*rdz);
+    let t=0.1,mat=-1;
+    for(let i=0;i<64;i++){
+      const d2=map(rox+rdx/rdn*t,roy+rdy/rdn*t,roz+rdz/rdn*t);
+      if(d2<0.005){mat=1;break;}
+      t+=d2*0.9; if(t>12)break;
+    }
+    let r=5,g=5,b2=10;
+    if(mat>0){
+      const px2=rox+rdx/rdn*t,py2=roy+rdy/rdn*t,pz2=roz+rdz/rdn*t;
+      const e=0.01;
+      const nx=(map(px2+e,py2,pz2)-map(px2-e,py2,pz2))/(2*e);
+      const ny=(map(px2,py2+e,pz2)-map(px2,py2-e,pz2))/(2*e);
+      const nz=(map(px2,py2,pz2+e)-map(px2,py2,pz2-e))/(2*e);
+      const nl=Math.sqrt(nx*nx+ny*ny+nz*nz)+0.001;
+      const diff=Math.max(0,(nx/nl*lx+ny/nl*ly+nz/nl*lz)/ll);
+      const h2=py2+1.2>0.01?0.5:0.0;
+      const c2=py2>-1.15?[80+diff*120,140+diff*60,220+diff*30]:[50,50,50];
+      r=c2[0]*0.7+diff*c2[0]*0.3|0; g=c2[1]*0.7+diff*c2[1]*0.3|0; b2=c2[2]*0.7+diff*c2[2]*0.3|0;
+    }
+    for(let dy=0;dy<S&&py+dy<H;dy++) for(let dx=0;dx<S&&px+dx<W;dx++){
+      const off=((py+dy)*W+(px+dx))*4; d[off]=r;d[off+1]=g;d[off+2]=b2;d[off+3]=255;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  ctx.fillStyle='rgba(4,4,6,0.5)'; ctx.fillRect(0,H-20,W,20);
+  ctx.fillStyle='#3a3a6a'; ctx.font='9px Courier New'; ctx.textAlign='left';
+  ctx.fillText('SDF raymarcher · 6 scenes · WebGL',6,H-6);
+})();
+
+// ── Sorting preview (bars in mid-sort snapshot) ───────────────────
+(function() {
+  const c = document.getElementById('sortingCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#060608'; ctx.fillRect(0,0,W,H);
+  const N = 60;
+  // Partially sorted array (merge sort midway look)
+  const arr = Array.from({length:N},(_,i)=>i+1);
+  for(let i=arr.length-1;i>N*0.45;i--){const j=Math.random()*(i+1)|0;[arr[i],arr[j]]=[arr[j],arr[i]];}
+  const bW = W/N;
+  const highlights = new Set([Math.floor(N*0.55),Math.floor(N*0.56)]);
+  const sorted = new Set(Array.from({length:Math.floor(N*0.45)},(_,i)=>i));
+  arr.forEach((v,i)=>{
+    const h=(v/N)*H*0.92;
+    let col = sorted.has(i)?'#2a6a3a':highlights.has(i)?'#e8c840':'#2a3a5a';
+    ctx.fillStyle=col;
+    ctx.fillRect(i*bW,H-h,Math.max(bW-1,0.5),h);
+  });
+  ctx.fillStyle='rgba(6,6,8,0.5)'; ctx.fillRect(0,H-18,W,18);
+  ctx.fillStyle='#2a4a6a'; ctx.font='9px Courier New'; ctx.textAlign='left';
+  ctx.fillText('bubble · selection · insertion · merge · quick · heap · shell · radix',6,H-5);
+})();
+
+// ── Audio Visualizer preview (static spectrum) ───────────────────
+(function() {
+  const c = document.getElementById('visualizerCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#040406'; ctx.fillRect(0,0,W,H);
+  // Fake spectrum with musical peaks
+  const bins=80;
+  const bw=W/bins;
+  // A few harmonic peaks to look like real audio
+  function fakeFft(i){
+    const f=i/bins;
+    let v=0;
+    v+=Math.exp(-((f-0.05)**2/0.001))*0.9;  // fundamental
+    v+=Math.exp(-((f-0.10)**2/0.002))*0.6;  // 2nd harmonic
+    v+=Math.exp(-((f-0.15)**2/0.003))*0.4;  // 3rd
+    v+=Math.exp(-((f-0.22)**2/0.004))*0.25;
+    v+=Math.exp(-((f-0.32)**2/0.008))*0.15;
+    v+=Math.random()*0.05;
+    return Math.min(1,v);
+  }
+  for(let i=0;i<bins;i++){
+    const val=fakeFft(i);
+    const h=val*H*0.85;
+    const t=i/bins;
+    const r=40+t*200,g=100+t*120,b=220+t*35;
+    ctx.fillStyle=`rgba(${r|0},${g|0},${b|0},0.85)`;
+    ctx.fillRect(i*bw, H-h, Math.max(bw-0.5,0.5), h);
+  }
+  // Radial mini preview in top-right
+  const cx=W-40,cy=40,baseR=14,maxR=32;
+  for(let i=0;i<64;i++){
+    const val=fakeFft(i/64*80|0);
+    const a=(i/64)*Math.PI*2-Math.PI/2;
+    const r2=baseR+val*(maxR-baseR);
+    const t=i/64,rv=40+t*200,gv=100+t*120,bv=220+t*35;
+    ctx.strokeStyle=`rgba(${rv|0},${gv|0},${bv|0},0.7)`;
+    ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(cx+Math.cos(a)*baseR,cy+Math.sin(a)*baseR);
+    ctx.lineTo(cx+Math.cos(a)*r2,cy+Math.sin(a)*r2);ctx.stroke();
+  }
+  ctx.fillStyle='rgba(4,4,6,0.5)';ctx.fillRect(0,H-16,W,16);
+  ctx.fillStyle='#2a3a6a';ctx.font='9px Courier New';ctx.textAlign='left';
+  ctx.fillText('waveform · spectrum · radial · spectrogram · lissajous',6,H-5);
+})();
+
+// ── Double Pendulum preview (animated chaos trails) ───────────────
+(function() {
+  const c = document.getElementById('pendulumCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  const OX=W/2, OY=H*0.22, sc=Math.min(W,H)*0.26;
+  const L1=1,L2=1,M1=1,M2=1,g=9.8;
+  function deriv([θ1,θ2,ω1,ω2]){
+    const Δ=θ1-θ2,d=2*M1+M2-M2*Math.cos(2*Δ);
+    return[ω1,ω2,
+      (-g*(2*M1+M2)*Math.sin(θ1)-M2*g*Math.sin(θ1-2*θ2)-2*Math.sin(Δ)*M2*(ω2*ω2*L2+ω1*ω1*L1*Math.cos(Δ)))/(L1*d),
+      (2*Math.sin(Δ)*(ω1*ω1*L1*(M1+M2)+g*(M1+M2)*Math.cos(θ1)+ω2*ω2*L2*M2*Math.cos(Δ)))/(L2*d)];
+  }
+  function rk4(s,dt){const k1=deriv(s),k2=deriv(s.map((x,i)=>x+k1[i]*dt/2)),k3=deriv(s.map((x,i)=>x+k2[i]*dt/2)),k4=deriv(s.map((x,i)=>x+k3[i]*dt));return s.map((x,i)=>x+(k1[i]+2*k2[i]+2*k3[i]+k4[i])*dt/6);}
+  function b2([θ1,θ2]){return[OX+L1*Math.sin(θ1)*sc+L2*Math.sin(θ2)*sc,OY+L1*Math.cos(θ1)*sc+L2*Math.cos(θ2)*sc];}
+  const N=8;
+  const pens=Array.from({length:N},(_,i)=>({state:[Math.PI*0.9+(i/N-0.5)*0.008,Math.PI*0.5+(i/N-0.5)*0.006,0,0],trail:[],hue:(i/N)*300+30}));
+  const off=document.createElement('canvas'); off.width=W; off.height=H;
+  const oCtx=off.getContext('2d'); oCtx.fillStyle='#040406'; oCtx.fillRect(0,0,W,H);
+  let frame=0, af;
+  function loop(){
+    oCtx.fillStyle='rgba(4,4,6,0.025)'; oCtx.fillRect(0,0,W,H);
+    for(const p of pens){
+      for(let s=0;s<8;s++) p.state=rk4(p.state,0.016/8);
+      const pos=b2(p.state); p.trail.push(pos);
+      if(p.trail.length>400)p.trail.shift();
+      if(p.trail.length>1){
+        for(let i=1;i<p.trail.length;i++){
+          const t=i/p.trail.length;
+          oCtx.beginPath();oCtx.moveTo(p.trail[i-1][0],p.trail[i-1][1]);oCtx.lineTo(p.trail[i][0],p.trail[i][1]);
+          oCtx.strokeStyle=`hsla(${p.hue},80%,${55+t*25}%,${t*t*0.7})`;oCtx.lineWidth=0.8;oCtx.stroke();
+        }
+      }
+    }
+    ctx.drawImage(off,0,0);
+    af=requestAnimationFrame(loop);
+  }
+  loop();
+  const obs=new IntersectionObserver(e=>{if(!e[0].isIntersecting)cancelAnimationFrame(af);else loop();});obs.observe(c);
+})();
+
+// ── 3D Wireframe preview (spinning icosahedron) ───────────────────
+(function() {
+  const c = document.getElementById('wireframeCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height, cx=W/2, cy=H/2, sc=Math.min(W,H)*0.38;
+  const φ=(1+Math.sqrt(5))/2;
+  const raw=[[0,1,φ],[0,-1,φ],[0,1,-φ],[0,-1,-φ],[1,φ,0],[-1,φ,0],[1,-φ,0],[-1,-φ,0],[φ,0,1],[φ,0,-1],[-φ,0,1],[-φ,0,-1]];
+  const vlen=v=>Math.sqrt(v[0]*v[0]+v[1]*v[1]+v[2]*v[2]);
+  const verts=raw.map(v=>{const l=vlen(v);return[v[0]/l,v[1]/l,v[2]/l];});
+  const vsub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+  const vcross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+  const vdot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+  const faces=[[0,1,8],[0,8,4],[0,4,5],[0,5,10],[0,10,1],[3,9,2],[3,2,11],[3,11,7],[3,7,6],[3,6,9],[1,6,8],[8,6,9],[8,9,4],[4,9,2],[4,2,5],[5,2,11],[5,11,10],[10,11,7],[10,7,1],[1,7,6]];
+  let rx=0.3, ry=0;
+  function rot(v){
+    let[x,y,z]=v;
+    const cy2=Math.cos(ry),sy=Math.sin(ry);[x,z]=[x*cy2+z*sy,-x*sy+z*cy2];
+    const cx2=Math.cos(rx),sx=Math.sin(rx);[y,z]=[y*cx2-z*sx,y*sx+z*cx2];
+    return[x,y,z];
+  }
+  function proj(v){const f=2.5/(2.5-v[2]*0.9);return[cx+v[0]*f*sc,cy-v[1]*f*sc,v[2]];}
+  let t=0;
+  function loop(){
+    ry+=0.012; rx+=0.004;
+    const tv=verts.map(rot), pv=tv.map(proj);
+    let minZ=1e9,maxZ=-1e9; tv.forEach(v=>{if(v[2]<minZ)minZ=v[2];if(v[2]>maxZ)maxZ=v[2];});
+    const zr=maxZ-minZ||1;
+    ctx.fillStyle='#040406'; ctx.fillRect(0,0,W,H);
+    const vis=faces.map(f=>{const pts=f.map(i=>tv[i]);const n=vcross(vsub(pts[1],pts[0]),vsub(pts[2],pts[0]));return{f,visible:n[2]>0,z:pts.reduce((s,p)=>s+p[2],0)/3};}).filter(x=>x.visible).sort((a,b)=>a.z-b.z);
+    for(const{f,z}of vis){
+      const t2=(z-minZ)/zr;
+      const pts=f.map(i=>pv[i]);
+      ctx.beginPath();ctx.moveTo(pts[0][0],pts[0][1]);pts.forEach(p=>ctx.lineTo(p[0],p[1]));ctx.closePath();
+      ctx.fillStyle=`rgba(8,${12+t2*18|0},${30+t2*26|0},0.88)`;ctx.fill();
+      ctx.strokeStyle=`rgba(${60+t2*120|0},${150+t2*80|0},${220+t2*35|0},${0.4+t2*0.6})`;ctx.lineWidth=0.9;ctx.stroke();
+    }
+    t=requestAnimationFrame(loop);
+  }
+  loop();
+  const obs=new IntersectionObserver(e=>{if(!e[0].isIntersecting)cancelAnimationFrame(t);else loop();});obs.observe(c);
+})();
+
+// ── Snake preview (static grid snapshot) ─────────────────────────
+(function() {
+  const c = document.getElementById('snakeCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#040406'; ctx.fillRect(0,0,W,H);
+  const CELL=14, COLS=Math.floor(W/CELL), ROWS=Math.floor(H/CELL);
+  // Draw a snake path
+  const body=[[7,5],[6,5],[5,5],[4,5],[4,6],[4,7],[5,7],[6,7],[6,8],[6,9],[7,9],[8,9],[9,9],[9,8],[9,7],[9,6],[9,5],[9,4],[8,4],[7,4]];
+  body.forEach(([x,y],i)=>{
+    const t=i/body.length;
+    ctx.fillStyle=i===0?'hsl(130,80%,50%)':`hsl(130,65%,${40+t*20}%)`;
+    ctx.globalAlpha=1-t*0.5;
+    ctx.beginPath();ctx.roundRect(x*CELL+2,y*CELL+2,CELL-4,CELL-4,3);ctx.fill();
+  });
+  ctx.globalAlpha=1;
+  // Foods
+  [[12,5,'#e05050'],[3,9,'#50c0e0'],[11,8,'#a060e0']].forEach(([x,y,col])=>{
+    const px=x*CELL+CELL/2,py=y*CELL+CELL/2;
+    const g=ctx.createRadialGradient(px,py,0,px,py,CELL*0.6);
+    g.addColorStop(0,col+'aa');g.addColorStop(1,'transparent');
+    ctx.fillStyle=g;ctx.beginPath();ctx.arc(px,py,CELL*0.6,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(px,py,CELL*0.32,0,Math.PI*2);ctx.fill();
+  });
+  ctx.fillStyle='rgba(4,4,6,0.5)';ctx.fillRect(0,H-16,W,16);
+  ctx.fillStyle='#2a5a2a';ctx.font='9px Courier New';ctx.textAlign='left';
+  ctx.fillText('arrow keys · speed/ghost/magnet powerups',6,H-5);
+})();
+
+// ── Brian's Brain preview (animated CA) ──────────────────────────
+(function() {
+  const c = document.getElementById('brianCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  const CELL = 4, COLS = Math.floor(W/CELL), ROWS = Math.floor(H/CELL);
+  let grid = new Uint8Array(COLS*ROWS), next = new Uint8Array(COLS*ROWS);
+  // Random seed
+  for (let i=0;i<grid.length;i++) if(Math.random()<0.15) grid[i]=1;
+  const img = ctx.createImageData(COLS*CELL, ROWS*CELL);
+  const d = img.data;
+  const COLORS = [[4,4,6],[200,80,240],[100,200,255]];
+  function step(){
+    for(let y=0;y<ROWS;y++) for(let x=0;x<COLS;x++){
+      const i=y*COLS+x;
+      if(grid[i]===1){next[i]=2;continue;}
+      if(grid[i]===2){next[i]=0;continue;}
+      let on=0;
+      for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+        if(!dx&&!dy)continue;
+        if(grid[((y+dy+ROWS)%ROWS)*COLS+((x+dx+COLS)%COLS)]===1)on++;
+      }
+      next[i]=on===2?1:0;
+    }
+    [grid,next]=[next,grid];
+  }
+  function render(){
+    for(let y=0;y<ROWS;y++) for(let x=0;x<COLS;x++){
+      const [r,g,b]=COLORS[grid[y*COLS+x]];
+      for(let dy=0;dy<CELL;dy++) for(let dx=0;dx<CELL;dx++){
+        const off=((y*CELL+dy)*COLS*CELL+(x*CELL+dx))*4;
+        d[off]=r;d[off+1]=g;d[off+2]=b;d[off+3]=255;
+      }
+    }
+    ctx.putImageData(img,0,0);
+  }
+  let t=0;
+  function loop(){ step(); render(); t=requestAnimationFrame(loop); }
+  loop();
+  const obs=new IntersectionObserver(e=>{if(!e[0].isIntersecting)cancelAnimationFrame(t);else loop();});
+  obs.observe(c);
+})();
+
+// ── Breakout preview (static mid-game snapshot) ──────────────────
+(function() {
+  const c = document.getElementById('breakoutCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#040406'; ctx.fillRect(0,0,W,H);
+  const COLS=10, BH=10, BPAD=2;
+  const BW=(W-14)/COLS;
+  const ROWS=5;
+  const colors=['#8a2020','#8a5020','#8a7820','#3a7a30','#206080'];
+  for(let r=0;r<ROWS;r++) for(let cc=0;cc<COLS;cc++){
+    if(r===2&&(cc<2||cc>7))continue;
+    if(r===3&&(cc<3||cc>6))continue;
+    if(r===4&&(cc<4||cc>5))continue;
+    ctx.fillStyle=colors[r];
+    ctx.fillRect(7+cc*BW+BPAD,32+r*(BH+BPAD),BW-BPAD*2,BH);
+    ctx.fillStyle='rgba(255,255,255,0.08)';
+    ctx.fillRect(7+cc*BW+BPAD,32+r*(BH+BPAD),BW-BPAD*2,2);
+  }
+  // Ball
+  ctx.fillStyle='#b0c0e0';
+  ctx.beginPath(); ctx.arc(W*0.55,H*0.55,4,0,Math.PI*2); ctx.fill();
+  // Paddle
+  ctx.fillStyle='#2a4a6a';
+  ctx.beginPath(); ctx.roundRect(W*0.38,H-22,W*0.24,7,3); ctx.fill();
+  ctx.fillStyle='rgba(74,128,192,0.6)';
+  ctx.fillRect(W*0.38+2,H-22+1,W*0.24-4,2);
+  ctx.fillStyle='rgba(4,4,6,0.5)'; ctx.fillRect(0,H-16,W,16);
+  ctx.fillStyle='#2a4060'; ctx.font='9px Courier New'; ctx.textAlign='left';
+  ctx.fillText('5 levels · bombs · powerups · multi-ball',6,H-5);
+})();
+
+// ── Flow field preview (animated particles) ───────────────────────
+(function() {
+  const c = document.getElementById('flowfieldCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  // Perlin noise for preview
+  const perm = new Uint8Array(512);
+  const p = Array.from({length:256},(_,i)=>i);
+  for(let i=255;i>0;i--){const j=Math.random()*(i+1)|0;[p[i],p[j]]=[p[j],p[i]];}
+  for(let i=0;i<512;i++) perm[i]=p[i&255];
+  function fade(t){return t*t*t*(t*(t*6-15)+10);}
+  function lerp(a,b,t){return a+t*(b-a);}
+  function grad2(h,x,y){const v=h&3;const u=v<2?x:y,w=v<2?y:x;return((h&1)?-u:u)+((h&2)?-w:w);}
+  function noise2(x,y){
+    const X=Math.floor(x)&255,Y=Math.floor(y)&255;
+    x-=Math.floor(x);y-=Math.floor(y);
+    const u=fade(x),v=fade(y),a=perm[X]+Y,b=perm[X+1]+Y;
+    return lerp(lerp(grad2(perm[a],x,y),grad2(perm[b],x-1,y),u),
+                lerp(grad2(perm[a+1],x,y-1),grad2(perm[b+1],x-1,y-1),u),v);
+  }
+  const off = document.createElement('canvas');
+  off.width = W; off.height = H;
+  const oCtx = off.getContext('2d');
+  oCtx.fillStyle = '#040406'; oCtx.fillRect(0,0,W,H);
+  const N = 300;
+  const ps = Array.from({length:N},()=>({
+    x:Math.random()*W, y:Math.random()*H,
+    age:Math.random()*60|0, maxAge:60+Math.random()*80|0, vx:0, vy:0
+  }));
+  let t = 0;
+  function loop(){
+    t += 0.016;
+    oCtx.fillStyle = 'rgba(4,4,6,0.08)'; oCtx.fillRect(0,0,W,H);
+    const sc = 4 * 0.003;
+    for(const p of ps){
+      p.age++;
+      if(p.age > p.maxAge){ Object.assign(p,{x:Math.random()*W,y:Math.random()*H,age:0,vx:0,vy:0}); continue; }
+      const angle = noise2(p.x*sc+t*0.15, p.y*sc+t*0.1)*Math.PI*4;
+      const vx = Math.cos(angle), vy = Math.sin(angle);
+      p.vx = p.vx*0.8+vx*0.2*1.5; p.vy = p.vy*0.8+vy*0.2*1.5;
+      const px=p.x, py=p.y;
+      p.x+=p.vx; p.y+=p.vy;
+      if(p.x<0)p.x+=W; if(p.x>W)p.x-=W;
+      if(p.y<0)p.y+=H; if(p.y>H)p.y-=H;
+      const ang=(Math.atan2(p.vy,p.vx)+Math.PI)/(Math.PI*2);
+      const alpha=Math.min(1,p.age/20)*0.6;
+      oCtx.strokeStyle=`rgba(${20+ang*60|0},${80+ang*100|0},${160+ang*80|0},${alpha})`;
+      oCtx.lineWidth=0.9;
+      oCtx.beginPath(); oCtx.moveTo(px,py); oCtx.lineTo(p.x,p.y); oCtx.stroke();
+    }
+    ctx.drawImage(off,0,0);
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+
+// ── Fractal preview (CPU Mandelbrot thumbnail) ────────────────────
+(function() {
+  const c = document.getElementById('fractalCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  const img = ctx.createImageData(W, H); const d = img.data;
+  const maxIter = 120, cx = -0.5, cy = 0, scale = 1.8;
+  for (let py = 0; py < H; py++) {
+    for (let px = 0; px < W; px++) {
+      const cr = (px/W - 0.5) * (W/H) * 2 * scale + cx;
+      const ci = (py/H - 0.5) * 2 * scale + cy;
+      let zr=0, zi=0, i=0;
+      while (i < maxIter && zr*zr+zi*zi < 4) {
+        const t2=zr*zr-zi*zi+cr; zi=2*zr*zi+ci; zr=t2; i++;
+      }
+      const off=(py*W+px)*4;
+      if (i===maxIter){d[off]=d[off+1]=d[off+2]=0;}
+      else {
+        const t=(i/maxIter*5)%1;
+        d[off]  =(0.5+0.5*Math.cos(6.28*(t+0.00))*255)|0;
+        d[off+1]=(0.5+0.5*Math.cos(6.28*(t+0.33))*255)|0;
+        d[off+2]=(0.5+0.5*Math.cos(6.28*(t+0.67))*255)|0;
+      }
+      d[off+3]=255;
+    }
+  }
+  ctx.putImageData(img,0,0);
+  ctx.fillStyle='rgba(4,4,6,0.45)';ctx.fillRect(0,H-16,W,16);
+  ctx.fillStyle='#303050';ctx.font='9px Courier New';ctx.textAlign='left';
+  ctx.fillText('WebGL2 · smooth coloring · Mandelbrot + Julia · zoom/pan',6,H-5);
+})();
+
+// ── Sequencer preview (static grid snapshot) ─────────────────────
+(function() {
+  const c = document.getElementById('seqCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#050508'; ctx.fillRect(0,0,W,H);
+  const COLS=['#e04040','#e07830','#d0c030','#30c0d0','#4080e0','#a050d0','#40d080','#e060a0'];
+  const NAMES=['KICK','SNARE','CLAP','HH-C','HH-O','TOM','BASS','LEAD'];
+  // Sample house pattern
+  const PAT=[
+    [1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+    [0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    [1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+    [0,0,1,0,0,0,1,0,0,0,1,0,0,0,1,0],
+    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+    [1,0,0,0,0,0,1,0,1,0,0,0,0,0,5,0],
+    [0,0,3,0,0,0,0,0,5,0,0,3,0,0,0,0],
+  ];
+  const rows=COLS.length, SW=Math.floor((W-50)/16)-1, SH=Math.floor((H-6)/rows)-1;
+  const curStep=4;
+  for(let t=0;t<rows;t++){
+    ctx.fillStyle='#40405860';
+    ctx.font=`${Math.min(SH*0.55,9)|0}px Courier New`;
+    ctx.textAlign='right'; ctx.textBaseline='middle';
+    ctx.fillStyle='#35354a';
+    ctx.fillText(NAMES[t],44,6+t*(SH+1)+SH/2);
+    for(let s=0;s<16;s++){
+      const bx=46+s*(SW+1), by=6+t*(SH+1);
+      const on=PAT[t][s];
+      const isCur=s===curStep;
+      if(on){ctx.fillStyle=COLS[t]+'99';ctx.fillRect(bx,by,SW,SH);}
+      else{ctx.fillStyle='#0c0c18';ctx.fillRect(bx,by,SW,SH);}
+      if(isCur){ctx.fillStyle='rgba(255,255,255,0.12)';ctx.fillRect(bx,by,SW,SH);}
+    }
+  }
+  // Current step indicator
+  const cx2=46+curStep*(SW+1);
+  ctx.fillStyle='rgba(255,255,255,0.06)';
+  ctx.fillRect(cx2,0,SW,H);
+  ctx.fillStyle='rgba(4,4,8,0.45)';ctx.fillRect(0,H-16,W,16);
+  ctx.fillStyle='#303050';ctx.font='9px Courier New';ctx.textAlign='left';
+  ctx.fillText('8 tracks · Web Audio synthesis · swing · 4 presets',6,H-5);
+})();
+
+// ── Dungeon preview (static map snapshot) ────────────────────────
+(function() {
+  const c = document.getElementById('dungeonCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#040406'; ctx.fillRect(0,0,W,H);
+  const T=10, COLS=Math.floor(W/T), ROWS=Math.floor(H/T);
+  // Simple room layout for thumbnail
+  const rooms=[{x:2,y:2,w:7,h:5},{x:13,y:2,w:6,h:6},{x:2,y:11,w:8,h:4},{x:13,y:10,w:7,h:5},{x:8,y:7,w:4,h:3}];
+  const tiles=new Uint8Array(COLS*ROWS);
+  for(const r of rooms){
+    for(let y=r.y;y<r.y+r.h&&y<ROWS;y++) for(let x=r.x;x<r.x+r.w&&x<COLS;x++) tiles[y*COLS+x]=1;
+  }
+  // Corridors
+  [[5,4,5,10],[16,7,10,12],[8,8,15,12]].forEach(([x1,y1,x2,y2])=>{
+    for(let x=Math.min(x1,x2);x<=Math.max(x1,x2)&&x<COLS;x++) tiles[y1*COLS+x]=1;
+    for(let y=Math.min(y1,y2);y<=Math.max(y1,y2)&&y<ROWS;y++) tiles[y*COLS+x2]=1;
+  });
+  // Walls
+  for(let y=0;y<ROWS;y++) for(let x=0;x<COLS;x++){
+    if(tiles[y*COLS+x]!==1) continue;
+    for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){
+      const nx=x+dx,ny=y+dy;
+      if(nx>=0&&nx<COLS&&ny>=0&&ny<ROWS&&tiles[ny*COLS+nx]===0) tiles[ny*COLS+nx]=2;
+    }
+  }
+  // Draw
+  for(let y=0;y<ROWS;y++) for(let x=0;x<COLS;x++){
+    const t2=tiles[y*COLS+x];
+    if(!t2) continue;
+    if(t2===1){ctx.fillStyle='#131318';ctx.fillRect(x*T,y*T,T,T);ctx.strokeStyle='#18181e';ctx.lineWidth=0.5;ctx.strokeRect(x*T+0.5,y*T+0.5,T-1,T-1);}
+    else{ctx.fillStyle='#282832';ctx.fillRect(x*T,y*T,T,T);ctx.fillStyle='#363644';ctx.fillRect(x*T,y*T,T,3);}
+  }
+  // Player dot
+  ctx.fillStyle='#50a0e0'; ctx.beginPath(); ctx.arc(5.5*T,4.5*T,3.5,0,Math.PI*2); ctx.fill();
+  // Torch glow
+  const g2=ctx.createRadialGradient(5.5*T,4.5*T,0,5.5*T,4.5*T,T*4);
+  g2.addColorStop(0,'rgba(255,165,55,0.12)'); g2.addColorStop(1,'rgba(255,165,55,0)');
+  ctx.fillStyle=g2; ctx.fillRect(0,0,W,H);
+  // Stair
+  ctx.fillStyle='#6080b0cc'; ctx.font='8px Courier New'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText('▼',16.5*T,12.5*T);
+  ctx.fillStyle='rgba(4,4,6,0.45)';ctx.fillRect(0,H-16,W,16);
+  ctx.fillStyle='#303050';ctx.font='9px Courier New';ctx.textAlign='left';
+  ctx.fillText('BSP rooms · fog of war · torch glow · 3 themes',6,H-5);
+})();
+
+// ── L-System preview (Koch snowflake static thumbnail) ───────────
+(function() {
+  const c = document.getElementById('lsystemCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#040406'; ctx.fillRect(0,0,W,H);
+
+  // Expand Koch snowflake to iter 4
+  const rules = {F:'F-F++F-F'};
+  let s = 'F++F++F';
+  for(let n=0;n<4;n++){let t='';for(const ch of s)t+=(rules[ch]||ch);s=t;}
+
+  // Turtle
+  const ang = 60*Math.PI/180, step = 4;
+  const pts = [];
+  let x=0,y=0,h=-Math.PI/2;
+  for(const c2 of s){
+    if(c2==='F'){const nx=x+Math.cos(h)*step,ny=y+Math.sin(h)*step;pts.push(x,y,nx,ny);x=nx;y=ny;}
+    else if(c2==='+')h+=ang;else if(c2==='-')h-=ang;
+  }
+
+  // Fit
+  let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+  for(let i=0;i<pts.length;i+=4){x0=Math.min(x0,pts[i],pts[i+2]);x1=Math.max(x1,pts[i],pts[i+2]);y0=Math.min(y0,pts[i+1],pts[i+3]);y1=Math.max(y1,pts[i+1],pts[i+3]);}
+  const pad=8,sc=Math.min((W-pad*2)/(x1-x0),(H-pad*2)/(y1-y0));
+  const ox=(W-(x1-x0)*sc)/2-x0*sc,oy=(H-(y1-y0)*sc)/2-y0*sc;
+  const N=pts.length/4;
+  ctx.lineWidth=0.7; ctx.lineCap='round';
+  for(let i=0;i<N;i++){
+    const t=i/N;
+    ctx.strokeStyle=`hsl(${t*360|0},80%,58%)`;
+    ctx.beginPath();
+    ctx.moveTo(pts[i*4]*sc+ox,pts[i*4+1]*sc+oy);
+    ctx.lineTo(pts[i*4+2]*sc+ox,pts[i*4+3]*sc+oy);
+    ctx.stroke();
+  }
+  ctx.fillStyle='rgba(4,4,6,0.45)';ctx.fillRect(0,H-16,W,16);
+  ctx.fillStyle='#304050';ctx.font='9px Courier New';ctx.textAlign='left';
+  ctx.fillText('Koch · Dragon · Plant · Hilbert · Gosper · and more',6,H-5);
+})();
+
+// ── Particle Life preview (static swarm snapshot) ────────────────
+(function() {
+  const c = document.getElementById('particleLifeCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#040406'; ctx.fillRect(0,0,W,H);
+  const PALETTE = ['#e05050','#50c0e0','#70d060','#e0c040','#c060e0'];
+  const N = 5, P = 80;
+  // Generate clustered particles
+  const rng = (n => { let s=n; return () => { s^=s<<13;s^=s>>17;s^=s<<5;return(s>>>0)/0x100000000; }; })(12345);
+  const clusters = Array.from({length:N}, (_,i) => ({
+    cx: 0.15 + (i%3)*0.35 + rng()*0.05,
+    cy: 0.25 + Math.floor(i/3)*0.5 + rng()*0.05
+  }));
+  for(let s=0;s<N;s++){
+    const {cx,cy} = clusters[s];
+    for(let i=0;i<P;i++){
+      const a=rng()*Math.PI*2, r=rng()*0.08+rng()*0.04;
+      const x=cx*W+Math.cos(a)*r*W, y=cy*H+Math.sin(a)*r*H;
+      if(x<0||x>W||y<0||y>H) continue;
+      const alpha=0.5+rng()*0.5, rad=1.5+rng()*1.5;
+      ctx.beginPath();ctx.arc(x,y,rad,0,Math.PI*2);
+      ctx.fillStyle=PALETTE[s]+(Math.round(alpha*255).toString(16).padStart(2,'0'));
+      ctx.fill();
+    }
+  }
+  ctx.fillStyle='rgba(4,4,6,0.45)';ctx.fillRect(0,H-16,W,16);
+  ctx.fillStyle='#304040';ctx.font='9px Courier New';ctx.textAlign='left';
+  ctx.fillText('5 species · attraction matrix · spatial hash · emergent',6,H-5);
+})();
+
+// ── Fluid Ink preview (CPU dye advection thumbnail) ───────────────
+(function() {
+  const c = document.getElementById('fluidCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#040406'; ctx.fillRect(0,0,W,H);
+  // Simulate a few ink splat trails as bezier curves with soft dye
+  const splats = [
+    {pts:[[W*0.2,H*0.5],[W*0.4,H*0.2],[W*0.6,H*0.5],[W*0.8,H*0.3]], hue:200},
+    {pts:[[W*0.1,H*0.3],[W*0.3,H*0.7],[W*0.5,H*0.4],[W*0.7,H*0.8]], hue:280},
+    {pts:[[W*0.3,H*0.8],[W*0.5,H*0.5],[W*0.7,H*0.7],[W*0.9,H*0.2]], hue:40},
+    {pts:[[W*0.5,H*0.1],[W*0.4,H*0.4],[W*0.6,H*0.6],[W*0.5,H*0.9]], hue:130},
+  ];
+  for(const {pts,hue} of splats){
+    for(let width=22;width>0;width-=4){
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0],pts[0][1]);
+      ctx.bezierCurveTo(pts[1][0],pts[1][1],pts[2][0],pts[2][1],pts[3][0],pts[3][1]);
+      ctx.strokeStyle=`hsla(${hue},80%,60%,${0.04+(22-width)*0.006})`;
+      ctx.lineWidth=width; ctx.lineCap='round'; ctx.stroke();
+    }
+    // Bright core
+    ctx.beginPath();
+    ctx.moveTo(pts[0][0],pts[0][1]);
+    ctx.bezierCurveTo(pts[1][0],pts[1][1],pts[2][0],pts[2][1],pts[3][0],pts[3][1]);
+    ctx.strokeStyle=`hsla(${hue},90%,80%,0.5)`;
+    ctx.lineWidth=1.2; ctx.stroke();
+  }
+  ctx.fillStyle='rgba(4,4,6,0.45)'; ctx.fillRect(0,H-16,W,16);
+  ctx.fillStyle='#204060'; ctx.font='9px Courier New'; ctx.textAlign='left';
+  ctx.fillText('WebGL2 · Navier-Stokes · vorticity confinement',6,H-5);
+})();
+</script>
+</body>
+</html>

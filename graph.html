@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Graph</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #060608;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    height: 100vh; overflow: hidden;
+  }
+  h1 { font-size: 0.9rem; letter-spacing: 0.25em; color: #444; text-transform: uppercase; padding: 7px 0 4px; }
+  #controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; padding: 2px 0 5px; align-items: center; }
+  button {
+    background: #101014; color: #888; border: 1px solid #1e1e24;
+    padding: 3px 10px; cursor: pointer; font-family: inherit;
+    font-size: 0.7rem; border-radius: 3px; transition: all 0.12s;
+  }
+  button:hover { background: #18181e; color: #ccc; }
+  button.active { background: #141a24; color: #60a8ff; border-color: #2a4a7a; }
+  label { font-size: 0.7rem; color: #444; display: flex; align-items: center; gap: 4px; }
+  select { background: #101014; color: #888; border: 1px solid #1e1e24; padding: 2px 7px; font-family: inherit; font-size: 0.7rem; border-radius: 3px; }
+  input[type=range] { width: 58px; accent-color: #3a6a9a; }
+  #info { font-size: 0.65rem; color: #333; padding-bottom: 3px; display: flex; gap: 16px; }
+  #info span b { color: #666; }
+  canvas { display: block; cursor: crosshair; }
+</style>
+</head>
+<body>
+<h1>Force-Directed Graph</h1>
+<div id="controls">
+  <label>Preset
+    <select id="preset">
+      <option value="random">Random</option>
+      <option value="ring">Ring</option>
+      <option value="grid">Grid</option>
+      <option value="tree">Binary Tree</option>
+      <option value="smallworld">Small World</option>
+      <option value="scalefree">Scale-Free</option>
+      <option value="clique">Clique</option>
+      <option value="path">Path</option>
+      <option value="bipartite">Bipartite</option>
+    </select>
+  </label>
+  <label>N <input type="range" id="nNodes" min="4" max="80" value="24"><span id="nVal">24</span></label>
+  <label>Color
+    <select id="coloring">
+      <option value="degree">Degree</option>
+      <option value="betweenness">Betweenness</option>
+      <option value="community">Community</option>
+      <option value="depth">BFS Depth</option>
+    </select>
+  </label>
+  <button id="btnRegen">Regenerate</button>
+  <button id="btnFreeze">Freeze</button>
+  <button id="btnLabels">Labels</button>
+  <label>Spring <input type="range" id="spring" min="0.01" max="0.3" step="0.01" value="0.08"></label>
+  <label>Repel <input type="range" id="repel" min="10" max="500" step="10" value="120"></label>
+</div>
+<div id="info">
+  <span>Nodes <b id="iNodes">0</b></span>
+  <span>Edges <b id="iEdges">0</b></span>
+  <span>Avg degree <b id="iDeg">0</b></span>
+  <span>Components <b id="iComp">0</b></span>
+  <span id="iHint" style="color:#2a4a2a">Click: add node · Drag node→node: connect · Right-click: delete</span>
+</div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = Math.min(window.innerWidth - 6, 1400);
+  H = window.innerHeight - 108;
+  canvas.width = W; canvas.height = H;
+}
+
+// ── Graph state ───────────────────────────────────────────────────
+let nodes = []; // {x,y,vx,vy,id,color,label,fixed}
+let edges = []; // {a,b} (node indices)
+let frozen = false;
+let showLabels = false;
+let communities = [];
+let bfsDepths = [];
+let betweenness = [];
+let simFrame;
+
+// ── Graph generators ──────────────────────────────────────────────
+function scatter(n) {
+  return Array.from({length:n}, (_, i) => ({
+    x: W*0.1 + Math.random()*(W*0.8),
+    y: H*0.1 + Math.random()*(H*0.8),
+    vx: 0, vy: 0, id: i, fixed: false,
+  }));
+}
+
+function PRESETS() {
+  const n = parseInt(document.getElementById('nNodes').value);
+  return {
+    random() {
+      nodes = scatter(n);
+      edges = [];
+      const p = Math.min(0.15, 3/n);
+      for (let i=0;i<n;i++) for (let j=i+1;j<n;j++) if (Math.random()<p) edges.push({a:i,b:j});
+      // Ensure connectivity: span tree
+      for (let i=1;i<n;i++) {
+        const j = Math.random()*i|0;
+        if (!hasEdge(i,j)) edges.push({a:j,b:i});
+      }
+    },
+    ring() {
+      nodes = scatter(n);
+      edges = Array.from({length:n}, (_,i)=>({a:i,b:(i+1)%n}));
+      // Place on ring
+      nodes.forEach((nd,i)=>{const a=i/n*Math.PI*2-Math.PI/2;nd.x=cx()+Math.min(W,H)*0.38*Math.cos(a);nd.y=cy()+Math.min(W,H)*0.38*Math.sin(a);});
+    },
+    grid() {
+      const cols=Math.ceil(Math.sqrt(n)), rows=Math.ceil(n/cols);
+      nodes=[]; edges=[];
+      for(let r=0;r<rows;r++) for(let c=0;c<cols;c++) {
+        const id=nodes.length; if(id>=n) break;
+        nodes.push({x:W*0.15+c*(W*0.7/(cols-1||1)),y:H*0.15+r*(H*0.7/(rows-1||1)),vx:0,vy:0,id,fixed:false});
+      }
+      for(let i=0;i<nodes.length;i++) {
+        const c2=i%cols,r2=Math.floor(i/cols);
+        if(c2<cols-1&&i+1<nodes.length) edges.push({a:i,b:i+1});
+        if(r2<rows-1&&i+cols<nodes.length) edges.push({a:i,b:i+cols});
+      }
+    },
+    tree() {
+      nodes = scatter(n); edges = [];
+      for(let i=1;i<n;i++) edges.push({a:Math.floor((i-1)/2),b:i});
+    },
+    smallworld() {
+      nodes = scatter(n); edges = [];
+      const k=4;
+      // Ring lattice
+      for(let i=0;i<n;i++) for(let j=1;j<=k/2;j++) edges.push({a:i,b:(i+j)%n});
+      // Rewire
+      const rewire=0.15;
+      edges = edges.map(e=>{
+        if(Math.random()<rewire){
+          let nb=Math.random()*n|0;
+          if(!hasEdge(e.a,nb)&&e.a!==nb) return {a:e.a,b:nb};
+        }
+        return e;
+      });
+    },
+    scalefree() {
+      // Barabási-Albert preferential attachment
+      nodes = scatter(Math.min(n,80)); edges = [];
+      const m=2;
+      const degrees=new Array(nodes.length).fill(0);
+      for(let i=2;i<nodes.length;i++){
+        const targets=new Set();
+        const totalDeg=degrees.slice(0,i).reduce((s,d)=>s+d,0)||1;
+        while(targets.size<Math.min(m,i)){
+          let r=Math.random()*totalDeg,cum=0;
+          for(let j=0;j<i;j++){cum+=degrees[j];if(cum>=r){targets.add(j);break;}}
+          if(targets.size===0) targets.add(Math.random()*i|0); // fallback
+        }
+        targets.forEach(t=>{edges.push({a:t,b:i});degrees[t]++;degrees[i]++;});
+      }
+    },
+    clique() {
+      const n2=Math.min(n,18);
+      nodes=scatter(n2); edges=[];
+      for(let i=0;i<n2;i++) for(let j=i+1;j<n2;j++) edges.push({a:i,b:j});
+    },
+    path() {
+      nodes=scatter(n); edges=[];
+      for(let i=0;i<n-1;i++) edges.push({a:i,b:i+1});
+    },
+    bipartite() {
+      const half=Math.floor(n/2), n2=half*2;
+      nodes=scatter(n2); edges=[];
+      // Place in two columns
+      nodes.slice(0,half).forEach((nd,i)=>{nd.x=W*0.25;nd.y=H*0.1+i*(H*0.8/(half-1||1));});
+      nodes.slice(half).forEach((nd,i)=>{nd.x=W*0.75;nd.y=H*0.1+i*(H*0.8/(half-1||1));});
+      for(let i=0;i<half;i++) for(let j=0;j<half;j++) if(Math.random()<0.4) edges.push({a:i,b:half+j});
+      for(let i=0;i<half;i++) if(!edges.some(e=>e.a===i||e.b===i)) edges.push({a:i,b:half+(Math.random()*half|0)});
+    },
+  };
+}
+
+function cx(){return W/2;} function cy(){return H/2;}
+function hasEdge(a,b){return edges.some(e=>(e.a===a&&e.b===b)||(e.a===b&&e.b===a));}
+
+function generate() {
+  const ps = PRESETS();
+  const key = document.getElementById('preset').value;
+  ps[key]();
+  nodes.forEach((n,i)=>n.id=i);
+  computeMetrics();
+  applyColoring();
+}
+
+// ── Graph metrics ─────────────────────────────────────────────────
+function adjacency() {
+  const adj = Array.from({length:nodes.length},()=>[]);
+  edges.forEach(e=>{adj[e.a].push(e.b);adj[e.b].push(e.a);});
+  return adj;
+}
+
+function computeComponents(adj) {
+  const comp = new Int32Array(nodes.length).fill(-1);
+  let c=0;
+  for(let s=0;s<nodes.length;s++){
+    if(comp[s]>=0) continue;
+    const q=[s]; comp[s]=c;
+    while(q.length){const u=q.shift();for(const v of adj[u]){if(comp[v]<0){comp[v]=c;q.push(v);}}}
+    c++;
+  }
+  return {comp,count:c};
+}
+
+function bfs(src, adj) {
+  const dist=new Int32Array(nodes.length).fill(-1); dist[src]=0;
+  const q=[src];
+  while(q.length){const u=q.shift();for(const v of adj[u]){if(dist[v]<0){dist[v]=dist[u]+1;q.push(v);}}}
+  return dist;
+}
+
+function computeMetrics() {
+  const adj = adjacency();
+  const degrees = nodes.map((_,i)=>adj[i].length);
+
+  // Components
+  const {comp,count} = computeComponents(adj);
+  communities = Array.from(comp);
+
+  // BFS depth from node 0
+  bfsDepths = bfs(0, adj);
+
+  // Approximate betweenness (sample subset of sources for large graphs)
+  const n = nodes.length;
+  betweenness = new Float32Array(n);
+  const sources = n <= 30 ? [...Array(n).keys()] : Array.from({length:30},()=>Math.random()*n|0);
+  for(const s of sources) {
+    const dist2 = bfs(s, adj);
+    // Count paths through each node (approximate via BFS tree)
+    const stack=[], sigma=new Float32Array(n), delta=new Float32Array(n);
+    sigma[s]=1;
+    const q2=[s]; const d2=new Int32Array(n).fill(-1); d2[s]=0;
+    while(q2.length){
+      const v=q2.shift(); stack.push(v);
+      for(const w of adj[v]){
+        if(d2[w]<0){d2[w]=d2[v]+1;q2.push(w);}
+        if(d2[w]===d2[v]+1) sigma[w]+=sigma[v];
+      }
+    }
+    while(stack.length){
+      const w=stack.pop();
+      for(const v of adj[w]){
+        if(d2[v]===d2[w]-1) delta[v]+=sigma[v]/sigma[w]*(1+delta[w]);
+      }
+      if(w!==s) betweenness[w]+=delta[w];
+    }
+  }
+
+  // Update stats
+  document.getElementById('iNodes').textContent = n;
+  document.getElementById('iEdges').textContent = edges.length;
+  document.getElementById('iDeg').textContent   = n ? (degrees.reduce((a,b)=>a+b,0)/n).toFixed(1) : 0;
+  document.getElementById('iComp').textContent  = count;
+}
+
+// ── Coloring ──────────────────────────────────────────────────────
+function hsl(h,s,l){return `hsl(${h},${s}%,${l}%)`;}
+
+function applyColoring() {
+  const adj = adjacency();
+  const mode = document.getElementById('coloring').value;
+  const n = nodes.length;
+  if (!n) return;
+
+  if (mode === 'degree') {
+    const degs = nodes.map((_,i)=>adj[i].length);
+    const max = Math.max(...degs,1);
+    nodes.forEach((nd,i)=>{ nd.color = hsl(240-degs[i]/max*200, 70, 50); nd.r = 4+degs[i]/max*8; });
+  } else if (mode === 'betweenness') {
+    const max = Math.max(...betweenness,1);
+    nodes.forEach((nd,i)=>{ const t=betweenness[i]/max; nd.color=hsl(t*120,70,40+t*20); nd.r=4+t*8; });
+  } else if (mode === 'community') {
+    const palette=[200,30,120,60,280,160,340,90];
+    nodes.forEach((nd,i)=>{ nd.color=hsl(palette[communities[i]%palette.length],65,50); nd.r=6; });
+  } else if (mode === 'depth') {
+    const max = Math.max(...bfsDepths.map(d=>d<0?0:d),1);
+    nodes.forEach((nd,i)=>{ const t=bfsDepths[i]<0?1:bfsDepths[i]/max; nd.color=hsl((1-t)*200+t*0,70,45); nd.r=6; });
+  }
+}
+
+// ── Force layout (Verlet) ─────────────────────────────────────────
+const DAMP = 0.85;
+
+function simulate() {
+  if (frozen) return;
+  const k  = parseFloat(document.getElementById('spring').value);
+  const kr = parseFloat(document.getElementById('repel').value);
+  const n  = nodes.length;
+  const ideal = Math.sqrt(W * H / (n || 1)) * 0.8;
+
+  // Reset forces
+  nodes.forEach(nd=>{nd.ax=0;nd.ay=0;});
+
+  // Repulsion
+  for(let i=0;i<n;i++) for(let j=i+1;j<n;j++){
+    const dx=nodes[j].x-nodes[i].x, dy=nodes[j].y-nodes[i].y;
+    const d2=dx*dx+dy*dy+1;
+    const f=kr/d2;
+    const fx=dx/Math.sqrt(d2)*f, fy=dy/Math.sqrt(d2)*f;
+    nodes[i].ax-=fx; nodes[i].ay-=fy;
+    nodes[j].ax+=fx; nodes[j].ay+=fy;
+  }
+
+  // Spring attraction on edges
+  edges.forEach(e=>{
+    const a=nodes[e.a], b=nodes[e.b];
+    const dx=b.x-a.x, dy=b.y-a.y;
+    const d=Math.sqrt(dx*dx+dy*dy)+0.01;
+    const f=k*(d-ideal);
+    const fx=dx/d*f, fy=dy/d*f;
+    a.ax+=fx; a.ay+=fy;
+    b.ax-=fx; b.ay-=fy;
+  });
+
+  // Center gravity
+  const gcx=nodes.reduce((s,nd)=>s+nd.x,0)/n, gcy=nodes.reduce((s,nd)=>s+nd.y,0)/n;
+  nodes.forEach(nd=>{nd.ax+=(W/2-gcx)*0.005; nd.ay+=(H/2-gcy)*0.005;});
+
+  // Integrate + dampen
+  nodes.forEach(nd=>{
+    if(nd.fixed) return;
+    nd.vx=(nd.vx+nd.ax)*DAMP;
+    nd.vy=(nd.vy+nd.ay)*DAMP;
+    nd.x+=nd.vx; nd.y+=nd.vy;
+    nd.x=Math.max(20,Math.min(W-20,nd.x));
+    nd.y=Math.max(20,Math.min(H-20,nd.y));
+  });
+}
+
+// ── Render ────────────────────────────────────────────────────────
+function draw() {
+  ctx.fillStyle='#060608'; ctx.fillRect(0,0,W,H);
+
+  // Edges
+  ctx.lineWidth=1;
+  edges.forEach(e=>{
+    const a=nodes[e.a],b=nodes[e.b];
+    if(!a||!b) return;
+    ctx.strokeStyle='rgba(60,80,120,0.5)';
+    ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+  });
+
+  // Nodes
+  nodes.forEach((nd,i)=>{
+    const r=nd.r||6;
+    // Glow
+    const grd=ctx.createRadialGradient(nd.x,nd.y,0,nd.x,nd.y,r*2.5);
+    grd.addColorStop(0,nd.color||'#4080ff');
+    grd.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.beginPath(); ctx.arc(nd.x,nd.y,r*2.5,0,Math.PI*2);
+    ctx.fillStyle=grd; ctx.fill();
+
+    ctx.beginPath(); ctx.arc(nd.x,nd.y,r,0,Math.PI*2);
+    ctx.fillStyle=nd.color||'#4080ff'; ctx.fill();
+
+    if(showLabels){
+      ctx.fillStyle='#888'; ctx.font='9px Courier New'; ctx.textAlign='center';
+      ctx.fillText(i,nd.x,nd.y-r-3);
+    }
+    if(nd===dragNode){
+      ctx.beginPath(); ctx.arc(nd.x,nd.y,r+3,0,Math.PI*2);
+      ctx.strokeStyle='#fff'; ctx.lineWidth=1; ctx.stroke();
+    }
+  });
+
+  // Drag-connect line
+  if(connectFrom !== null && mousePos) {
+    const src=nodes[connectFrom];
+    ctx.setLineDash([4,4]);
+    ctx.strokeStyle='rgba(100,160,255,0.6)'; ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(src.x,src.y); ctx.lineTo(mousePos.x,mousePos.y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+}
+
+function loop() {
+  simulate(); draw();
+  simFrame = requestAnimationFrame(loop);
+}
+
+// ── Interaction ───────────────────────────────────────────────────
+let dragNode=null, connectFrom=null, mousePos=null, dragStarted=false;
+const DRAG_THRESHOLD=6;
+let dragStart={x:0,y:0};
+
+function nodeAt(x,y) {
+  let best=null, bestD=20;
+  nodes.forEach((nd,i)=>{
+    const d=Math.hypot(nd.x-x,nd.y-y);
+    if(d<bestD){bestD=d;best=i;}
+  });
+  return best;
+}
+
+canvas.addEventListener('mousedown', e=>{
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  mousePos={x:mx,y:my};
+  dragStart={x:mx,y:my}; dragStarted=false;
+
+  if(e.button===2){
+    // Right-click: delete node or edge
+    e.preventDefault();
+    const ni=nodeAt(mx,my);
+    if(ni!==null){
+      nodes.splice(ni,1);
+      edges=edges.filter(e=>e.a!==ni&&e.b!==ni)
+        .map(e=>({a:e.a>ni?e.a-1:e.a, b:e.b>ni?e.b-1:e.b}));
+      nodes.forEach((n,i)=>n.id=i);
+      computeMetrics(); applyColoring();
+    }
+    return;
+  }
+
+  const ni=nodeAt(mx,my);
+  if(ni!==null){
+    dragNode=nodes[ni];
+    connectFrom=ni;
+    dragNode.fixed=true;
+  }
+});
+
+canvas.addEventListener('mousemove', e=>{
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  mousePos={x:mx,y:my};
+  if(dragNode){
+    const dx=mx-dragStart.x, dy=my-dragStart.y;
+    if(!dragStarted && Math.hypot(dx,dy)>DRAG_THRESHOLD) dragStarted=true;
+    if(dragStarted){ dragNode.x=mx; dragNode.y=my; connectFrom=null; }
+  }
+});
+
+canvas.addEventListener('mouseup', e=>{
+  if(!dragNode) {
+    // Click on empty space: add node
+    if(e.button===0){
+      const r2=canvas.getBoundingClientRect();
+      const mx=e.clientX-r2.left, my=e.clientY-r2.top;
+      if(nodeAt(mx,my)===null){
+        const id=nodes.length;
+        nodes.push({x:mx,y:my,vx:0,vy:0,id,fixed:false});
+        computeMetrics(); applyColoring();
+      }
+    }
+    return;
+  }
+  dragNode.fixed=false;
+
+  if(!dragStarted && connectFrom!==null){
+    // Short click on node: start connect
+  } else if(dragStarted && connectFrom===null){
+    // Was dragging, nothing
+  } else if(!dragStarted){
+    // Click on node: nothing special
+  } else {
+    // Dragged from node: check if released over another node
+    const r3=canvas.getBoundingClientRect();
+    const mx=e.clientX-r3.left, my=e.clientY-r3.top;
+    const target=nodeAt(mx,my);
+    const srcIdx=nodes.indexOf(dragNode);
+    if(target!==null && target!==srcIdx && !hasEdge(srcIdx,target)){
+      edges.push({a:srcIdx,b:target});
+      computeMetrics(); applyColoring();
+    }
+  }
+
+  dragNode=null; connectFrom=null; dragStarted=false;
+});
+canvas.addEventListener('contextmenu',e=>e.preventDefault());
+
+// ── Controls ──────────────────────────────────────────────────────
+document.getElementById('btnRegen').addEventListener('click',()=>{generate();});
+document.getElementById('btnFreeze').addEventListener('click',()=>{
+  frozen=!frozen;
+  document.getElementById('btnFreeze').classList.toggle('active',frozen);
+  document.getElementById('btnFreeze').textContent=frozen?'Frozen':'Freeze';
+});
+document.getElementById('btnLabels').addEventListener('click',()=>{
+  showLabels=!showLabels;
+  document.getElementById('btnLabels').classList.toggle('active',showLabels);
+});
+document.getElementById('nNodes').addEventListener('input',e=>{
+  document.getElementById('nVal').textContent=e.target.value;
+});
+document.getElementById('coloring').addEventListener('change',applyColoring);
+document.getElementById('preset').addEventListener('change',generate);
+
+window.addEventListener('resize',()=>{resize();});
+
+resize();
+generate();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

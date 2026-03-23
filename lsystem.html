@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>L-System Explorer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #040406; color: #a0a0b0; font: 12px/1.4 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { display: flex; align-items: center; gap: 10px; padding: 7px 14px; background: #06060a; border-bottom: 1px solid #10101c; flex-wrap: wrap; flex-shrink: 0; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; margin-right: 4px; white-space: nowrap; }
+  canvas { display: block; flex: 1; min-height: 0; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; letter-spacing: 0.08em; }
+  button:hover { background: #12122a; color: #a0a0c8; border-color: #3a3a60; }
+  button.active { background: #1a1a40; color: #b0b0ff; border-color: #5050b0; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  input[type=range] { width: 72px; accent-color: #4060c0; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  #status { font-size: 10px; color: #303050; margin-left: 4px; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>L-System</h1>
+  <div class="sep"></div>
+  <select id="selPreset"></select>
+  <div class="sep"></div>
+  <label>Iter
+    <input type="range" id="rngIter" min="1" max="14" value="5">
+    <span id="lblIter">5</span>
+  </label>
+  <label>Angle
+    <input type="range" id="rngAngle" min="1" max="180" step="0.5" value="60">
+    <span id="lblAngle">60°</span>
+  </label>
+  <div class="sep"></div>
+  <label>Speed
+    <input type="range" id="rngSpeed" min="0.003" max="1" step="0.003" value="0.015">
+  </label>
+  <select id="selColor">
+    <option value="rainbow">Rainbow</option>
+    <option value="fire">Fire</option>
+    <option value="ice">Ice</option>
+    <option value="neon">Neon</option>
+    <option value="gold">Gold</option>
+    <option value="mono">Mono</option>
+  </select>
+  <button id="btnGlow">Glow</button>
+  <div class="sep"></div>
+  <button id="btnPause">Pause</button>
+  <button id="btnSkip">Skip</button>
+  <button id="btnRedraw">Redraw</button>
+  <span id="status"></span>
+</div>
+<canvas id="c"></canvas>
+
+<script>
+'use strict';
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight - document.getElementById('top').offsetHeight;
+}
+resize();
+window.addEventListener('resize', () => { resize(); startDraw(); });
+
+// ── Presets ──────────────────────────────────────────────────────
+const PRESETS = [
+  { name: 'Koch Snowflake',  axiom: 'F++F++F',        rules: {F:'F-F++F-F'},                          angle:  60, iter: 5 },
+  { name: 'Dragon Curve',    axiom: 'FX',              rules: {X:'X+YF+', Y:'-FX-Y'},                  angle:  90, iter: 12},
+  { name: 'Fractal Plant',   axiom: 'X',               rules: {X:'F+[[X]-X]-F[-FX]+X', F:'FF'},        angle:  25, iter: 6 },
+  { name: 'Hilbert Curve',   axiom: 'A',               rules: {A:'+BF-AFA-FB+', B:'-AF+BFB+FA-'},      angle:  90, iter: 6 },
+  { name: 'Sierpinski',      axiom: 'F-G-G',           rules: {F:'F-G+F+G-F', G:'GG'},                 angle: 120, iter: 7 },
+  { name: 'Lévy C Curve',    axiom: 'F',               rules: {F:'+F--F+'},                            angle:  45, iter: 14},
+  { name: 'Gosper Curve',    axiom: 'F',               rules: {F:'F-G--G+F++FF+G-', G:'+F-GG--G-F++F+G'}, angle: 60, iter: 4 },
+  { name: 'Bush',            axiom: 'F',               rules: {F:'FF+[+F-F-F]-[-F+F+F]'},             angle:  22.5, iter: 5 },
+  { name: 'Pentigree',       axiom: 'F-F-F-F-F',       rules: {F:'F-F++F+F-F-F'},                      angle:  72, iter: 4 },
+  { name: 'Quadratic Koch',  axiom: 'F-F-F-F',         rules: {F:'F-F+F+FF-F-F+F'},                    angle:  90, iter: 4 },
+];
+
+// ── Palettes ─────────────────────────────────────────────────────
+const PALETTES = {
+  rainbow: t => `hsl(${t*360|0},80%,60%)`,
+  fire:    t => `hsl(${t*55|0},90%,${40+t*35|0}%)`,
+  ice:     t => `hsl(${185+t*55|0},80%,${40+t*35|0}%)`,
+  neon:    t => `hsl(${t*140+240|0},100%,58%)`,
+  gold:    t => `hsl(${40+t*25|0},90%,${40+t*40|0}%)`,
+  mono:    t => `rgba(${100+t*155|0},${100+t*155|0},${140+t*115|0},0.9)`,
+};
+
+// ── State ─────────────────────────────────────────────────────────
+let curPreset  = PRESETS[0];
+let curAngle   = PRESETS[0].angle;
+let curIter    = PRESETS[0].iter;
+let curPalette = 'rainbow';
+let glowOn     = false;
+let drawFrac   = 0.015;   // fraction of total segs drawn per frame
+let paused     = false;
+
+let offCanvas, offCtx, segs, fit, drawIdx, totalSegs, lineW;
+
+// ── L-system expansion ───────────────────────────────────────────
+function expand(axiom, rules, n) {
+  const MAX = 320000;
+  let s = axiom;
+  for (let i = 0; i < n; i++) {
+    let next = '';
+    for (let k = 0; k < s.length; k++) {
+      next += rules[s[k]] || s[k];
+      if (next.length > MAX) return next;
+    }
+    s = next;
+  }
+  return s;
+}
+
+// ── Turtle → segment array ────────────────────────────────────────
+function turtle(cmds, stepLen, angleDeg) {
+  const angle = angleDeg * Math.PI / 180;
+  const stk = [];
+  let x = 0, y = 0, h = -Math.PI / 2;
+  const buf = [];
+
+  for (let k = 0; k < cmds.length; k++) {
+    const c = cmds[k];
+    if (c === 'F' || c === 'G') {
+      const nx = x + Math.cos(h) * stepLen;
+      const ny = y + Math.sin(h) * stepLen;
+      buf.push(x, y, nx, ny);
+      x = nx; y = ny;
+    } else if (c === '+') { h += angle;
+    } else if (c === '-') { h -= angle;
+    } else if (c === '[') { stk.push(x, y, h);
+    } else if (c === ']') { h = stk.pop(); y = stk.pop(); x = stk.pop(); }
+  }
+  return new Float32Array(buf);
+}
+
+// ── Fit transform ─────────────────────────────────────────────────
+function computeFit(segs, W, H) {
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (let i = 0; i < segs.length; i += 4) {
+    const ax = segs[i], ay = segs[i+1], bx = segs[i+2], by = segs[i+3];
+    if (ax < x0) x0 = ax; if (ax > x1) x1 = ax;
+    if (bx < x0) x0 = bx; if (bx > x1) x1 = bx;
+    if (ay < y0) y0 = ay; if (ay > y1) y1 = ay;
+    if (by < y0) y0 = by; if (by > y1) y1 = by;
+  }
+  const pad = 28;
+  const sw = x1 - x0 || 1, sh = y1 - y0 || 1;
+  const scale = Math.min((W - pad*2) / sw, (H - pad*2) / sh);
+  return { scale, ox: (W - sw*scale)/2 - x0*scale, oy: (H - sh*scale)/2 - y0*scale };
+}
+
+// ── Init draw session ─────────────────────────────────────────────
+let animId = null;
+
+function startDraw() {
+  if (animId) { cancelAnimationFrame(animId); animId = null; }
+
+  const W = canvas.width, H = canvas.height;
+  offCanvas = document.createElement('canvas');
+  offCanvas.width = W; offCanvas.height = H;
+  offCtx = offCanvas.getContext('2d');
+  offCtx.fillStyle = '#040406';
+  offCtx.fillRect(0, 0, W, H);
+
+  document.getElementById('status').textContent = 'computing…';
+
+  // Defer so the UI updates before heavy computation
+  requestAnimationFrame(() => {
+    const cmds = expand(curPreset.axiom, curPreset.rules, curIter);
+    segs = turtle(cmds, 10, curAngle);
+    totalSegs = segs.length / 4;
+    if (totalSegs === 0) { document.getElementById('status').textContent = 'no segments'; return; }
+
+    fit = computeFit(segs, W, H);
+    lineW = Math.max(0.35, Math.min(2.2, 220 / Math.sqrt(totalSegs)));
+    offCtx.lineWidth = lineW;
+    offCtx.lineCap = 'round';
+
+    drawIdx = 0;
+    paused = false;
+    document.getElementById('btnPause').textContent = 'Pause';
+    document.getElementById('status').textContent = totalSegs.toLocaleString() + ' segments';
+
+    loop();
+  });
+}
+
+// ── Animation loop ────────────────────────────────────────────────
+function loop() {
+  if (!paused && drawIdx < totalSegs) {
+    const batchTotal = Math.max(1, Math.ceil(totalSegs * drawFrac));
+    const SUB = 12; // color sub-batches for smooth gradient
+    const subSize = Math.max(1, Math.ceil(batchTotal / SUB));
+    const frameEnd = Math.min(drawIdx + batchTotal, totalSegs);
+
+    const palFn = PALETTES[curPalette];
+
+    for (let s = 0; s < SUB && drawIdx < frameEnd; s++) {
+      const end = Math.min(drawIdx + subSize, frameEnd);
+      const t = (drawIdx + end) * 0.5 / totalSegs;
+      const col = palFn(t);
+
+      offCtx.strokeStyle = col;
+      if (glowOn) { offCtx.shadowBlur = 8; offCtx.shadowColor = col; }
+      else offCtx.shadowBlur = 0;
+
+      offCtx.beginPath();
+      for (let i = drawIdx; i < end; i++) {
+        offCtx.moveTo(segs[i*4]   * fit.scale + fit.ox,
+                      segs[i*4+1] * fit.scale + fit.oy);
+        offCtx.lineTo(segs[i*4+2] * fit.scale + fit.ox,
+                      segs[i*4+3] * fit.scale + fit.oy);
+      }
+      offCtx.stroke();
+      drawIdx = end;
+    }
+
+    if (drawIdx >= totalSegs)
+      document.getElementById('status').textContent = totalSegs.toLocaleString() + ' segments · done';
+  }
+
+  ctx.drawImage(offCanvas, 0, 0);
+  animId = requestAnimationFrame(loop);
+}
+
+// ── Controls ──────────────────────────────────────────────────────
+const selPreset = document.getElementById('selPreset');
+PRESETS.forEach((p, i) => selPreset.add(new Option(p.name, i)));
+
+selPreset.addEventListener('change', () => {
+  curPreset = PRESETS[parseInt(selPreset.value)];
+  curAngle  = curPreset.angle;
+  curIter   = curPreset.iter;
+  document.getElementById('rngIter').value  = curIter;
+  document.getElementById('rngAngle').value = curAngle;
+  document.getElementById('lblIter').textContent  = curIter;
+  document.getElementById('lblAngle').textContent = curAngle + '°';
+  startDraw();
+});
+
+document.getElementById('rngIter').addEventListener('input', e => {
+  curIter = parseInt(e.target.value);
+  document.getElementById('lblIter').textContent = curIter;
+});
+document.getElementById('rngIter').addEventListener('change', startDraw);
+
+document.getElementById('rngAngle').addEventListener('input', e => {
+  curAngle = parseFloat(e.target.value);
+  document.getElementById('lblAngle').textContent = curAngle.toFixed(1) + '°';
+});
+document.getElementById('rngAngle').addEventListener('change', startDraw);
+
+document.getElementById('rngSpeed').addEventListener('input', e => {
+  drawFrac = parseFloat(e.target.value);
+});
+
+document.getElementById('selColor').addEventListener('change', e => {
+  curPalette = e.target.value;
+  startDraw();
+});
+
+document.getElementById('btnGlow').addEventListener('click', function() {
+  glowOn = !glowOn;
+  this.classList.toggle('active', glowOn);
+  startDraw();
+});
+
+document.getElementById('btnPause').addEventListener('click', function() {
+  paused = !paused;
+  this.textContent = paused ? 'Resume' : 'Pause';
+});
+
+document.getElementById('btnSkip').addEventListener('click', () => {
+  if (!segs) return;
+  // Draw remaining segments instantly
+  paused = false;
+  const palFn = PALETTES[curPalette];
+  const SUB = 40, subSize = Math.max(1, Math.ceil((totalSegs - drawIdx) / SUB));
+  while (drawIdx < totalSegs) {
+    const end = Math.min(drawIdx + subSize, totalSegs);
+    const t   = (drawIdx + end) * 0.5 / totalSegs;
+    const col = palFn(t);
+    offCtx.strokeStyle = col;
+    offCtx.shadowBlur  = glowOn ? 8 : 0;
+    if (glowOn) offCtx.shadowColor = col;
+    offCtx.beginPath();
+    for (let i = drawIdx; i < end; i++) {
+      offCtx.moveTo(segs[i*4]   * fit.scale + fit.ox, segs[i*4+1] * fit.scale + fit.oy);
+      offCtx.lineTo(segs[i*4+2] * fit.scale + fit.ox, segs[i*4+3] * fit.scale + fit.oy);
+    }
+    offCtx.stroke();
+    drawIdx = end;
+  }
+  document.getElementById('status').textContent = totalSegs.toLocaleString() + ' segments · done';
+  ctx.drawImage(offCanvas, 0, 0);
+});
+
+document.getElementById('btnRedraw').addEventListener('click', startDraw);
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'r') { startDraw(); }
+  if (e.key === 'g') {
+    glowOn = !glowOn;
+    document.getElementById('btnGlow').classList.toggle('active', glowOn);
+    startDraw();
+  }
+  if (e.key === ' ') {
+    paused = !paused;
+    document.getElementById('btnPause').textContent = paused ? 'Resume' : 'Pause';
+    e.preventDefault();
+  }
+  if (e.key === 'ArrowRight') {
+    const r = document.getElementById('rngIter');
+    if (parseInt(r.value) < parseInt(r.max)) { r.value = parseInt(r.value)+1; curIter = parseInt(r.value); document.getElementById('lblIter').textContent = curIter; startDraw(); }
+  }
+  if (e.key === 'ArrowLeft') {
+    const r = document.getElementById('rngIter');
+    if (parseInt(r.value) > parseInt(r.min)) { r.value = parseInt(r.value)-1; curIter = parseInt(r.value); document.getElementById('lblIter').textContent = curIter; startDraw(); }
+  }
+});
+
+// ── Init ──────────────────────────────────────────────────────────
+startDraw();
+</script>
+</body>
+</html>

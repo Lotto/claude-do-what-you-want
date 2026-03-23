@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fluid Ink</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #040406; color: #c8c8c8; font-family: 'Courier New', monospace;
+         display: flex; flex-direction: column; align-items: center; height: 100vh; overflow: hidden; }
+  h1 { font-size: 0.85rem; letter-spacing: 0.3em; color: #333; text-transform: uppercase; padding: 6px 0 3px; }
+  #controls { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; padding: 2px 0 4px; align-items: center; }
+  button { background: #0a0a0e; color: #777; border: 1px solid #181820; padding: 3px 9px; cursor: pointer;
+           font-family: inherit; font-size: 0.68rem; border-radius: 3px; transition: all 0.12s; }
+  button:hover { background: #121218; color: #bbb; }
+  button.active { background: #0e1220; color: #6090e0; border-color: #20406a; }
+  label { font-size: 0.68rem; color: #3a3a3a; display: flex; align-items: center; gap: 4px; }
+  input[type=range] { width: 52px; accent-color: #305070; }
+  canvas { display: block; cursor: crosshair; }
+</style>
+</head>
+<body>
+<h1>Fluid Ink</h1>
+<div id="controls">
+  <label>Vorticity   <input type="range" id="vort"  min="0"   max="60"  step="1"    value="25"></label>
+  <label>Pressure    <input type="range" id="piters" min="5"   max="60"  step="5"    value="25"></label>
+  <label>Dissipation <input type="range" id="diss"  min="0.90" max="1.0" step="0.005" value="0.98"></label>
+  <button id="btnPause">Pause</button>
+  <button id="btnReset">Clear</button>
+</div>
+<canvas id="c"></canvas>
+
+<script>
+// ── Canvas setup ───────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+let W, H;
+function resize() {
+  W = Math.min(window.innerWidth - 4, 1400);
+  H = window.innerHeight - 68;
+  canvas.width = W; canvas.height = H;
+}
+resize();
+
+// ── WebGL2 ─────────────────────────────────────────────────────────
+const gl = canvas.getContext('webgl2');
+if (!gl) {
+  document.body.innerHTML = '<div style="color:#888;padding:50px;font-family:monospace;text-align:center">WebGL2 required</div>';
+  throw 0;
+}
+gl.getExtension('EXT_color_buffer_float');
+
+// ── Shaders ────────────────────────────────────────────────────────
+const VS = `#version 300 es
+in vec2 a; out vec2 v;
+void main(){ v=a*.5+.5; gl_Position=vec4(a,0,1); }`;
+
+const F = src => `#version 300 es\nprecision highp float;\nin vec2 v;\nout vec4 o;\n${src}`;
+
+const ADVECT = F(`
+  uniform sampler2D uV,uS; uniform float dt,dis;
+  void main(){ o=dis*texture(uS,v-dt*texture(uV,v).xy); }`);
+
+const JACOBI = F(`
+  uniform sampler2D uX,uB; uniform vec2 ts; uniform float al,rb;
+  void main(){
+    vec4 L=texture(uX,v-vec2(ts.x,0.)),R=texture(uX,v+vec2(ts.x,0.));
+    vec4 B=texture(uX,v-vec2(0.,ts.y)),T=texture(uX,v+vec2(0.,ts.y));
+    o=(L+R+B+T+al*texture(uB,v))*rb; }`);
+
+const DIVERGE = F(`
+  uniform sampler2D uV; uniform vec2 ts;
+  void main(){
+    float L=texture(uV,v-vec2(ts.x,0.)).x,R=texture(uV,v+vec2(ts.x,0.)).x;
+    float B=texture(uV,v-vec2(0.,ts.y)).y,T=texture(uV,v+vec2(0.,ts.y)).y;
+    o=vec4(.5*(R-L+T-B),0,0,1); }`);
+
+const CURL = F(`
+  uniform sampler2D uV; uniform vec2 ts;
+  void main(){
+    float L=texture(uV,v-vec2(ts.x,0.)).y,R=texture(uV,v+vec2(ts.x,0.)).y;
+    float B=texture(uV,v-vec2(0.,ts.y)).x,T=texture(uV,v+vec2(0.,ts.y)).x;
+    o=vec4(.5*(R-L-(T-B)),0,0,1); }`);
+
+const VORT = F(`
+  uniform sampler2D uV,uC; uniform vec2 ts; uniform float str,dt;
+  void main(){
+    float L=texture(uC,v-vec2(ts.x,0.)).x,R=texture(uC,v+vec2(ts.x,0.)).x;
+    float B=texture(uC,v-vec2(0.,ts.y)).x,T=texture(uC,v+vec2(0.,ts.y)).x;
+    float C=texture(uC,v).x;
+    vec2 f=.5*vec2(abs(T)-abs(B),abs(R)-abs(L));
+    f/=max(length(f),.0001); f*=str*C;
+    o=vec4(texture(uV,v).xy+f*dt,0,1); }`);
+
+const GRAD = F(`
+  uniform sampler2D uV,uP; uniform vec2 ts;
+  void main(){
+    float L=texture(uP,v-vec2(ts.x,0.)).x,R=texture(uP,v+vec2(ts.x,0.)).x;
+    float B=texture(uP,v-vec2(0.,ts.y)).x,T=texture(uP,v+vec2(0.,ts.y)).x;
+    o=vec4(texture(uV,v).xy-.5*vec2(R-L,T-B),0,1); }`);
+
+const SPLAT = F(`
+  uniform sampler2D uT; uniform vec2 pt; uniform vec4 val; uniform float r,asp;
+  void main(){
+    vec2 d=v-pt; d.x*=asp;
+    o=texture(uT,v)+val*exp(-dot(d,d)/r); }`);
+
+const DISPLAY = F(`
+  uniform sampler2D uD;
+  void main(){
+    vec3 c=texture(uD,v).rgb;
+    c=c/(c+.6); c=pow(max(c,0.),vec3(.45));
+    o=vec4(c,1.); }`);
+
+const CLEAR = F(`
+  uniform sampler2D uT; uniform float val;
+  void main(){ o=val*texture(uT,v); }`);
+
+// ── Program builder ────────────────────────────────────────────────
+function mkProg(fs) {
+  function sh(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS))
+      console.error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, VS));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+  gl.bindAttribLocation(p, 0, 'a');
+  gl.linkProgram(p);
+  const locs = {};
+  const loc = n => locs[n] ?? (locs[n] = gl.getUniformLocation(p, n));
+  return {
+    p,
+    use() { gl.useProgram(p); return this; },
+    i1(n,v)      { gl.uniform1i(loc(n),v); return this; },
+    f1(n,v)      { gl.uniform1f(loc(n),v); return this; },
+    f2(n,x,y)    { gl.uniform2f(loc(n),x,y); return this; },
+    f4(n,x,y,z,w){ gl.uniform4f(loc(n),x,y,z,w); return this; },
+    tex(unit, t) { gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t); return this; },
+  };
+}
+
+const progs = {
+  advect:  mkProg(ADVECT),
+  jacobi:  mkProg(JACOBI),
+  diverge: mkProg(DIVERGE),
+  curl:    mkProg(CURL),
+  vort:    mkProg(VORT),
+  grad:    mkProg(GRAD),
+  splat:   mkProg(SPLAT),
+  display: mkProg(DISPLAY),
+  clear:   mkProg(CLEAR),
+};
+
+// ── Quad VAO ───────────────────────────────────────────────────────
+const vao = gl.createVertexArray();
+gl.bindVertexArray(vao);
+const vbuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vbuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+gl.enableVertexAttribArray(0);
+gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+function blit(fbo, w, h) {
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo ?? null);
+  gl.viewport(0, 0, fbo ? w : W, fbo ? h : H);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+}
+
+// ── FBO helpers ────────────────────────────────────────────────────
+function mkFBO(w, h, ifmt, fmt, type, filter) {
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, ifmt, w, h, 0, fmt, type, null);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  return { tex, fbo, w, h };
+}
+function mkDouble(w, h, ifmt, fmt, type, filter) {
+  let r = mkFBO(w,h,ifmt,fmt,type,filter), wr = mkFBO(w,h,ifmt,fmt,type,filter);
+  return { read:r, write:wr, swap(){ [this.read,this.write]=[this.write,this.read]; } };
+}
+
+// ── Simulation state ───────────────────────────────────────────────
+const SIM = 256, DYE = 512;
+let vel, pres, div, curl2, dye;
+
+function initFBOs() {
+  vel   = mkDouble(SIM, SIM, gl.RG32F,   gl.RG,   gl.FLOAT,      gl.LINEAR);
+  pres  = mkDouble(SIM, SIM, gl.R32F,    gl.RED,  gl.FLOAT,      gl.NEAREST);
+  div   = mkFBO   (SIM, SIM, gl.R32F,    gl.RED,  gl.FLOAT,      gl.NEAREST);
+  curl2 = mkFBO   (SIM, SIM, gl.R32F,    gl.RED,  gl.FLOAT,      gl.NEAREST);
+  dye   = mkDouble(DYE, DYE, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, gl.LINEAR);
+}
+initFBOs();
+window.addEventListener('resize', () => { resize(); });
+
+const ST = [1/SIM, 1/SIM];  // sim texel size
+const DT = [1/DYE, 1/DYE];  // dye texel size
+const dt = 0.016;
+
+// ── Simulation step ────────────────────────────────────────────────
+function step() {
+  const vortStr = parseFloat(document.getElementById('vort').value);
+  const pIters  = parseInt(document.getElementById('piters').value);
+  const diss    = parseFloat(document.getElementById('diss').value);
+  gl.bindVertexArray(vao);
+
+  // Curl
+  progs.curl.use().tex(0,vel.read.tex).f2('ts',...ST);
+  gl.uniform1i(gl.getUniformLocation(progs.curl.p,'uV'),0);
+  blit(curl2.fbo, SIM, SIM);
+
+  // Vorticity confinement
+  if (vortStr > 0) {
+    progs.vort.use()
+      .tex(0,vel.read.tex).tex(1,curl2.tex)
+      .f2('ts',...ST).f1('str',vortStr).f1('dt',dt);
+    gl.uniform1i(gl.getUniformLocation(progs.vort.p,'uV'),0);
+    gl.uniform1i(gl.getUniformLocation(progs.vort.p,'uC'),1);
+    blit(vel.write.fbo, SIM, SIM);
+    vel.swap();
+  }
+
+  // Advect velocity
+  progs.advect.use()
+    .tex(0,vel.read.tex).tex(1,vel.read.tex)
+    .f1('dt',dt).f1('dis',1.0);
+  gl.uniform1i(gl.getUniformLocation(progs.advect.p,'uV'),0);
+  gl.uniform1i(gl.getUniformLocation(progs.advect.p,'uS'),1);
+  blit(vel.write.fbo, SIM, SIM);
+  vel.swap();
+
+  // Divergence
+  progs.diverge.use().tex(0,vel.read.tex).f2('ts',...ST);
+  gl.uniform1i(gl.getUniformLocation(progs.diverge.p,'uV'),0);
+  blit(div.fbo, SIM, SIM);
+
+  // Clear pressure (warm-start with slight decay)
+  progs.clear.use().tex(0,pres.read.tex).f1('val',0.9);
+  gl.uniform1i(gl.getUniformLocation(progs.clear.p,'uT'),0);
+  blit(pres.write.fbo, SIM, SIM);
+  pres.swap();
+
+  // Pressure Jacobi
+  progs.jacobi.use().f2('ts',...ST).f1('al',-1.0).f1('rb',0.25);
+  gl.uniform1i(gl.getUniformLocation(progs.jacobi.p,'uX'),0);
+  gl.uniform1i(gl.getUniformLocation(progs.jacobi.p,'uB'),1);
+  for (let i=0; i<pIters; i++) {
+    progs.jacobi.tex(0,pres.read.tex).tex(1,div.tex);
+    blit(pres.write.fbo, SIM, SIM);
+    pres.swap();
+  }
+
+  // Subtract gradient
+  progs.grad.use()
+    .tex(0,vel.read.tex).tex(1,pres.read.tex).f2('ts',...ST);
+  gl.uniform1i(gl.getUniformLocation(progs.grad.p,'uV'),0);
+  gl.uniform1i(gl.getUniformLocation(progs.grad.p,'uP'),1);
+  blit(vel.write.fbo, SIM, SIM);
+  vel.swap();
+
+  // Advect dye
+  progs.advect.use()
+    .tex(0,vel.read.tex).tex(1,dye.read.tex)
+    .f1('dt',dt).f1('dis',diss);
+  blit(dye.write.fbo, DYE, DYE);
+  dye.swap();
+}
+
+// ── Splat ──────────────────────────────────────────────────────────
+let hue = 0;
+
+function hsl(h, s, l) {
+  h=h%1; s=Math.min(1,s); l=Math.min(1,l);
+  const k = n => ((n+h*12)%12);
+  const a = s*Math.min(l,1-l);
+  const f = n => l - a*Math.max(-1, Math.min(k(n)-3, Math.min(9-k(n), 1)));
+  return [f(0), f(8), f(4)];
+}
+
+function splat(x, y, dx, dy, r=0.0015, colorBoost=1) {
+  const asp = W/H;
+  const ux = x/W, uy = 1-y/H;
+  hue = (hue + 0.8) % 360;
+  const [cr,cg,cb] = hsl(hue/360, 0.9, 0.55);
+  const S = progs.splat.use();
+  gl.uniform1i(gl.getUniformLocation(progs.splat.p,'uT'),0);
+
+  // Velocity
+  S.tex(0,vel.read.tex)
+   .f2('pt',ux,uy)
+   .f4('val', dx*180/W, -dy*180/H, 0, 0)
+   .f1('r',r)
+   .f1('asp',asp);
+  blit(vel.write.fbo, SIM, SIM);
+  vel.swap();
+
+  // Dye
+  S.tex(0,dye.read.tex)
+   .f4('val', cr*colorBoost, cg*colorBoost, cb*colorBoost, 1)
+   .f1('r', r*0.55);
+  blit(dye.write.fbo, DYE, DYE);
+  dye.swap();
+}
+
+// ── Mouse ──────────────────────────────────────────────────────────
+const mouse = { x:W/2, y:H/2, dx:0, dy:0, down:false };
+
+canvas.addEventListener('mousedown', e => {
+  mouse.down=true;
+  const r=canvas.getBoundingClientRect();
+  mouse.x=e.clientX-r.left; mouse.y=e.clientY-r.top;
+});
+window.addEventListener('mouseup', () => mouse.down=false);
+canvas.addEventListener('mousemove', e => {
+  const r=canvas.getBoundingClientRect();
+  const nx=e.clientX-r.left, ny=e.clientY-r.top;
+  mouse.dx=nx-mouse.x; mouse.dy=ny-mouse.y;
+  mouse.x=nx; mouse.y=ny;
+});
+canvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  mouse.down=true;
+  const r=canvas.getBoundingClientRect(), t=e.touches[0];
+  mouse.x=t.clientX-r.left; mouse.y=t.clientY-r.top;
+}, {passive:false});
+canvas.addEventListener('touchend', () => mouse.down=false);
+canvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  const r=canvas.getBoundingClientRect(), t=e.touches[0];
+  const nx=t.clientX-r.left, ny=t.clientY-r.top;
+  mouse.dx=nx-mouse.x; mouse.dy=ny-mouse.y;
+  mouse.x=nx; mouse.y=ny;
+}, {passive:false});
+
+// ── Auto-demo ──────────────────────────────────────────────────────
+let frame=0;
+function autoDemo() {
+  const t = frame*0.012;
+  const n = 3;
+  for (let i=0;i<n;i++) {
+    const a = t + i/n*Math.PI*2;
+    const r = 0.22;
+    const x = W/2 + Math.cos(a)*W*r;
+    const y = H/2 + Math.sin(a)*H*r*0.7;
+    const dx = -Math.sin(a)*2.5, dy = Math.cos(a)*2.5;
+    splat(x, y, dx, dy, 0.0025, 0.6);
+  }
+}
+
+// ── Controls ───────────────────────────────────────────────────────
+let paused = false;
+document.getElementById('btnPause').addEventListener('click', () => {
+  paused = !paused;
+  document.getElementById('btnPause').textContent = paused ? 'Play' : 'Pause';
+  document.getElementById('btnPause').classList.toggle('active', paused);
+});
+document.getElementById('btnReset').addEventListener('click', () => {
+  initFBOs();
+});
+
+// ── Render loop ────────────────────────────────────────────────────
+function loop() {
+  frame++;
+  if (!paused) {
+    // User interaction
+    if (mouse.down || Math.abs(mouse.dx)>0.5 || Math.abs(mouse.dy)>0.5) {
+      splat(mouse.x, mouse.y, mouse.dx, mouse.dy);
+    }
+    mouse.dx *= 0.75; mouse.dy *= 0.75;
+
+    // Auto-demo for first 600 frames or always if no touch
+    if (frame < 600 && !mouse.down) autoDemo();
+
+    step();
+  }
+
+  // Render to screen
+  gl.bindVertexArray(vao);
+  progs.display.use().tex(0, dye.read.tex);
+  gl.uniform1i(gl.getUniformLocation(progs.display.p,'uD'),0);
+  blit(null, W, H);
+
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

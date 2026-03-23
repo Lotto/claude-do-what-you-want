@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sorting</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #060608;
+    color: #c8c8c8;
+    font-family: 'Courier New', monospace;
+    display: flex; flex-direction: column; align-items: center;
+    height: 100vh; overflow: hidden;
+  }
+  h1 { font-size: 0.9rem; letter-spacing: 0.25em; color: #444; text-transform: uppercase; padding: 7px 0 4px; }
+  #controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; padding: 2px 0 5px; align-items: center; }
+  button {
+    background: #0e0e12; color: #888; border: 1px solid #1e1e28;
+    padding: 3px 11px; cursor: pointer; font-family: inherit;
+    font-size: 0.71rem; border-radius: 3px; transition: all 0.12s;
+  }
+  button:hover { background: #16161e; color: #ccc; }
+  button.active { background: #12182a; color: #60a0ff; border-color: #2a4a8a; }
+  label { font-size: 0.71rem; color: #444; display: flex; align-items: center; gap: 5px; }
+  input[type=range] { width: 62px; accent-color: #3a6a9a; }
+  select { background: #0e0e12; color: #888; border: 1px solid #1e1e28; padding: 2px 7px; font-family: inherit; font-size: 0.71rem; border-radius: 3px; }
+  #stats {
+    display: flex; gap: 18px; font-size: 0.68rem; color: #444;
+    padding-bottom: 4px;
+  }
+  #stats b { color: #888; }
+  canvas { display: block; }
+  #algo-row {
+    display: flex; gap: 5px; flex-wrap: wrap; justify-content: center;
+    padding: 3px 0 5px;
+  }
+  .algo-btn { font-size: 0.68rem; padding: 2px 9px; }
+  .algo-btn.active { background: #1a1a32; color: #9090ff; border-color: #3030aa; }
+</style>
+</head>
+<body>
+<h1>Sorting Algorithms</h1>
+<div id="algo-row">
+  <button class="algo-btn active" data-algo="bubble">Bubble</button>
+  <button class="algo-btn" data-algo="selection">Selection</button>
+  <button class="algo-btn" data-algo="insertion">Insertion</button>
+  <button class="algo-btn" data-algo="shell">Shell</button>
+  <button class="algo-btn" data-algo="merge">Merge</button>
+  <button class="algo-btn" data-algo="quick">Quick</button>
+  <button class="algo-btn" data-algo="heap">Heap</button>
+  <button class="algo-btn" data-algo="radix">Radix</button>
+</div>
+<div id="controls">
+  <button id="btnSort">Sort</button>
+  <button id="btnShuffle">Shuffle</button>
+  <button id="btnStep">Step</button>
+  <label>Size <input type="range" id="nBars" min="8" max="256" value="80"><span id="nVal">80</span></label>
+  <label>Speed <input type="range" id="speed" min="1" max="100" value="40"></label>
+  <label>Pattern
+    <select id="pattern">
+      <option value="random">Random</option>
+      <option value="nearly">Nearly Sorted</option>
+      <option value="reverse">Reversed</option>
+      <option value="few">Few Unique</option>
+      <option value="pipes">Pipes</option>
+    </select>
+  </label>
+  <button id="btnSound" class="active">Sound</button>
+</div>
+<div id="stats">
+  <span>Comparisons <b id="sCmp">0</b></span>
+  <span>Swaps <b id="sSwa">0</b></span>
+  <span>Array accesses <b id="sAcc">0</b></span>
+  <span id="sStatus" style="color:#666">idle</span>
+</div>
+<canvas id="c"></canvas>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  W = Math.min(window.innerWidth - 6, 1400);
+  H = window.innerHeight - 142;
+  canvas.width = W; canvas.height = H;
+}
+
+// ── Audio ─────────────────────────────────────────────────────────
+let audioCtx = null, soundOn = true;
+function initAudio() { if (!audioCtx) audioCtx = new AudioContext(); }
+function beep(val, maxVal, dur=0.04) {
+  if (!soundOn || !audioCtx) return;
+  const freq = 150 + (val / maxVal) * 900;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+  o.type = 'sine'; o.frequency.value = freq;
+  g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+  o.start(); o.stop(audioCtx.currentTime + dur);
+}
+
+// ── Array state ───────────────────────────────────────────────────
+let arr = [], N = 80;
+let highlighted = new Map(); // idx → color
+let sorted = new Set();
+let running = false, stepping = false;
+let cmpCount = 0, swaCount = 0, accCount = 0;
+let currentGen = null, stepQueue = [];
+let currentAlgo = 'bubble';
+
+const COL = {
+  default:  '#2a3a5a',
+  compare:  '#e8c840',
+  swap:     '#e84040',
+  pivot:    '#e06020',
+  sorted:   '#2a6a3a',
+  merge:    '#4060c0',
+  current:  '#60a0e0',
+};
+
+function makeArray() {
+  N = parseInt(document.getElementById('nBars').value);
+  const pat = document.getElementById('pattern').value;
+  arr = Array.from({length:N}, (_,i) => i+1);
+  if (pat === 'random')  shuffle(arr);
+  else if (pat === 'nearly') { shuffle(arr); for(let i=0;i<N*0.05|0;i++){const a=Math.random()*N|0,b=Math.random()*N|0;[arr[a],arr[b]]=[arr[b],arr[a]];} arr.sort((a,b)=>a-b); for(let i=0;i<N*0.1|0;i++){const a=Math.random()*N|0,b=Math.random()*N|0;[arr[a],arr[b]]=[arr[b],arr[a]];} }
+  else if (pat === 'reverse') arr.reverse();
+  else if (pat === 'few')    arr = Array.from({length:N},()=>(Math.random()*8|0)+1).map(v=>v*Math.floor(N/8));
+  else if (pat === 'pipes')  { const half=N/2|0; arr=Array.from({length:N},(_,i)=>i<half?i+1:N-i+half); }
+  highlighted.clear(); sorted.clear();
+  cmpCount=0; swaCount=0; accCount=0;
+  updateStats(); running=false; currentGen=null;
+}
+
+function shuffle(a) { for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]];} }
+
+function updateStats() {
+  document.getElementById('sCmp').textContent = cmpCount;
+  document.getElementById('sSwa').textContent = swaCount;
+  document.getElementById('sAcc').textContent = accCount;
+}
+
+// ── Sorting generators ────────────────────────────────────────────
+// Each yields: {type:'cmp'|'swap'|'set'|'mark'|'done', i, j, val?, color?}
+
+function* bubbleSort(a) {
+  const n=a.length;
+  for(let i=0;i<n;i++) {
+    let swapped=false;
+    for(let j=0;j<n-i-1;j++) {
+      yield {type:'cmp',i:j,j:j+1};
+      if(a[j]>a[j+1]){yield {type:'swap',i:j,j:j+1};[a[j],a[j+1]]=[a[j+1],a[j]];swapped=true;}
+    }
+    yield {type:'mark',i:n-i-1,color:'sorted'};
+    if(!swapped) break;
+  }
+  yield {type:'done'};
+}
+
+function* selectionSort(a) {
+  const n=a.length;
+  for(let i=0;i<n;i++){
+    let min=i;
+    for(let j=i+1;j<n;j++){yield {type:'cmp',i:min,j};if(a[j]<a[min])min=j;}
+    if(min!==i){yield {type:'swap',i,j:min};[a[i],a[min]]=[a[min],a[i]];}
+    yield {type:'mark',i,color:'sorted'};
+  }
+  yield {type:'done'};
+}
+
+function* insertionSort(a) {
+  const n=a.length;
+  yield {type:'mark',i:0,color:'sorted'};
+  for(let i=1;i<n;i++){
+    let j=i;
+    while(j>0){
+      yield {type:'cmp',i:j-1,j};
+      if(a[j]<a[j-1]){yield {type:'swap',i:j-1,j};[a[j],a[j-1]]=[a[j-1],a[j]];j--;}
+      else break;
+    }
+    yield {type:'mark',i,color:'sorted'};
+  }
+  yield {type:'done'};
+}
+
+function* shellSort(a) {
+  const n=a.length;
+  let gap=1; while(gap<n/3) gap=gap*3+1;
+  while(gap>=1){
+    for(let i=gap;i<n;i++){
+      let j=i;
+      while(j>=gap){
+        yield {type:'cmp',i:j-gap,j};
+        if(a[j]<a[j-gap]){yield {type:'swap',i:j-gap,j};[a[j],a[j-gap]]=[a[j-gap],a[j]];j-=gap;}
+        else break;
+      }
+    }
+    gap=Math.floor(gap/3);
+  }
+  yield {type:'done'};
+}
+
+function* mergeSort(a) {
+  function* merge(lo,mid,hi){
+    const tmp=a.slice(lo,hi+1);
+    let i=0,j=mid-lo+1,k=lo;
+    while(i<=mid-lo&&j<=hi-lo){
+      yield {type:'cmp',i:lo+i,j:lo+j};
+      if(tmp[i]<=tmp[j]){yield {type:'set',i:k,val:tmp[i]};a[k++]=tmp[i++];}
+      else{yield {type:'set',i:k,val:tmp[j]};a[k++]=tmp[j++];}
+    }
+    while(i<=mid-lo){yield {type:'set',i:k,val:tmp[i]};a[k++]=tmp[i++];}
+    while(j<=hi-lo){yield {type:'set',i:k,val:tmp[j]};a[k++]=tmp[j++];}
+  }
+  function* ms(lo,hi){
+    if(lo>=hi) return;
+    const mid=(lo+hi)>>1;
+    yield* ms(lo,mid); yield* ms(mid+1,hi); yield* merge(lo,mid,hi);
+  }
+  yield* ms(0,a.length-1);
+  yield {type:'done'};
+}
+
+function* quickSort(a) {
+  function* qs(lo,hi){
+    if(lo>=hi) return;
+    const pivot=a[hi];
+    let i=lo-1;
+    yield {type:'pivot',j:hi};
+    for(let j=lo;j<hi;j++){
+      yield {type:'cmp',i:j,j:hi};
+      if(a[j]<=pivot){i++;if(i!==j){yield {type:'swap',i,j};[a[i],a[j]]=[a[j],a[i]];}}
+    }
+    if(i+1!==hi){yield {type:'swap',i:i+1,j:hi};[a[i+1],a[hi]]=[a[hi],a[i+1]];}
+    yield {type:'mark',i:i+1,color:'sorted'};
+    yield* qs(lo,i); yield* qs(i+2,hi);
+  }
+  yield* qs(0,a.length-1);
+  yield {type:'done'};
+}
+
+function* heapSort(a) {
+  const n=a.length;
+  function* siftDown(root,end){
+    while(true){
+      let largest=root,l=2*root+1,r=2*root+2;
+      if(l<=end){yield {type:'cmp',i:largest,j:l};if(a[l]>a[largest])largest=l;}
+      if(r<=end){yield {type:'cmp',i:largest,j:r};if(a[r]>a[largest])largest=r;}
+      if(largest===root) break;
+      yield {type:'swap',i:root,j:largest};[a[root],a[largest]]=[a[largest],a[root]];root=largest;
+    }
+  }
+  for(let i=(n>>1)-1;i>=0;i--) yield* siftDown(i,n-1);
+  for(let end=n-1;end>0;end--){
+    yield {type:'swap',i:0,j:end};[a[0],a[end]]=[a[end],a[0]];
+    yield {type:'mark',i:end,color:'sorted'};
+    yield* siftDown(0,end-1);
+  }
+  yield {type:'done'};
+}
+
+function* radixSort(a) {
+  const max=Math.max(...a);
+  for(let exp=1;Math.floor(max/exp)>0;exp*=10){
+    const output=new Array(a.length);
+    const count=new Array(10).fill(0);
+    for(let i=0;i<a.length;i++){const d=Math.floor(a[i]/exp)%10;count[d]++;yield {type:'cmp',i,j:i};}
+    for(let i=1;i<10;i++) count[i]+=count[i-1];
+    for(let i=a.length-1;i>=0;i--){const d=Math.floor(a[i]/exp)%10;output[--count[d]]=a[i];yield {type:'cmp',i,j:i};}
+    for(let i=0;i<a.length;i++){yield {type:'set',i,val:output[i]};a[i]=output[i];}
+  }
+  yield {type:'done'};
+}
+
+const ALGOS = {bubble:bubbleSort,selection:selectionSort,insertion:insertionSort,
+               shell:shellSort,merge:mergeSort,quick:quickSort,heap:heapSort,radix:radixSort};
+
+// ── Step execution ────────────────────────────────────────────────
+function applyStep(step) {
+  highlighted.clear();
+  if (step.type==='cmp')  { cmpCount++;accCount+=2;highlighted.set(step.i,'compare');highlighted.set(step.j,'compare');beep(arr[step.i],N); }
+  else if (step.type==='swap') { swaCount++;accCount+=4;highlighted.set(step.i,'swap');highlighted.set(step.j,'swap');beep(arr[step.i],N); }
+  else if (step.type==='set')  { accCount++;arr[step.i]=step.val;highlighted.set(step.i,'merge');beep(step.val,N); }
+  else if (step.type==='mark') { sorted.add(step.i); }
+  else if (step.type==='pivot'){ highlighted.set(step.j,'pivot'); }
+  else if (step.type==='done') {
+    highlighted.clear();
+    // Victory sweep
+    let idx=0;
+    const sweep=setInterval(()=>{
+      if(idx>=arr.length){ clearInterval(sweep); sorted.clear(); running=false; document.getElementById('sStatus').textContent='done'; document.getElementById('btnSort').textContent='Sort'; return; }
+      sorted.add(idx++); beep(arr[idx-1],N,0.02);
+    },10);
+    return false; // stop generator
+  }
+  updateStats();
+  return true;
+}
+
+// ── Render ────────────────────────────────────────────────────────
+function draw() {
+  ctx.fillStyle='#060608'; ctx.fillRect(0,0,W,H);
+  const n=arr.length;
+  const barW=W/n, maxVal=n;
+  for(let i=0;i<n;i++){
+    const h=(arr[i]/maxVal)*H*0.95;
+    let col;
+    if(sorted.has(i))            col=COL.sorted;
+    else if(highlighted.has(i))  col=COL[highlighted.get(i)];
+    else                         col=COL.default;
+    ctx.fillStyle=col;
+    ctx.fillRect(i*barW, H-h, Math.max(barW-1,0.5), h);
+  }
+}
+
+let lastStep=0;
+function loop(ts) {
+  if(running && currentGen) {
+    const delay=Math.max(0, 101-parseInt(document.getElementById('speed').value));
+    if(ts-lastStep > delay) {
+      lastStep=ts;
+      const {value,done}=currentGen.next();
+      if(!done) { if(applyStep(value)===false) running=false; }
+      else { running=false; }
+    }
+  }
+  draw();
+  requestAnimationFrame(loop);
+}
+
+function startSort() {
+  initAudio();
+  if(running){ running=false; document.getElementById('btnSort').textContent='Sort'; return; }
+  highlighted.clear(); sorted.clear();
+  cmpCount=0; swaCount=0; accCount=0;
+  const copy=[...arr];
+  currentGen=ALGOS[currentAlgo](arr);
+  running=true;
+  document.getElementById('sStatus').textContent='sorting…';
+  document.getElementById('btnSort').textContent='Pause';
+}
+
+function stepOnce() {
+  initAudio();
+  if(!currentGen) {
+    highlighted.clear(); sorted.clear(); cmpCount=0;swaCount=0;accCount=0;
+    currentGen=ALGOS[currentAlgo](arr);
+  }
+  const {value,done}=currentGen.next();
+  if(!done) applyStep(value);
+  running=false;
+  document.getElementById('btnSort').textContent='Sort';
+}
+
+// ── Controls ──────────────────────────────────────────────────────
+document.getElementById('btnSort').addEventListener('click',startSort);
+document.getElementById('btnShuffle').addEventListener('click',()=>{ running=false; makeArray(); document.getElementById('btnSort').textContent='Sort'; document.getElementById('sStatus').textContent='idle'; });
+document.getElementById('btnStep').addEventListener('click',stepOnce);
+document.getElementById('nBars').addEventListener('input',e=>{ document.getElementById('nVal').textContent=e.target.value; if(!running){makeArray();} });
+document.getElementById('nBars').addEventListener('change',()=>{ if(!running) makeArray(); });
+document.getElementById('pattern').addEventListener('change',()=>{ if(!running) makeArray(); });
+document.getElementById('btnSound').addEventListener('click',()=>{ soundOn=!soundOn; document.getElementById('btnSound').classList.toggle('active',soundOn); });
+
+document.querySelectorAll('.algo-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    document.querySelectorAll('.algo-btn').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    currentAlgo=btn.dataset.algo;
+    running=false; currentGen=null; makeArray();
+    document.getElementById('btnSort').textContent='Sort';
+    document.getElementById('sStatus').textContent='idle';
+  });
+});
+
+window.addEventListener('resize',()=>{ resize(); });
+
+resize();
+makeArray();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
