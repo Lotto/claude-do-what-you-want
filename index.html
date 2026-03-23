@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="automata.html">
+    <canvas class="preview" id="automataCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Elementary Automata</div>
+      <div class="card-desc">All 256 Wolfram elementary cellular automata. Editable rule bits with visual neighborhood display. 6 initial conditions, 5 color palettes, 10 famous rules. Arrow keys to browse rules, infinite scrolling.</div>
+      <div class="card-tags">
+        <span class="tag">cellular automata</span>
+        <span class="tag">generative</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 35</div>
+  </a>
+
   <a class="card" href="circuit.html">
     <canvas class="preview" id="circuitCanvas"></canvas>
     <div class="card-body">
@@ -1483,6 +1497,33 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Automata preview (Rule 110 triangle) ──────────────────────────
+(function() {
+  const c = document.getElementById('automataCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height, sz = 2;
+  const cols = Math.floor(W/sz), rows = Math.floor(H/sz);
+  ctx.fillStyle = '#020206';
+  ctx.fillRect(0, 0, W, H);
+  const rule = 110;
+  let row = new Uint8Array(cols);
+  row[Math.floor(cols/2)] = 1;
+  for (let y = 0; y < rows; y++) {
+    ctx.fillStyle = `hsl(${(y*2)%360},70%,55%)`;
+    for (let x = 0; x < cols; x++) {
+      if (row[x]) ctx.fillRect(x*sz, y*sz, sz, sz);
+    }
+    const next = new Uint8Array(cols);
+    for (let x = 0; x < cols; x++) {
+      const l = row[(x-1+cols)%cols], m = row[x], r = row[(x+1)%cols];
+      next[x] = (rule >> ((l<<2)|(m<<1)|r)) & 1;
+    }
+    row = next;
+  }
 })();
 
 // ── Circuit preview (static gate diagram) ─────────────────────────

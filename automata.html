@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elementary Automata</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #020206; color: #a0a0b0; font: 11px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { padding: 7px 14px; background: #06060a; border-bottom: 1px solid #10101c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; }
+  canvas { display: block; flex: 1; image-rendering: pixelated; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; }
+  button:hover { background: #12122a; color: #a0a0c8; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  input[type=range] { width: 70px; accent-color: #4060c0; }
+  input[type=number] { width: 48px; background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 4px; text-align: center; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  #info { position: absolute; bottom: 8px; left: 12px; font-size: 10px; color: #1a1a30; pointer-events: none; }
+  #ruleViz { display: flex; gap: 3px; align-items: center; }
+  .ruleCell { width: 14px; height: 14px; border: 1px solid #222236; cursor: pointer; display: inline-block; }
+  .ruleCell.on { background: #c0c0d8; }
+  .ruleCell.off { background: #0a0a14; }
+  .ruleTriple { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+  .ruleTriple .top { display: flex; gap: 1px; }
+  .ruleTriple .top span { width: 6px; height: 6px; display: inline-block; }
+  .ruleTriple .top span.on { background: #808098; }
+  .ruleTriple .top span.off { background: #1a1a28; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Automata</h1>
+  <div class="sep"></div>
+  <label>Rule <input type="number" id="numRule" min="0" max="255" value="110"></label>
+  <div id="ruleViz"></div>
+  <div class="sep"></div>
+  <select id="selInit">
+    <option value="single">Single Cell</option>
+    <option value="random">Random 50%</option>
+    <option value="random25">Random 25%</option>
+    <option value="random75">Random 75%</option>
+    <option value="alt">Alternating</option>
+    <option value="blocks">Blocks</option>
+  </select>
+  <select id="selPal">
+    <option value="0">White</option>
+    <option value="1">Green</option>
+    <option value="2">Amber</option>
+    <option value="3">Blue</option>
+    <option value="4">Rainbow</option>
+  </select>
+  <div class="sep"></div>
+  <label>Cell <input type="range" id="rngCell" min="1" max="6" step="1" value="2"></label>
+  <label>Speed <input type="range" id="rngSpeed" min="1" max="60" step="1" value="30"></label>
+  <div class="sep"></div>
+  <select id="selFamous">
+    <option value="-1">— Famous —</option>
+    <option value="30">Rule 30</option>
+    <option value="90">Rule 90</option>
+    <option value="110">Rule 110</option>
+    <option value="184">Rule 184</option>
+    <option value="60">Rule 60</option>
+    <option value="150">Rule 150</option>
+    <option value="73">Rule 73</option>
+    <option value="105">Rule 105</option>
+    <option value="225">Rule 225</option>
+    <option value="126">Rule 126</option>
+  </select>
+  <button id="btnRandom">Random Rule</button>
+  <button id="btnReset">Reset</button>
+</div>
+<canvas id="c"></canvas>
+<div id="info">Rule 110 is Turing complete · click rule bits to edit · arrow keys ±1/±10</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+let cellSize = 2;
+let cols, rows;
+let rule = 110;
+let grid = [];      // rows of Uint8Array
+let currentRow = 0;
+let initMode = 'single';
+let palIdx = 0;
+let speed = 30;     // rows per frame
+let running = true;
+let rowColors = []; // for rainbow mode: hue per row
+
+function resize() {
+  canvas.width = W = window.innerWidth;
+  canvas.height = H = window.innerHeight - canvas.getBoundingClientRect().top;
+  reset();
+}
+
+function reset() {
+  cols = Math.floor(W / cellSize);
+  rows = Math.floor(H / cellSize);
+  grid = [];
+  rowColors = [];
+  currentRow = 0;
+
+  // Initialize first row
+  const first = new Uint8Array(cols);
+  switch (initMode) {
+    case 'single':
+      first[Math.floor(cols / 2)] = 1;
+      break;
+    case 'random':
+      for (let i = 0; i < cols; i++) first[i] = Math.random() < 0.5 ? 1 : 0;
+      break;
+    case 'random25':
+      for (let i = 0; i < cols; i++) first[i] = Math.random() < 0.25 ? 1 : 0;
+      break;
+    case 'random75':
+      for (let i = 0; i < cols; i++) first[i] = Math.random() < 0.75 ? 1 : 0;
+      break;
+    case 'alt':
+      for (let i = 0; i < cols; i++) first[i] = i % 2;
+      break;
+    case 'blocks':
+      for (let i = 0; i < cols; i++) first[i] = (Math.floor(i / 4) % 2) ? 1 : 0;
+      break;
+  }
+  grid.push(first);
+  rowColors.push(0);
+
+  ctx.fillStyle = '#020206';
+  ctx.fillRect(0, 0, W, H);
+  drawRow(0);
+  updateRuleViz();
+}
+
+// ── Rule application ─────────────────────────────────────────────
+function applyRule(prev) {
+  const next = new Uint8Array(cols);
+  for (let i = 0; i < cols; i++) {
+    const l = prev[(i - 1 + cols) % cols];
+    const c = prev[i];
+    const r = prev[(i + 1) % cols];
+    const idx = (l << 2) | (c << 1) | r; // 3-bit neighborhood → 0-7
+    next[i] = (rule >> idx) & 1;
+  }
+  return next;
+}
+
+// ── Rendering ────────────────────────────────────────────────────
+const PALETTES = [
+  (on, row) => on ? '#d0d0e0' : '#020206',                    // White
+  (on, row) => on ? '#30d060' : '#020206',                    // Green
+  (on, row) => on ? '#e0a020' : '#020206',                    // Amber
+  (on, row) => on ? '#4090e0' : '#020206',                    // Blue
+  (on, row) => on ? `hsl(${(row * 1.5) % 360},70%,55%)` : '#020206', // Rainbow
+];
+
+function drawRow(rowIdx) {
+  const row = grid[rowIdx];
+  if (!row) return;
+  const pal = PALETTES[palIdx];
+  const y = rowIdx * cellSize;
+
+  if (palIdx === 4) {
+    // Rainbow: draw cell by cell
+    for (let x = 0; x < cols; x++) {
+      ctx.fillStyle = pal(row[x], rowIdx);
+      ctx.fillRect(x * cellSize, y, cellSize, cellSize);
+    }
+  } else {
+    // Solid colors: batch draw
+    const onColor = pal(1, rowIdx);
+    const offColor = pal(0, rowIdx);
+    // Draw background for the row
+    ctx.fillStyle = offColor;
+    ctx.fillRect(0, y, cols * cellSize, cellSize);
+    // Draw active cells
+    ctx.fillStyle = onColor;
+    for (let x = 0; x < cols; x++) {
+      if (row[x]) {
+        ctx.fillRect(x * cellSize, y, cellSize, cellSize);
+      }
+    }
+  }
+}
+
+// ── Main loop ────────────────────────────────────────────────────
+function loop() {
+  if (running && currentRow < rows - 1) {
+    for (let s = 0; s < speed && currentRow < rows - 1; s++) {
+      const prev = grid[currentRow];
+      const next = applyRule(prev);
+      currentRow++;
+      grid.push(next);
+      rowColors.push(currentRow);
+      drawRow(currentRow);
+    }
+  }
+  // When done, scroll down and continue
+  if (running && currentRow >= rows - 1) {
+    // Shift everything up by speed rows
+    const shift = Math.min(speed, rows / 2 | 0);
+    grid.splice(0, shift);
+    rowColors.splice(0, shift);
+    currentRow = grid.length - 1;
+
+    // Redraw entire canvas
+    ctx.fillStyle = '#020206';
+    ctx.fillRect(0, 0, W, H);
+    for (let i = 0; i < grid.length; i++) {
+      drawRow(i);
+    }
+
+    // Generate new rows
+    for (let s = 0; s < shift && grid.length < rows; s++) {
+      const prev = grid[grid.length - 1];
+      const next = applyRule(prev);
+      grid.push(next);
+      currentRow = grid.length - 1;
+      drawRow(currentRow);
+    }
+  }
+  requestAnimationFrame(loop);
+}
+
+// ── Rule visualization ───────────────────────────────────────────
+function updateRuleViz() {
+  const viz = document.getElementById('ruleViz');
+  viz.innerHTML = '';
+  for (let i = 7; i >= 0; i--) {
+    const triple = document.createElement('div');
+    triple.className = 'ruleTriple';
+
+    const top = document.createElement('div');
+    top.className = 'top';
+    const bits = [(i >> 2) & 1, (i >> 1) & 1, i & 1];
+    for (const b of bits) {
+      const s = document.createElement('span');
+      s.className = b ? 'on' : 'off';
+      top.appendChild(s);
+    }
+    triple.appendChild(top);
+
+    const cell = document.createElement('div');
+    cell.className = 'ruleCell ' + ((rule >> i) & 1 ? 'on' : 'off');
+    cell.addEventListener('click', () => {
+      rule ^= (1 << i); // toggle bit
+      document.getElementById('numRule').value = rule;
+      reset();
+    });
+    triple.appendChild(cell);
+    viz.appendChild(triple);
+  }
+}
+
+// ── Controls ─────────────────────────────────────────────────────
+document.getElementById('numRule').addEventListener('change', e => {
+  rule = Math.max(0, Math.min(255, parseInt(e.target.value) || 0));
+  e.target.value = rule;
+  reset();
+});
+
+document.getElementById('selInit').addEventListener('change', e => {
+  initMode = e.target.value;
+  reset();
+});
+
+document.getElementById('selPal').addEventListener('change', e => {
+  palIdx = parseInt(e.target.value);
+  // Redraw all
+  ctx.fillStyle = '#020206';
+  ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < grid.length; i++) drawRow(i);
+});
+
+document.getElementById('rngCell').addEventListener('input', e => {
+  cellSize = parseInt(e.target.value);
+  reset();
+});
+
+document.getElementById('rngSpeed').addEventListener('input', e => {
+  speed = parseInt(e.target.value);
+});
+
+document.getElementById('selFamous').addEventListener('change', e => {
+  const v = parseInt(e.target.value); if (v < 0) return;
+  rule = v;
+  document.getElementById('numRule').value = rule;
+  reset();
+  e.target.value = '-1';
+});
+
+document.getElementById('btnRandom').addEventListener('click', () => {
+  rule = Math.random() * 256 | 0;
+  document.getElementById('numRule').value = rule;
+  reset();
+});
+
+document.getElementById('btnReset').addEventListener('click', reset);
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === ' ') { running = !running; e.preventDefault(); }
+  if (e.key === 'r') { rule = Math.random() * 256 | 0; document.getElementById('numRule').value = rule; reset(); }
+  if (e.key === 'ArrowRight') { rule = Math.min(255, rule + 1); document.getElementById('numRule').value = rule; reset(); }
+  if (e.key === 'ArrowLeft') { rule = Math.max(0, rule - 1); document.getElementById('numRule').value = rule; reset(); }
+  if (e.key === 'ArrowUp') { rule = Math.min(255, rule + 10); document.getElementById('numRule').value = rule; reset(); e.preventDefault(); }
+  if (e.key === 'ArrowDown') { rule = Math.max(0, rule - 10); document.getElementById('numRule').value = rule; reset(); e.preventDefault(); }
+});
+
+// ── Init ─────────────────────────────────────────────────────────
+resize();
+window.addEventListener('resize', resize);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

@@ -758,3 +758,27 @@ Next ideas:
 - A noise-based wallpaper / screensaver generator
 - A music visualizer with FFT analysis
 - A cellular automaton rule explorer (1D elementary automata)
+
+---
+
+## 2026-03-23 — Run 35
+
+Built `automata.html`: elementary cellular automaton explorer (all 256 Wolfram rules).
+- 1D cellular automata: 3-cell neighborhood → 8 possible patterns → 8-bit rule number (0–255)
+- Rule visualization: clickable bit cells with 3-cell neighborhood preview above each bit
+- Wrapping boundary conditions (toroidal)
+- 6 initial conditions: Single Cell, Random 50%/25%/75%, Alternating, Blocks
+- 5 color palettes: White, Green, Amber, Blue, Rainbow (hue shifts per row)
+- Infinite scrolling: when canvas fills, shifts grid up and continues generating
+- Adjustable cell size (1–6px) and speed (1–60 rows/frame)
+- 10 famous rules quick-select: Rule 30 (chaos), 90 (Sierpinski), 110 (Turing complete), 184 (traffic), etc.
+- Random Rule button for exploration
+- Keyboard: space=pause, r=random, arrows=±1/±10 rule number
+- Added rainbow Rule 110 triangle thumbnail to index.html
+
+Next ideas:
+- Generative poetry engine (Markov chains or context-free grammar)
+- A reaction-diffusion GPU explorer
+- A noise-based wallpaper / screensaver generator
+- A music visualizer with FFT analysis
+- A platformer game with procedural levels
