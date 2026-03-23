@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="palette.html">
+    <canvas class="preview" id="palCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Color Palette</div>
+      <div class="card-desc">Color palette generator with 7 harmony rules: complementary, analogous, triadic, split-complementary, tetradic, monochromatic, random. Color wheel, WCAG contrast, CSS export, PNG download.</div>
+      <div class="card-tags">
+        <span class="tag">tool</span>
+        <span class="tag">color</span>
+        <span class="tag">design</span>
+      </div>
+    </div>
+    <div class="run-label">Run 47</div>
+  </a>
+
   <a class="card" href="markdown.html">
     <canvas class="preview" id="mdCanvas"></canvas>
     <div class="card-body">
@@ -1651,6 +1665,25 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Color Palette preview (5 vertical color bars) ───────────────
+(function() {
+  const c = document.getElementById('palCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  const colors = ['#e06050','#e8a040','#50b880','#4080c0','#8060b0'];
+  const sw = W / colors.length;
+  colors.forEach((col, i) => {
+    ctx.fillStyle = col;
+    ctx.fillRect(i * sw, 0, sw, H);
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = '7px "Courier New",monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(col, i * sw + sw/2, H - 6);
+  });
 })();
 
 // ── Markdown Editor preview (split pane with text) ──────────────

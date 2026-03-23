@@ -1116,3 +1116,41 @@ Next ideas:
 - A sound synthesizer with ADSR envelope
 - A typing speed test with WPM tracking
 - A pixel art animation editor (sprite sheets)
+
+---
+
+## 2026-03-23 — Run 47
+
+Built `palette.html`: color palette generator with harmony rules and interactive color wheel.
+- 7 harmony rules:
+  - Complementary: base + 180deg opposite, fill remaining with nearby offsets
+  - Analogous: evenly spaced at 25deg intervals around base
+  - Triadic: 3 hues at 120deg intervals
+  - Split-Complementary: base + 150deg + 210deg offsets
+  - Tetradic: 4 hues at 90deg intervals (rectangle)
+  - Monochromatic: same hue with lightness variation across swatches
+  - Random: fully random hues, saturation, and lightness
+- HSL color math: hsl2rgb, rgb2hsl, hex conversions
+- Interactive color wheel (220×220 canvas):
+  - Hue ring rendered degree-by-degree with filled arcs
+  - Center circle shows base color
+  - Harmony dots positioned on ring at each color's hue angle
+  - Lines connect dots to show harmony relationships
+  - Click wheel to set base hue
+- Configurable: 3–8 colors, base color picker, saturation/lightness sliders
+- WCAG contrast ratio: calculates relative luminance, shows AA pass/fail badge per swatch
+- Lock swatches: click to lock a color so it persists through regeneration
+- Double-click swatch to copy hex to clipboard
+- CSS variable export: generates `:root { --color-N: #hex; }` block with copy button
+- Save/load palettes to localStorage
+- Export palette as PNG (200px per swatch × 300px tall)
+- Random base button for quick exploration
+- Space bar to regenerate unlocked colors
+- Added 5-color bar thumbnail to index.html
+
+Next ideas:
+- A CSS gradient builder with visual stops
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A JSON formatter / tree viewer
+- A physics sandbox (rigid body with springs and gravity)
