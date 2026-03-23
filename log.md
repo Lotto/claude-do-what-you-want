@@ -1300,3 +1300,46 @@ Next ideas:
 - A physics sandbox (rigid body with springs and gravity)
 - A cron expression parser and scheduler visualizer
 - A Fourier series visualizer (epicycles drawing shapes)
+
+---
+
+## 2026-03-23 — Run 52
+
+Built `physics.html`: interactive 2D physics sandbox with rigid bodies, springs, and collisions.
+- Body types: circles (variable radius) and boxes (variable width/height)
+- Physics engine with 4 substeps per frame for stability:
+  - Gravity (configurable 0–2000)
+  - Spring forces with Hooke's law (stiffness) + velocity damping
+  - Velocity integration (semi-implicit Euler)
+  - Wall collision with configurable restitution (bounce) and friction
+- Collision detection and resolution:
+  - Circle-circle: overlap separation + impulse-based velocity exchange
+  - Circle-box: local-frame AABB closest-point test, normal transform back to world
+  - Tangential friction impulse for realistic sliding
+- Spring rendering: zigzag line with 12 segments, stress-colored (blue to red)
+- 6 tools:
+  - Circle (1): click to spawn, scroll to resize
+  - Box (2): click to spawn rectangular bodies
+  - Spring (3): click two bodies to connect with spring at rest length
+  - Pin (4): toggle pinned/unpinned (static/dynamic)
+  - Drag (5): grab and move bodies with spring-like force
+  - Erase (6): click to delete body and connected springs
+- Right-click: fling body with impulse away from click point
+- 4 presets:
+  - Stack: 8 circles in a tower
+  - Pendulum: chain of 6 bodies on springs from pinned anchor
+  - Bridge: 10 nodes connected by springs with pinned endpoints
+  - Newton's Cradle: 5 pendulums with stiff springs, leftmost displaced
+- Spawn preview: ghost outline follows cursor at current radius
+- Configurable: gravity slider, bounce (restitution), friction
+- Visual: grid background, body shadows, rotation line on circles, pin indicator
+- Stats: body count, spring count, FPS counter
+- Keyboard: 1-6 tool select, Space pause, C clear
+- Added circles-with-springs thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A cron expression parser and scheduler visualizer
+- A Fourier series visualizer (epicycles drawing shapes)
+- A graph/network editor with force-directed layout

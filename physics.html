@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Physics Sandbox</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+  input[type="range"] { width: 60px; accent-color: #4060a0; }
+
+  canvas { display: block; flex: 1; cursor: crosshair; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; }
+  .stat b { color: #505078; font-weight: normal; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Physics Sandbox</h1>
+  <div class="sep"></div>
+  <button id="btnCircle" class="active" onclick="setTool('circle')">Circle (1)</button>
+  <button id="btnBox" onclick="setTool('box')">Box (2)</button>
+  <button id="btnSpring" onclick="setTool('spring')">Spring (3)</button>
+  <button id="btnPin" onclick="setTool('pin')">Pin (4)</button>
+  <button id="btnDrag" onclick="setTool('drag')">Drag (5)</button>
+  <button id="btnErase" onclick="setTool('erase')">Erase (6)</button>
+  <div class="sep"></div>
+  <label>Gravity: <input type="range" id="rGrav" min="0" max="2000" value="600" oninput="gravity=+this.value"> <span id="gravVal">600</span></label>
+  <label>Bounce: <input type="range" id="rBounce" min="0" max="100" value="60" oninput="restitution=this.value/100"> <span id="bounceVal">0.6</span></label>
+  <label>Friction: <input type="range" id="rFric" min="0" max="100" value="30" oninput="friction=this.value/100"></label>
+  <div class="sep"></div>
+  <button onclick="pauseToggle()" id="btnPause">Pause</button>
+  <button onclick="clearScene()">Clear</button>
+  <button onclick="loadPreset('stack')">Stack</button>
+  <button onclick="loadPreset('pendulum')">Pendulum</button>
+  <button onclick="loadPreset('bridge')">Bridge</button>
+  <button onclick="loadPreset('newton')">Newton's Cradle</button>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="statusBar">
+  <span class="stat">Bodies: <b id="statBodies">0</b></span>
+  <span class="stat">Springs: <b id="statSprings">0</b></span>
+  <span class="stat">FPS: <b id="statFps">0</b></span>
+  <span class="stat">Click+drag to create | Scroll = size | Right-click = fling</span>
+</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+function resize() {
+  W = canvas.width = canvas.clientWidth;
+  H = canvas.height = canvas.clientHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── State ────────────────────────────────────────────────────────
+let bodies = [];
+let springs = [];
+let pins = [];
+let gravity = 600;
+let restitution = 0.6;
+let friction = 0.3;
+let paused = false;
+let tool = 'circle';
+let spawnRadius = 25;
+let springStart = null;
+let dragBody = null;
+let dragOffset = { x: 0, y: 0 };
+let mousePos = { x: 0, y: 0 };
+let mouseDown = false;
+let nextId = 1;
+
+const COLORS = ['#e06060','#60a0e0','#60c080','#c0a060','#a070c0','#c07090','#70c0c0','#c0c060'];
+
+// ── Body ────────────────────────────────────────────────────────
+function createCircle(x, y, r, pinned) {
+  const mass = Math.PI * r * r * 0.01;
+  return {
+    id: nextId++, type: 'circle', x, y, vx: 0, vy: 0, r,
+    mass, invMass: pinned ? 0 : 1 / mass,
+    angle: 0, angVel: 0,
+    inertia: 0.5 * mass * r * r,
+    invInertia: pinned ? 0 : 2 / (mass * r * r),
+    pinned,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+  };
+}
+
+function createBox(x, y, hw, hh, pinned) {
+  const mass = hw * hh * 4 * 0.01;
+  const inertia = mass * (hw * hw + hh * hh) / 3;
+  return {
+    id: nextId++, type: 'box', x, y, vx: 0, vy: 0, hw, hh,
+    mass, invMass: pinned ? 0 : 1 / mass,
+    angle: 0, angVel: 0,
+    inertia, invInertia: pinned ? 0 : 1 / inertia,
+    pinned,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+  };
+}
+
+// ── Physics step ────────────────────────────────────────────────
+const SUB_STEPS = 4;
+const DT = 1 / 60;
+
+function step() {
+  if (paused) return;
+  const dt = DT / SUB_STEPS;
+
+  for (let sub = 0; sub < SUB_STEPS; sub++) {
+    // Apply gravity
+    for (const b of bodies) {
+      if (b.pinned) continue;
+      b.vy += gravity * dt;
+    }
+
+    // Apply springs
+    for (const s of springs) {
+      const a = s.a, b = s.b;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 0.001;
+      const force = (dist - s.restLen) * s.stiffness;
+      const damp = ((b.vx - a.vx) * dx / dist + (b.vy - a.vy) * dy / dist) * s.damping;
+      const fx = (force + damp) * dx / dist;
+      const fy = (force + damp) * dy / dist;
+      if (!a.pinned) { a.vx += fx * a.invMass * dt * 60; a.vy += fy * a.invMass * dt * 60; }
+      if (!b.pinned) { b.vx -= fx * b.invMass * dt * 60; b.vy -= fy * b.invMass * dt * 60; }
+    }
+
+    // Drag force
+    if (dragBody && mouseDown && tool === 'drag') {
+      const b = dragBody;
+      if (!b.pinned) {
+        const dx = mousePos.x - b.x;
+        const dy = mousePos.y - b.y;
+        b.vx += dx * 15 * dt;
+        b.vy += dy * 15 * dt;
+        b.vx *= 0.95;
+        b.vy *= 0.95;
+      }
+    }
+
+    // Integrate
+    for (const b of bodies) {
+      if (b.pinned) { b.vx = 0; b.vy = 0; b.angVel = 0; continue; }
+      b.x += b.vx * dt;
+      b.y += b.vy * dt;
+      b.angle += b.angVel * dt;
+    }
+
+    // Collision: body vs walls
+    for (const b of bodies) {
+      if (b.pinned) continue;
+      if (b.type === 'circle') {
+        if (b.y + b.r > H) { b.y = H - b.r; b.vy *= -restitution; b.vx *= (1 - friction); }
+        if (b.y - b.r < 0) { b.y = b.r; b.vy *= -restitution; }
+        if (b.x + b.r > W) { b.x = W - b.r; b.vx *= -restitution; }
+        if (b.x - b.r < 0) { b.x = b.r; b.vx *= -restitution; }
+      } else {
+        const r = Math.max(b.hw, b.hh) * 1.2;
+        if (b.y + r > H) { b.y = H - r; b.vy *= -restitution; b.vx *= (1 - friction); }
+        if (b.y - r < 0) { b.y = r; b.vy *= -restitution; }
+        if (b.x + r > W) { b.x = W - r; b.vx *= -restitution; }
+        if (b.x - r < 0) { b.x = r; b.vx *= -restitution; }
+      }
+    }
+
+    // Collision: circle vs circle
+    for (let i = 0; i < bodies.length; i++) {
+      for (let j = i + 1; j < bodies.length; j++) {
+        const a = bodies[i], b = bodies[j];
+        if (a.type === 'circle' && b.type === 'circle') {
+          resolveCircleCircle(a, b);
+        } else if (a.type === 'circle' && b.type === 'box') {
+          resolveCircleBox(a, b);
+        } else if (a.type === 'box' && b.type === 'circle') {
+          resolveCircleBox(b, a);
+        }
+        // box-box skipped for simplicity
+      }
+    }
+  }
+}
+
+function resolveCircleCircle(a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  const minDist = a.r + b.r;
+  if (dist >= minDist || dist < 0.001) return;
+
+  const nx = dx / dist, ny = dy / dist;
+  const overlap = minDist - dist;
+
+  // Separate
+  const totalInv = a.invMass + b.invMass;
+  if (totalInv === 0) return;
+  a.x -= nx * overlap * (a.invMass / totalInv);
+  a.y -= ny * overlap * (a.invMass / totalInv);
+  b.x += nx * overlap * (b.invMass / totalInv);
+  b.y += ny * overlap * (b.invMass / totalInv);
+
+  // Impulse
+  const relVx = b.vx - a.vx, relVy = b.vy - a.vy;
+  const relVn = relVx * nx + relVy * ny;
+  if (relVn > 0) return;
+
+  const e = restitution;
+  const impulse = -(1 + e) * relVn / totalInv;
+  a.vx -= impulse * nx * a.invMass;
+  a.vy -= impulse * ny * a.invMass;
+  b.vx += impulse * nx * b.invMass;
+  b.vy += impulse * ny * b.invMass;
+
+  // Tangential friction
+  const tx = relVx - relVn * nx, ty = relVy - relVn * ny;
+  const tLen = Math.sqrt(tx * tx + ty * ty);
+  if (tLen > 0.001) {
+    const fric = Math.min(friction * Math.abs(impulse), tLen) / tLen;
+    a.vx += tx * fric * a.invMass * 0.5;
+    a.vy += ty * fric * a.invMass * 0.5;
+    b.vx -= tx * fric * b.invMass * 0.5;
+    b.vy -= ty * fric * b.invMass * 0.5;
+  }
+}
+
+function resolveCircleBox(circle, box) {
+  // Transform circle center into box's local frame
+  const cos = Math.cos(-box.angle), sin = Math.sin(-box.angle);
+  const lx = (circle.x - box.x) * cos - (circle.y - box.y) * sin;
+  const ly = (circle.x - box.x) * sin + (circle.y - box.y) * cos;
+
+  // Closest point on AABB
+  const cx = Math.max(-box.hw, Math.min(box.hw, lx));
+  const cy = Math.max(-box.hh, Math.min(box.hh, ly));
+
+  const dx = lx - cx, dy = ly - cy;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist >= circle.r || dist < 0.001) return;
+
+  // Transform normal back to world
+  const cos2 = Math.cos(box.angle), sin2 = Math.sin(box.angle);
+  let nx = (dx / dist) * cos2 - (dy / dist) * sin2;
+  let ny = (dx / dist) * sin2 + (dy / dist) * cos2;
+
+  const overlap = circle.r - dist;
+  const totalInv = circle.invMass + box.invMass;
+  if (totalInv === 0) return;
+
+  circle.x += nx * overlap * (circle.invMass / totalInv);
+  circle.y += ny * overlap * (circle.invMass / totalInv);
+  box.x -= nx * overlap * (box.invMass / totalInv);
+  box.y -= ny * overlap * (box.invMass / totalInv);
+
+  const relVx = box.vx - circle.vx, relVy = box.vy - circle.vy;
+  const relVn = relVx * nx + relVy * ny;
+  if (relVn > 0) return;
+
+  const impulse = -(1 + restitution) * relVn / totalInv;
+  circle.vx -= impulse * nx * circle.invMass;
+  circle.vy -= impulse * ny * circle.invMass;
+  box.vx += impulse * nx * box.invMass;
+  box.vy += impulse * ny * box.invMass;
+}
+
+// ── Render ──────────────────────────────────────────────────────
+function render() {
+  ctx.fillStyle = '#080810';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grid
+  ctx.strokeStyle = '#0e0e1c';
+  ctx.lineWidth = 1;
+  for (let x = 0; x < W; x += 50) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 50) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+  // Springs
+  for (const s of springs) {
+    const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const stress = Math.abs(dist - s.restLen) / s.restLen;
+    const r = Math.min(255, Math.floor(stress * 500));
+
+    ctx.strokeStyle = `rgb(${80 + r},${100 - r * 0.3},${140 - r * 0.5})`;
+    ctx.lineWidth = 2;
+
+    // Zigzag spring
+    const segs = 12;
+    const nx = dx / dist, ny = dy / dist;
+    const px = -ny, py = nx;
+    const amp = 6;
+    ctx.beginPath();
+    ctx.moveTo(s.a.x, s.a.y);
+    for (let i = 1; i < segs; i++) {
+      const t = i / segs;
+      const mx = s.a.x + dx * t;
+      const my = s.a.y + dy * t;
+      const side = (i % 2 === 0 ? 1 : -1) * (i > 0 && i < segs ? 1 : 0);
+      ctx.lineTo(mx + px * amp * side, my + py * amp * side);
+    }
+    ctx.lineTo(s.b.x, s.b.y);
+    ctx.stroke();
+  }
+
+  // Bodies
+  for (const b of bodies) {
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.rotate(b.angle);
+
+    if (b.type === 'circle') {
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.beginPath(); ctx.arc(3, 3, b.r, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = b.color + '30';
+      ctx.strokeStyle = b.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(0, 0, b.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+
+      // Rotation line
+      ctx.strokeStyle = b.color + '80';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(b.r * 0.8, 0); ctx.stroke();
+    } else {
+      ctx.fillStyle = b.color + '30';
+      ctx.strokeStyle = b.color;
+      ctx.lineWidth = 2;
+      ctx.fillRect(-b.hw, -b.hh, b.hw * 2, b.hh * 2);
+      ctx.strokeRect(-b.hw, -b.hh, b.hw * 2, b.hh * 2);
+      // Diagonal
+      ctx.strokeStyle = b.color + '40';
+      ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(-b.hw, -b.hh); ctx.lineTo(b.hw, b.hh); ctx.stroke();
+    }
+
+    // Pin indicator
+    if (b.pinned) {
+      ctx.fillStyle = '#ffffff80';
+      ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  // Spring creation preview
+  if (tool === 'spring' && springStart && mouseDown) {
+    ctx.strokeStyle = '#4080c040';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath(); ctx.moveTo(springStart.x, springStart.y); ctx.lineTo(mousePos.x, mousePos.y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Spawn preview
+  if ((tool === 'circle' || tool === 'box') && !mouseDown) {
+    ctx.strokeStyle = '#ffffff15';
+    ctx.lineWidth = 1;
+    if (tool === 'circle') {
+      ctx.beginPath(); ctx.arc(mousePos.x, mousePos.y, spawnRadius, 0, Math.PI * 2); ctx.stroke();
+    } else {
+      ctx.strokeRect(mousePos.x - spawnRadius, mousePos.y - spawnRadius * 0.7, spawnRadius * 2, spawnRadius * 1.4);
+    }
+  }
+
+  // Drag line
+  if (tool === 'drag' && dragBody && mouseDown) {
+    ctx.strokeStyle = '#80c0ff40';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(dragBody.x, dragBody.y); ctx.lineTo(mousePos.x, mousePos.y); ctx.stroke();
+  }
+}
+
+// ── Tools & Input ───────────────────────────────────────────────
+function setTool(t) {
+  tool = t;
+  ['circle','box','spring','pin','drag','erase'].forEach(n =>
+    document.getElementById('btn' + n.charAt(0).toUpperCase() + n.slice(1)).classList.toggle('active', n === t));
+  springStart = null;
+  canvas.style.cursor = t === 'drag' ? 'grab' : t === 'erase' ? 'pointer' : 'crosshair';
+}
+
+function bodyAt(x, y) {
+  for (let i = bodies.length - 1; i >= 0; i--) {
+    const b = bodies[i];
+    if (b.type === 'circle') {
+      const dx = x - b.x, dy = y - b.y;
+      if (dx * dx + dy * dy <= b.r * b.r) return b;
+    } else {
+      const cos = Math.cos(-b.angle), sin = Math.sin(-b.angle);
+      const lx = (x - b.x) * cos - (y - b.y) * sin;
+      const ly = (x - b.x) * sin + (y - b.y) * cos;
+      if (Math.abs(lx) <= b.hw && Math.abs(ly) <= b.hh) return b;
+    }
+  }
+  return null;
+}
+
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  mousePos = { x, y };
+  mouseDown = true;
+
+  if (tool === 'circle') {
+    bodies.push(createCircle(x, y, spawnRadius, false));
+  } else if (tool === 'box') {
+    bodies.push(createBox(x, y, spawnRadius, spawnRadius * 0.7, false));
+  } else if (tool === 'spring') {
+    const hit = bodyAt(x, y);
+    if (hit) {
+      if (!springStart) {
+        springStart = hit;
+      } else {
+        const dx = hit.x - springStart.x, dy = hit.y - springStart.y;
+        const restLen = Math.sqrt(dx * dx + dy * dy);
+        springs.push({ a: springStart, b: hit, restLen, stiffness: 300, damping: 5 });
+        springStart = null;
+      }
+    }
+  } else if (tool === 'pin') {
+    const hit = bodyAt(x, y);
+    if (hit) {
+      hit.pinned = !hit.pinned;
+      hit.invMass = hit.pinned ? 0 : 1 / hit.mass;
+      hit.invInertia = hit.pinned ? 0 : 1 / hit.inertia;
+    }
+  } else if (tool === 'drag') {
+    dragBody = bodyAt(x, y);
+    if (dragBody) canvas.style.cursor = 'grabbing';
+  } else if (tool === 'erase') {
+    const hit = bodyAt(x, y);
+    if (hit) {
+      springs = springs.filter(s => s.a !== hit && s.b !== hit);
+      bodies = bodies.filter(b => b !== hit);
+    }
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+});
+
+canvas.addEventListener('mouseup', e => {
+  mouseDown = false;
+  if (tool === 'drag' && dragBody) {
+    canvas.style.cursor = 'grab';
+    dragBody = null;
+  }
+});
+
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left, y = e.clientY - rect.top;
+  const hit = bodyAt(x, y);
+  if (hit && !hit.pinned) {
+    // Fling: apply velocity away from click
+    const dx = hit.x - x, dy = hit.y - y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    hit.vx += (dx / dist) * 500;
+    hit.vy += (dy / dist) * 500;
+  }
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  spawnRadius = Math.max(8, Math.min(80, spawnRadius - e.deltaY * 0.1));
+});
+
+// ── Keyboard ────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.key === '1') setTool('circle');
+  if (e.key === '2') setTool('box');
+  if (e.key === '3') setTool('spring');
+  if (e.key === '4') setTool('pin');
+  if (e.key === '5') setTool('drag');
+  if (e.key === '6') setTool('erase');
+  if (e.key === ' ') { e.preventDefault(); pauseToggle(); }
+  if (e.key === 'c') clearScene();
+});
+
+function pauseToggle() {
+  paused = !paused;
+  document.getElementById('btnPause').classList.toggle('active', paused);
+  document.getElementById('btnPause').textContent = paused ? 'Play' : 'Pause';
+}
+
+function clearScene() {
+  bodies = []; springs = []; springStart = null;
+}
+
+// ── Presets ──────────────────────────────────────────────────────
+function loadPreset(name) {
+  clearScene();
+  if (name === 'stack') {
+    for (let i = 0; i < 8; i++) {
+      bodies.push(createCircle(W / 2 + (Math.random() - 0.5) * 10, H - 30 - i * 50, 22, false));
+    }
+  } else if (name === 'pendulum') {
+    const anchor = createCircle(W / 2, 60, 10, true);
+    bodies.push(anchor);
+    let prev = anchor;
+    for (let i = 1; i <= 6; i++) {
+      const b = createCircle(W / 2 + i * 40, 60 + i * 40, 12, false);
+      bodies.push(b);
+      const dx = b.x - prev.x, dy = b.y - prev.y;
+      springs.push({ a: prev, b, restLen: Math.sqrt(dx * dx + dy * dy), stiffness: 800, damping: 3 });
+      prev = b;
+    }
+  } else if (name === 'bridge') {
+    const count = 10;
+    const spacing = (W - 100) / count;
+    const nodes = [];
+    for (let i = 0; i <= count; i++) {
+      const pinned = i === 0 || i === count;
+      const b = createCircle(50 + i * spacing, H * 0.4, 8, pinned);
+      bodies.push(b);
+      nodes.push(b);
+    }
+    for (let i = 0; i < count; i++) {
+      springs.push({ a: nodes[i], b: nodes[i + 1], restLen: spacing, stiffness: 500, damping: 8 });
+    }
+  } else if (name === 'newton') {
+    const cx = W / 2, cy = 100, len = 200, r = 18;
+    const count = 5;
+    const startX = cx - (count - 1) * r;
+    for (let i = 0; i < count; i++) {
+      const ax = startX + i * r * 2;
+      const anchor = createCircle(ax, cy, 4, true);
+      bodies.push(anchor);
+      const ball = createCircle(ax, cy + len, r, false);
+      if (i === 0) { ball.x -= 120; ball.y = cy + Math.sqrt(len * len - 120 * 120); }
+      bodies.push(ball);
+      springs.push({ a: anchor, b: ball, restLen: len, stiffness: 2000, damping: 1 });
+    }
+  }
+}
+
+// ── Slider display updates ──────────────────────────────────────
+document.getElementById('rGrav').addEventListener('input', function() {
+  document.getElementById('gravVal').textContent = this.value;
+});
+document.getElementById('rBounce').addEventListener('input', function() {
+  document.getElementById('bounceVal').textContent = (this.value / 100).toFixed(2);
+});
+
+// ── Loop ────────────────────────────────────────────────────────
+let lastTime = 0, fpsAccum = 0, fpsCount = 0;
+function loop(t) {
+  const dt = t - lastTime; lastTime = t;
+  fpsAccum += dt; fpsCount++;
+  if (fpsAccum > 500) {
+    document.getElementById('statFps').textContent = Math.round(1000 * fpsCount / fpsAccum);
+    fpsAccum = 0; fpsCount = 0;
+  }
+
+  step();
+  render();
+
+  document.getElementById('statBodies').textContent = bodies.length;
+  document.getElementById('statSprings').textContent = springs.length;
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

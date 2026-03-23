@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="physics.html">
+    <canvas class="preview" id="physCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Physics Sandbox</div>
+      <div class="card-desc">Rigid body physics with circles and boxes, spring constraints, collision detection with impulse resolution, gravity, bounce, friction. 4 presets including Newton's cradle.</div>
+      <div class="card-tags">
+        <span class="tag">simulation</span>
+        <span class="tag">physics</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 52</div>
+  </a>
+
   <a class="card" href="baseconv.html">
     <canvas class="preview" id="baseCanvas"></canvas>
     <div class="card-body">
@@ -1721,6 +1735,41 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Physics Sandbox preview (circles + springs) ─────────────────
+(function() {
+  const c = document.getElementById('physCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#080810';
+  ctx.fillRect(0, 0, W, H);
+  // Grid
+  ctx.strokeStyle = '#0e0e1c'; ctx.lineWidth = 0.5;
+  for (let x = 0; x < W; x += 20) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 20) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+  // Floor
+  ctx.strokeStyle = '#1a1a30'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, H-2); ctx.lineTo(W, H-2); ctx.stroke();
+  // Circles
+  const balls = [{x:W*0.3,y:H*0.5,r:14,c:'#e06060'},{x:W*0.5,y:H*0.35,r:10,c:'#60a0e0'},{x:W*0.7,y:H*0.6,r:18,c:'#60c080'}];
+  // Spring between first two
+  ctx.strokeStyle = '#506080'; ctx.lineWidth = 1.5;
+  const a=balls[0],b=balls[1];
+  const dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy);
+  const nx=dx/d,ny=dy/d,px=-ny,py=nx;
+  ctx.beginPath(); ctx.moveTo(a.x,a.y);
+  for(let i=1;i<10;i++){const t=i/10;const s=(i%2?1:-1)*(i>0&&i<10?1:0);ctx.lineTo(a.x+dx*t+px*5*s,a.y+dy*t+py*5*s);}
+  ctx.lineTo(b.x,b.y); ctx.stroke();
+  // Draw balls
+  balls.forEach(b => {
+    ctx.fillStyle = b.c+'30'; ctx.strokeStyle = b.c; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); ctx.stroke();
+  });
+  // Pin on anchor
+  ctx.fillStyle = '#fff8'; ctx.beginPath(); ctx.arc(W*0.5,20,3,0,Math.PI*2); ctx.fill();
 })();
 
 // ── Base Converter preview (bit grid + hex) ─────────────────────
