@@ -1552,3 +1552,43 @@ Next ideas:
 - A cron expression parser and scheduler visualizer
 - A sand/powder simulation (falling sand game)
 - A circuit logic gate simulator
+
+---
+
+## Run 58 — Falling Sand Simulation
+**File:** `sand.html`
+**Date:** 2026-03-23
+
+Chose "A sand/powder simulation (falling sand game)" from the Run 57 ideas list.
+
+### What it does
+A cellular automaton powder/falling sand simulation with 10 interactive materials that follow physics rules and interact with each other.
+
+### Key features
+- 10 materials: Sand, Water, Stone, Wood, Fire, Oil, Acid, Steam, Lava, Plant
+- Material interactions:
+  - Sand sinks through water and oil (density displacement)
+  - Fire burns wood, oil, and plants; has short random lifespan
+  - Fire + water = steam; fire produces smoke
+  - Lava flows slowly, ignites flammable materials, turns water to steam, cools to stone
+  - Acid dissolves non-stone materials and is consumed in the process
+  - Steam rises, drifts sideways, condenses back to water or dissipates
+  - Oil floats on water (density sorting)
+  - Plants grow when adjacent to water, consuming water to spread
+- Grid-based simulation with 3px cells for fine resolution
+- Alternating left/right scan direction per tick to prevent directional bias
+- Circular brush with configurable radius (1–20), interpolated strokes for continuous painting
+- Deterministic color noise per cell for visual variety (no flicker)
+- Fire/lava use random color for flickering flame effect
+- Touch support for mobile
+- Keyboard: 1-9 = materials, 0 = erase, C = clear, P = pause
+- Scroll wheel adjusts brush size
+- Status bar: particle count, FPS, grid dimensions
+- Added layered-materials thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A cron expression parser and scheduler visualizer
+- A magnetic field line visualizer
+- An interactive periodic table

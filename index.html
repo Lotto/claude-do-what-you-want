@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="sand.html">
+    <canvas class="preview" id="sandCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Falling Sand</div>
+      <div class="card-desc">Powder simulation with 10 materials: sand, water, stone, wood, fire, oil, acid, steam, lava, plant. Materials interact — fire burns wood, lava melts water to steam, acid dissolves, plants grow.</div>
+      <div class="card-tags">
+        <span class="tag">simulation</span>
+        <span class="tag">physics</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 58</div>
+  </a>
+
   <a class="card" href="kaleidoscope.html">
     <canvas class="preview" id="kaleidoCanvas"></canvas>
     <div class="card-body">
@@ -1806,6 +1820,43 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Falling Sand preview (layered materials) ───────────────────
+{
+  const c = document.getElementById('sandCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#080810';
+    ctx.fillRect(0, 0, w, h);
+    // Draw layered sand, water, stone
+    const layers = [
+      { y: 0.75, h: 0.08, color: '#606878' },  // stone
+      { y: 0.55, h: 0.20, color: '#3060d0' },  // water
+      { y: 0.40, h: 0.15, color: '#c8b060' },  // sand
+    ];
+    for (const l of layers) {
+      ctx.fillStyle = l.color;
+      for (let x = 0; x < w; x += 2) {
+        const wave = Math.sin(x * 0.08) * 3;
+        ctx.fillRect(x, l.y * h + wave, 2, l.h * h);
+      }
+    }
+    // Falling particles
+    ctx.fillStyle = '#c8b060';
+    for (let i = 0; i < 20; i++) {
+      const px = w * 0.3 + Math.random() * w * 0.4;
+      const py = Math.random() * h * 0.35;
+      ctx.fillRect(px, py, 2, 2);
+    }
+    // Fire
+    for (let i = 0; i < 8; i++) {
+      ctx.fillStyle = `hsl(${10 + Math.random() * 30},100%,${50 + Math.random() * 20}%)`;
+      ctx.fillRect(w * 0.1 + Math.random() * 15, h * 0.3 + Math.random() * 10, 2, 2);
+    }
+  }
+}
 
 // ── Kaleidoscope preview (rotational symmetry pattern) ──────────
 {
