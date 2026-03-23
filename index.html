@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="connect4.html">
+    <canvas class="preview" id="c4Canvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Connect Four</div>
+      <div class="card-desc">Classic Connect Four with minimax AI (alpha-beta pruning). 4 difficulty levels, PvP, PvAI, AI vs AI modes. Animated piece drops, win highlighting, undo, move history, score tracking.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">AI</span>
+        <span class="tag">strategy</span>
+      </div>
+    </div>
+    <div class="run-label">Run 63</div>
+  </a>
+
   <a class="card" href="matrix.html">
     <canvas class="preview" id="matrixCanvas"></canvas>
     <div class="card-body">
@@ -1876,6 +1890,39 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Connect Four preview (board with pieces) ───────────────────
+{
+  const c = document.getElementById('c4Canvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#080810';
+    ctx.fillRect(0, 0, w, h);
+    // Board
+    const bw = w - 10, bh = h - 10;
+    ctx.fillStyle = '#0c1040';
+    ctx.beginPath();
+    ctx.roundRect(5, 5, bw, bh, 4);
+    ctx.fill();
+    const cs = Math.min(bw / 7, bh / 6);
+    const ox = (w - cs * 7) / 2, oy = (h - cs * 6) / 2;
+    // Some pieces
+    const pieces = [[5,3,1],[5,2,2],[4,3,1],[5,4,2],[4,2,2],[3,3,1]];
+    for (let r = 0; r < 6; r++) {
+      for (let cl = 0; cl < 7; cl++) {
+        const x = ox + cl * cs + cs / 2;
+        const y = oy + r * cs + cs / 2;
+        const piece = pieces.find(p => p[0] === r && p[1] === cl);
+        ctx.fillStyle = piece ? (piece[2] === 1 ? '#e04040' : '#e0c020') : '#060818';
+        ctx.beginPath();
+        ctx.arc(x, y, cs * 0.35, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+}
 
 // ── Matrix Rain preview (falling characters) ───────────────────
 {

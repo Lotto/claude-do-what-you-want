@@ -1739,3 +1739,43 @@ Next ideas:
 - A bouncing DVD logo screensaver
 - An emoji slot machine
 - A connect-four game with AI opponent
+
+---
+
+## Run 63 — Connect Four with AI
+**File:** `connect4.html`
+**Date:** 2026-03-23
+
+Chose "A connect-four game with AI opponent" from the Run 62 ideas list.
+
+### What it does
+A classic Connect Four game with a minimax AI opponent featuring alpha-beta pruning, animated piece drops, and multiple game modes.
+
+### Key features
+- Standard 7×6 board rendered on canvas with rounded board frame
+- 3 game modes: Player vs AI, Player vs Player, AI vs AI (auto-play)
+- 4 AI difficulty levels: Easy (depth 2), Medium (depth 4), Hard (depth 6), Expert (depth 8)
+- Minimax algorithm with alpha-beta pruning:
+  - Board evaluation: scores windows of 4 for threats (2/3/4 in a row)
+  - Center column preference heuristic
+  - Column ordering (center-first) for better pruning
+  - Immediate win/block detection shortcuts before deep search
+- Animated piece drop with easing (lerp towards target row)
+- Hover preview: ghost piece shows where piece will land
+- Win detection: horizontal, vertical, both diagonal directions
+  - Winning four cells highlighted with glow effect
+- Undo: removes last move (in PvAI, undoes both AI + player move)
+- Score tracking: red wins, yellow wins, draws (session)
+- Move history panel with scrollable log
+- Turn indicator with player color and AI thinking status
+- Piece rendering: gradient highlight for 3D appearance
+- Keyboard: R = restart, Z = undo, 1-7 = drop in column
+- AI vs AI mode auto-resets after each game
+- Added board-with-pieces thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A cron expression parser and scheduler visualizer
+- A bouncing DVD logo screensaver
+- An emoji slot machine
+- A rope/chain physics simulation
