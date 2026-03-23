@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="matrix.html">
+    <canvas class="preview" id="matrixCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Matrix Rain</div>
+      <div class="card-desc">Digital rain animation with falling character streams. 6 character sets (katakana, binary, hex), 7 color schemes, adjustable speed/density/font, character mutation glitch effect, text overlay.</div>
+      <div class="card-tags">
+        <span class="tag">animation</span>
+        <span class="tag">visual</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 62</div>
+  </a>
+
   <a class="card" href="colormatch.html">
     <canvas class="preview" id="colormatchCanvas"></canvas>
     <div class="card-body">
@@ -1862,6 +1876,33 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Matrix Rain preview (falling characters) ───────────────────
+{
+  const c = document.getElementById('matrixCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, h);
+    const chars = 'アイウエオカキクケコサシスセソタチツテト';
+    const fs = 8;
+    const cols = Math.ceil(w / fs);
+    for (let col = 0; col < cols; col++) {
+      const len = 3 + Math.random() * 8 | 0;
+      const startY = Math.random() * h;
+      for (let i = 0; i < len; i++) {
+        const y = startY + i * fs;
+        if (y > h) break;
+        const b = 1 - i / len;
+        ctx.fillStyle = i === 0 ? '#aaffaa' : `rgb(0,${b * b * 255 | 0},0)`;
+        ctx.font = `${fs}px monospace`;
+        ctx.fillText(chars[Math.random() * chars.length | 0], col * fs, y);
+      }
+    }
+  }
+}
 
 // ── Color Match preview (card grid with colors) ────────────────
 {

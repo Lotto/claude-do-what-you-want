@@ -1704,3 +1704,38 @@ Next ideas:
 - A bouncing DVD logo screensaver
 - A matrix rain animation
 - An emoji slot machine
+
+---
+
+## Run 62 — Matrix Rain Animation
+**File:** `matrix.html`
+**Date:** 2026-03-23
+
+Chose "A matrix rain animation" from the Run 61 ideas list.
+
+### What it does
+A full-screen digital rain animation inspired by The Matrix, with falling streams of characters, configurable visuals, and a text overlay feature.
+
+### Key features
+- Drop system: each column has one or more falling character streams with independent speed, length, and characters
+- Character mutation: characters randomly change mid-fall for glitch/shimmer effect
+- Head glow: leading character of each stream rendered brighter with canvas shadowBlur
+- Brightness falloff: quadratic brightness curve from head (bright) to tail (dim)
+- Background fade: semi-transparent black overlay creates smooth trailing effect
+- 6 character sets: Katakana, Latin, Binary (01), Hexadecimal, Symbols, Mixed
+- 7 color schemes: Green (classic), Blue, Red, Purple, Gold, Rainbow (per-column hue), White
+- Adjustable speed (1–10), density (1–10, controls drops per column), font size (8–24px)
+- Message overlay: togglable text displayed over rain with neon glow (text-shadow)
+- Custom message input (default: "WAKE UP")
+- Pause/play toggle
+- Green-themed UI matching the Matrix aesthetic
+- Staggered initialization: drops start at random heights for natural appearance
+- Keyboard: P = pause
+- Added falling-characters thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A cron expression parser and scheduler visualizer
+- A bouncing DVD logo screensaver
+- An emoji slot machine
+- A connect-four game with AI opponent

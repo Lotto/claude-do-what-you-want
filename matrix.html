@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Matrix Rain</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #000; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #040408; border-bottom: 1px solid #0a1a0a; flex-shrink: 0; flex-wrap: wrap; z-index: 10; }
+  h1 { font-size: 11px; color: #306830; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #0a1a0a; margin: 0 2px; }
+  button { background: #040a04; border: 1px solid #0a1a0a; color: #306830; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #081408; color: #40a040; }
+  button.active { background: #0a2a0a; color: #50d050; border-color: #206020; }
+  label { color: #205020; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+  input[type="range"] { width: 60px; accent-color: #308030; }
+  select { background: #040a04; border: 1px solid #0a1a0a; color: #306830; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+
+  canvas { display: block; flex: 1; }
+
+  #statusBar { padding: 4px 12px; background: #020404; border-top: 1px solid #0a1a0a; font-size: 10px; color: #103010; display: flex; gap: 16px; flex-shrink: 0; z-index: 10; }
+  .stat b { color: #206020; font-weight: normal; }
+
+  #msgOverlay { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 5; pointer-events: none; text-align: center; }
+  #msgOverlay .msg { font-size: 48px; color: #00ff00; text-shadow: 0 0 20px #00ff00, 0 0 40px #008800; font-family: 'Courier New', monospace; opacity: 0; transition: opacity 0.5s; white-space: nowrap; }
+  #msgOverlay .msg.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Matrix Rain</h1>
+  <div class="sep"></div>
+  <label>Speed: <input type="range" id="rSpeed" min="1" max="10" value="5" oninput="speed=+this.value"></label>
+  <label>Density: <input type="range" id="rDensity" min="1" max="10" value="5" oninput="setDensity(+this.value)"></label>
+  <label>Font: <input type="range" id="rFont" min="8" max="24" value="14" oninput="setFontSize(+this.value)"></label>
+  <div class="sep"></div>
+  <select id="selCharset" onchange="charset=charsets[this.value]">
+    <option value="katakana">Katakana</option>
+    <option value="latin">Latin</option>
+    <option value="binary">Binary</option>
+    <option value="hex">Hexadecimal</option>
+    <option value="symbols">Symbols</option>
+    <option value="mixed">Mixed</option>
+  </select>
+  <div class="sep"></div>
+  <select id="selColor" onchange="colorScheme=this.value">
+    <option value="green">Green</option>
+    <option value="blue">Blue</option>
+    <option value="red">Red</option>
+    <option value="purple">Purple</option>
+    <option value="gold">Gold</option>
+    <option value="rainbow">Rainbow</option>
+    <option value="white">White</option>
+  </select>
+  <div class="sep"></div>
+  <label><input type="checkbox" id="chkMsg" onchange="showMessage=this.checked;toggleMessage()"> Message</label>
+  <input type="text" id="msgInput" value="WAKE UP" style="background:#040a04;border:1px solid #0a1a0a;color:#40a040;font:11px 'Courier New',monospace;padding:2px 6px;width:100px;border-radius:3px" oninput="messageText=this.value;toggleMessage()">
+  <div class="sep"></div>
+  <button id="pauseBtn" onclick="togglePause()">Pause (P)</button>
+</div>
+
+<canvas id="canvas"></canvas>
+
+<div id="msgOverlay"><div class="msg" id="msgEl"></div></div>
+
+<div id="statusBar">
+  <span class="stat">Columns: <b id="statCols">0</b></span>
+  <span class="stat">Drops: <b id="statDrops">0</b></span>
+  <span class="stat">FPS: <b id="statFps">0</b></span>
+  <span class="stat">The Matrix has you...</span>
+</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+// ── Character sets ──────────────────────────────────────────────
+const charsets = {
+  katakana: 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン',
+  latin: 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789',
+  binary: '01',
+  hex: '0123456789ABCDEF',
+  symbols: '!@#$%^&*()+=<>?/{}[]|~',
+  mixed: 'アイウエオABCDEF01234!@#$%ガギグゲゴ',
+};
+
+let charset = charsets.katakana;
+let fontSize = 14;
+let speed = 5;
+let density = 5;
+let colorScheme = 'green';
+let paused = false;
+let showMessage = false;
+let messageText = 'WAKE UP';
+
+// ── Color schemes ───────────────────────────────────────────────
+function getColor(brightness, colIdx) {
+  // brightness: 0 (dim/tail) to 1 (bright/head)
+  const b = Math.max(0, Math.min(1, brightness));
+  switch (colorScheme) {
+    case 'green': return `rgb(${b * 80 | 0},${b * 255 | 0},${b * 80 | 0})`;
+    case 'blue': return `rgb(${b * 60 | 0},${b * 120 | 0},${b * 255 | 0})`;
+    case 'red': return `rgb(${b * 255 | 0},${b * 60 | 0},${b * 40 | 0})`;
+    case 'purple': return `rgb(${b * 180 | 0},${b * 60 | 0},${b * 255 | 0})`;
+    case 'gold': return `rgb(${b * 255 | 0},${b * 200 | 0},${b * 40 | 0})`;
+    case 'white': return `rgb(${b * 255 | 0},${b * 255 | 0},${b * 255 | 0})`;
+    case 'rainbow': {
+      const hue = (colIdx * 7) % 360;
+      return `hsl(${hue},80%,${b * 55 | 0}%)`;
+    }
+  }
+  return `rgb(0,${b * 255 | 0},0)`;
+}
+
+function getHeadColor(colIdx) {
+  switch (colorScheme) {
+    case 'green': return '#aaffaa';
+    case 'blue': return '#aaddff';
+    case 'red': return '#ffaaaa';
+    case 'purple': return '#ddaaff';
+    case 'gold': return '#ffeeaa';
+    case 'white': return '#ffffff';
+    case 'rainbow': {
+      const hue = (colIdx * 7) % 360;
+      return `hsl(${hue},80%,85%)`;
+    }
+  }
+  return '#aaffaa';
+}
+
+// ── Drops ───────────────────────────────────────────────────────
+let columns = [];
+let numCols = 0;
+
+class Drop {
+  constructor(col) {
+    this.col = col;
+    this.x = col * fontSize;
+    this.reset(true);
+  }
+
+  reset(initial) {
+    this.y = initial ? -(Math.random() * H) : -(Math.random() * 200 + fontSize);
+    this.speed = 0.5 + Math.random() * 1.5;
+    this.length = 8 + Math.random() * 25 | 0;
+    this.chars = [];
+    for (let i = 0; i < this.length; i++) {
+      this.chars.push(charset[Math.random() * charset.length | 0]);
+    }
+    this.mutateTimer = 0;
+  }
+
+  update() {
+    this.y += this.speed * speed * 0.8;
+    this.mutateTimer++;
+    // Randomly change some characters for the "glitch" effect
+    if (this.mutateTimer > 3) {
+      this.mutateTimer = 0;
+      const idx = Math.random() * this.chars.length | 0;
+      this.chars[idx] = charset[Math.random() * charset.length | 0];
+    }
+    if (this.y - this.length * fontSize > H) {
+      this.reset(false);
+    }
+  }
+
+  draw() {
+    const headRow = this.y / fontSize | 0;
+    for (let i = 0; i < this.length; i++) {
+      const charY = this.y - i * fontSize;
+      if (charY < -fontSize || charY > H + fontSize) continue;
+
+      const brightness = 1 - (i / this.length);
+
+      if (i === 0) {
+        // Head: brightest, slightly larger glow
+        ctx.fillStyle = getHeadColor(this.col);
+        ctx.shadowColor = getHeadColor(this.col);
+        ctx.shadowBlur = 8;
+      } else {
+        ctx.fillStyle = getColor(brightness * brightness, this.col);
+        ctx.shadowBlur = 0;
+      }
+
+      ctx.fillText(this.chars[i % this.chars.length], this.x, charY);
+    }
+    ctx.shadowBlur = 0;
+  }
+}
+
+function initDrops() {
+  numCols = Math.ceil(W / fontSize);
+  columns = [];
+  const dropsPerCol = Math.max(1, Math.ceil(density * 0.4));
+  for (let c = 0; c < numCols; c++) {
+    for (let d = 0; d < dropsPerCol; d++) {
+      // Stagger multiple drops per column
+      if (d === 0 || Math.random() < density * 0.08) {
+        columns.push(new Drop(c));
+      }
+    }
+  }
+}
+
+function setDensity(v) {
+  density = v;
+  initDrops();
+}
+
+function setFontSize(v) {
+  fontSize = v;
+  initDrops();
+}
+
+function resize() {
+  W = canvas.width = canvas.clientWidth;
+  H = canvas.height = canvas.clientHeight;
+  initDrops();
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Message overlay ─────────────────────────────────────────────
+function toggleMessage() {
+  const el = document.getElementById('msgEl');
+  if (showMessage && messageText) {
+    el.textContent = messageText;
+    el.classList.add('show');
+  } else {
+    el.classList.remove('show');
+  }
+}
+
+// ── Controls ────────────────────────────────────────────────────
+function togglePause() {
+  paused = !paused;
+  const btn = document.getElementById('pauseBtn');
+  btn.textContent = paused ? 'Play (P)' : 'Pause (P)';
+  if (paused) btn.classList.add('active');
+  else btn.classList.remove('active');
+}
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'p') togglePause();
+});
+
+// ── Loop ────────────────────────────────────────────────────────
+let lastTime = performance.now();
+let fpsCounter = 0;
+let fpsDisplay = 0;
+let fpsTimer = 0;
+
+function loop(now) {
+  const dt = now - lastTime;
+  lastTime = now;
+  fpsTimer += dt;
+  fpsCounter++;
+  if (fpsTimer >= 1000) {
+    fpsDisplay = fpsCounter;
+    fpsCounter = 0;
+    fpsTimer -= 1000;
+  }
+
+  if (!paused) {
+    // Fade background
+    ctx.fillStyle = 'rgba(0,0,0,0.05)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.font = `${fontSize}px 'Courier New', monospace`;
+    ctx.textBaseline = 'top';
+
+    for (const drop of columns) {
+      drop.update();
+      drop.draw();
+    }
+  }
+
+  document.getElementById('statCols').textContent = numCols;
+  document.getElementById('statDrops').textContent = columns.length;
+  document.getElementById('statFps').textContent = fpsDisplay;
+
+  requestAnimationFrame(loop);
+}
+
+// Initial black fill
+ctx.fillStyle = '#000';
+ctx.fillRect(0, 0, W, H);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
