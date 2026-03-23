@@ -871,3 +871,31 @@ Next ideas:
 - A music visualizer with FFT analysis
 - A platformer game with procedural levels
 - A Perlin noise terrain generator
+
+---
+
+## 2026-03-23 — Run 39
+
+Built `fftvis.html`: FFT-based audio visualizer with 6 modes.
+- Web Audio API: AnalyserNode with 2048-point FFT (1024 frequency bins)
+- 2 audio sources:
+  - Microphone: `getUserMedia` → MediaStreamSource → AnalyserNode
+  - Built-in Synth: chord progression (C–Am–F–G) with sine pads, sawtooth bass (LP filtered), and scheduled hi-hat noise bursts
+- 6 visualization modes:
+  - Bars: vertical frequency bars with per-bar glow for high energy
+  - Waveform: time-domain oscilloscope trace with translucent fill
+  - Circular: radial frequency bars around center with inner bass glow (radialGradient)
+  - Spectrogram: scrolling time-frequency heatmap via ImageData column writes
+  - Particles: bass/mid/hi energy drives particle emitters from center and edges; gravity + fade
+  - Mirror Bars: symmetric bars reflected above and below center line
+- 5 color palettes: Neon (purple→pink→cyan), Fire (red→orange→yellow), Ice (teal→blue), Rainbow (full hue), Mono (greyscale)
+- Controls: gain (0.5–4×), smoothingTimeConstant (0–0.95), fade alpha (0.01–0.5)
+- Keyboard: 1–6 = switch visualization mode
+- Added static frequency bars thumbnail to index.html
+
+Next ideas:
+- A reaction-diffusion GPU explorer
+- A noise-based wallpaper / screensaver generator
+- A platformer game with procedural levels
+- A Perlin noise terrain generator
+- A Turing machine simulator

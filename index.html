@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="fftvis.html">
+    <canvas class="preview" id="fftCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Audio Visualizer</div>
+      <div class="card-desc">FFT-based music visualizer with 6 modes: Bars, Waveform, Circular, Spectrogram, Particles, Mirror. Mic input or built-in chord synth with bass + hi-hat. 5 palettes, gain/smoothing/fade controls.</div>
+      <div class="card-tags">
+        <span class="tag">web audio</span>
+        <span class="tag">visualization</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 39</div>
+  </a>
+
   <a class="card" href="boids.html">
     <canvas class="preview" id="boidsCanvas"></canvas>
     <div class="card-body">
@@ -1539,6 +1553,34 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── FFT Visualizer preview (static bars) ──────────────────────────
+(function() {
+  const c = document.getElementById('fftCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#020206';
+  ctx.fillRect(0, 0, W, H);
+  const bars = 32;
+  const bw = W / bars;
+  for (let i = 0; i < bars; i++) {
+    // Fake frequency curve: higher at bass, tapering off
+    const t = i / bars;
+    const v = Math.exp(-t * 2.5) * (0.5 + Math.sin(i * 0.8) * 0.3 + Math.random() * 0.2);
+    const h = v * H * 0.85;
+    // Neon palette
+    const hue = 280 + t * 80;
+    ctx.fillStyle = `hsl(${hue},100%,${50+v*30}%)`;
+    ctx.fillRect(i * bw, H - h, bw - 1, h);
+    // Glow
+    if (v > 0.3) {
+      ctx.fillStyle = `hsla(${hue},100%,60%,0.08)`;
+      ctx.fillRect(i * bw - 1, H - h - 3, bw + 2, h + 6);
+    }
+  }
 })();
 
 // ── Boids preview (animated flock) ────────────────────────────────

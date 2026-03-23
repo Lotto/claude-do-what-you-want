@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Audio Visualizer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #020206; color: #a0a0b0; font: 11px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { padding: 7px 14px; background: #06060a; border-bottom: 1px solid #10101c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; }
+  canvas { display: block; flex: 1; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; }
+  button:hover { background: #12122a; color: #a0a0c8; }
+  button.active { background: #1a3060; color: #80c0ff; border-color: #3060a0; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  input[type=range] { width: 65px; accent-color: #4060c0; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  #info { position: absolute; bottom: 8px; left: 12px; font-size: 10px; color: #1a1a30; pointer-events: none; }
+  #startOverlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; background: rgba(2,2,6,0.9); z-index: 10; }
+  #startOverlay.hidden { display: none; }
+  #startOverlay button { font-size: 14px; padding: 10px 28px; }
+  #startOverlay p { color: #505068; font-size: 11px; max-width: 400px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Visualizer</h1>
+  <div class="sep"></div>
+  <select id="selSource">
+    <option value="mic">Microphone</option>
+    <option value="synth" selected>Built-in Synth</option>
+  </select>
+  <div class="sep"></div>
+  <select id="selVis">
+    <option value="0">Bars</option>
+    <option value="1">Waveform</option>
+    <option value="2">Circular</option>
+    <option value="3">Spectrogram</option>
+    <option value="4">Particles</option>
+    <option value="5">Mirror Bars</option>
+  </select>
+  <select id="selPal">
+    <option value="0">Neon</option>
+    <option value="1">Fire</option>
+    <option value="2">Ice</option>
+    <option value="3">Rainbow</option>
+    <option value="4">Mono</option>
+  </select>
+  <div class="sep"></div>
+  <label>Gain <input type="range" id="rngGain" min="0.5" max="4" step="0.1" value="1.5"></label>
+  <label>Smooth <input type="range" id="rngSmooth" min="0" max="0.95" step="0.05" value="0.8"></label>
+  <label>Fade <input type="range" id="rngFade" min="0.01" max="0.5" step="0.01" value="0.12"></label>
+  <div class="sep"></div>
+  <button id="btnSynthPlay">Play Synth</button>
+</div>
+<canvas id="c"></canvas>
+<div id="startOverlay">
+  <button id="btnStart">Start Visualizer</button>
+  <p>Click to initialize audio. Choose Microphone to visualize live audio, or Built-in Synth for a demo.</p>
+</div>
+<div id="info">choose source · adjust gain/smoothing · 6 visualization modes · 5 palettes</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  canvas.width = W = window.innerWidth;
+  canvas.height = H = window.innerHeight - canvas.getBoundingClientRect().top;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ── Audio state ──────────────────────────────────────────────────
+let audioCtx, analyser, freqData, timeData, source;
+let gain = 1.5, visMode = 0, palIdx = 0, fadeAlpha = 0.12;
+let synthPlaying = false;
+let synthNodes = [];
+let spectrogramX = 0;
+let particles = [];
+
+const FFT_SIZE = 2048;
+const FREQ_BINS = FFT_SIZE / 2;
+
+// ── Palettes ─────────────────────────────────────────────────────
+function getColor(t, pal) {
+  // t in [0,1]
+  t = Math.max(0, Math.min(1, t));
+  switch (pal) {
+    case 0: // Neon
+      if (t < 0.33) return `hsl(${280 + t*3*40},100%,${50+t*30}%)`;
+      if (t < 0.66) return `hsl(${320 + (t-0.33)*3*60},100%,${60+t*20}%)`;
+      return `hsl(${180 - (t-0.66)*3*60},100%,${55+t*25}%)`;
+    case 1: // Fire
+      return `hsl(${t*60},${90+t*10}%,${20+t*60}%)`;
+    case 2: // Ice
+      return `hsl(${190+t*30},${60+t*30}%,${30+t*50}%)`;
+    case 3: // Rainbow
+      return `hsl(${t*300},80%,55%)`;
+    case 4: // Mono
+      return `hsl(0,0%,${20+t*70}%)`;
+    default: return '#fff';
+  }
+}
+
+function getColorRGB(t, pal) {
+  // Quick RGB for spectrogram ImageData
+  t = Math.max(0, Math.min(1, t));
+  switch (pal) {
+    case 0: return [t*120+80|0, t*40|0, 200+t*55|0];
+    case 1: return [Math.min(255,t*400)|0, t*200|0, t*40|0];
+    case 2: return [t*60|0, t*180+40|0, t*220+35|0];
+    case 3: { const h=t*300; return hslRgb(h,0.8,0.3+t*0.4); }
+    case 4: { const v=20+t*200|0; return [v,v,v]; }
+    default: return [255,255,255];
+  }
+}
+
+function hslRgb(h,s,l) {
+  const c=(1-Math.abs(2*l-1))*s, x=c*(1-Math.abs((h/60)%2-1)), m=l-c/2;
+  let r,g,b;
+  if(h<60){r=c;g=x;b=0;}else if(h<120){r=x;g=c;b=0;}else if(h<180){r=0;g=c;b=x;}
+  else if(h<240){r=0;g=x;b=c;}else if(h<300){r=x;g=0;b=c;}else{r=c;g=0;b=x;}
+  return [(r+m)*255|0,(g+m)*255|0,(b+m)*255|0];
+}
+
+// ── Init audio ───────────────────────────────────────────────────
+async function initAudio(sourceType) {
+  if (audioCtx) audioCtx.close();
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = FFT_SIZE;
+  analyser.smoothingTimeConstant = 0.8;
+
+  freqData = new Uint8Array(analyser.frequencyBinCount);
+  timeData = new Uint8Array(analyser.fftSize);
+
+  if (sourceType === 'mic') {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      source = audioCtx.createMediaStreamSource(stream);
+      source.connect(analyser);
+    } catch (e) {
+      alert('Microphone access denied. Falling back to synth.');
+      document.getElementById('selSource').value = 'synth';
+      startSynth();
+    }
+  } else {
+    startSynth();
+  }
+
+  spectrogramX = 0;
+  particles = [];
+}
+
+// ── Built-in synth (chord progression + bass + noise) ────────────
+function startSynth() {
+  stopSynth();
+  synthPlaying = true;
+  document.getElementById('btnSynthPlay').textContent = 'Stop Synth';
+
+  const gainNode = audioCtx.createGain();
+  gainNode.gain.value = 0.15;
+  gainNode.connect(analyser);
+  analyser.connect(audioCtx.destination);
+
+  // Chord progression
+  const chords = [
+    [261.6, 329.6, 392.0],  // C
+    [220.0, 277.2, 329.6],  // Am
+    [246.9, 311.1, 370.0],  // F (approx)
+    [196.0, 246.9, 293.7],  // G
+  ];
+
+  let chordIdx = 0;
+  function playChord() {
+    if (!synthPlaying) return;
+    const chord = chords[chordIdx % chords.length];
+    chordIdx++;
+
+    for (const freq of chord) {
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+
+      const env = audioCtx.createGain();
+      env.gain.setValueAtTime(0, audioCtx.currentTime);
+      env.gain.linearRampToValueAtTime(0.12, audioCtx.currentTime + 0.05);
+      env.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.8);
+
+      osc.connect(env);
+      env.connect(gainNode);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 2);
+      synthNodes.push(osc);
+    }
+
+    // Bass
+    const bass = audioCtx.createOscillator();
+    bass.type = 'sawtooth';
+    bass.frequency.value = chord[0] / 2;
+    const bassEnv = audioCtx.createGain();
+    bassEnv.gain.setValueAtTime(0, audioCtx.currentTime);
+    bassEnv.gain.linearRampToValueAtTime(0.08, audioCtx.currentTime + 0.02);
+    bassEnv.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+    const bassFilter = audioCtx.createBiquadFilter();
+    bassFilter.type = 'lowpass';
+    bassFilter.frequency.value = 300;
+    bass.connect(bassFilter);
+    bassFilter.connect(bassEnv);
+    bassEnv.connect(gainNode);
+    bass.start();
+    bass.stop(audioCtx.currentTime + 1);
+    synthNodes.push(bass);
+
+    // Hi-hat noise
+    for (let i = 0; i < 4; i++) {
+      setTimeout(() => {
+        if (!synthPlaying) return;
+        const bufSize = audioCtx.sampleRate * 0.05;
+        const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+        const d = buf.getChannelData(0);
+        for (let j = 0; j < bufSize; j++) d[j] = (Math.random() * 2 - 1) * 0.5;
+        const noise = audioCtx.createBufferSource();
+        noise.buffer = buf;
+        const hp = audioCtx.createBiquadFilter();
+        hp.type = 'highpass';
+        hp.frequency.value = 8000;
+        const nEnv = audioCtx.createGain();
+        nEnv.gain.setValueAtTime(0.06, audioCtx.currentTime);
+        nEnv.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+        noise.connect(hp); hp.connect(nEnv); nEnv.connect(gainNode);
+        noise.start();
+        synthNodes.push(noise);
+      }, i * 500);
+    }
+
+    synthTimer = setTimeout(playChord, 2000);
+  }
+
+  playChord();
+}
+
+let synthTimer;
+function stopSynth() {
+  synthPlaying = false;
+  clearTimeout(synthTimer);
+  document.getElementById('btnSynthPlay').textContent = 'Play Synth';
+  for (const n of synthNodes) try { n.stop(); } catch(e) {}
+  synthNodes = [];
+}
+
+// ── Visualizations ───────────────────────────────────────────────
+function drawBars() {
+  analyser.getByteFrequencyData(freqData);
+  const bars = Math.min(128, FREQ_BINS);
+  const barW = W / bars;
+
+  ctx.fillStyle = `rgba(2,2,6,${fadeAlpha})`;
+  ctx.fillRect(0, 0, W, H);
+
+  for (let i = 0; i < bars; i++) {
+    const v = (freqData[i] / 255) * gain;
+    const h = Math.min(H, v * H);
+    const t = i / bars;
+    ctx.fillStyle = getColor(v, palIdx);
+    ctx.fillRect(i * barW, H - h, barW - 1, h);
+
+    // Glow
+    if (v > 0.3) {
+      ctx.fillStyle = getColor(v, palIdx).replace(')', ',0.1)').replace('hsl', 'hsla');
+      ctx.fillRect(i * barW - 2, H - h - 4, barW + 4, h + 8);
+    }
+  }
+}
+
+function drawWaveform() {
+  analyser.getByteTimeDomainData(timeData);
+
+  ctx.fillStyle = `rgba(2,2,6,${fadeAlpha})`;
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.beginPath();
+  const sliceW = W / timeData.length;
+  for (let i = 0; i < timeData.length; i++) {
+    const v = (timeData[i] / 128.0 - 1) * gain;
+    const y = H / 2 + v * H * 0.4;
+    if (i === 0) ctx.moveTo(0, y); else ctx.lineTo(i * sliceW, y);
+  }
+  ctx.strokeStyle = getColor(0.7, palIdx);
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Filled version underneath
+  ctx.lineTo(W, H / 2);
+  ctx.lineTo(0, H / 2);
+  ctx.closePath();
+  ctx.fillStyle = getColor(0.5, palIdx).replace(')', ',0.08)').replace('hsl', 'hsla');
+  ctx.fill();
+}
+
+function drawCircular() {
+  analyser.getByteFrequencyData(freqData);
+
+  ctx.fillStyle = `rgba(2,2,6,${fadeAlpha})`;
+  ctx.fillRect(0, 0, W, H);
+
+  const cx = W / 2, cy = H / 2;
+  const baseR = Math.min(W, H) * 0.15;
+  const bars = 128;
+
+  for (let i = 0; i < bars; i++) {
+    const v = (freqData[i] / 255) * gain;
+    const angle = (i / bars) * Math.PI * 2 - Math.PI / 2;
+    const r1 = baseR;
+    const r2 = baseR + v * Math.min(W, H) * 0.3;
+
+    const x1 = cx + r1 * Math.cos(angle);
+    const y1 = cy + r1 * Math.sin(angle);
+    const x2 = cx + r2 * Math.cos(angle);
+    const y2 = cy + r2 * Math.sin(angle);
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.strokeStyle = getColor(v, palIdx);
+    ctx.lineWidth = Math.max(1, (W * Math.PI * 2) / bars * 0.3);
+    ctx.stroke();
+  }
+
+  // Inner circle glow
+  const avgLow = (freqData[0] + freqData[1] + freqData[2] + freqData[3]) / (4 * 255) * gain;
+  const grd = ctx.createRadialGradient(cx, cy, 0, cx, cy, baseR);
+  grd.addColorStop(0, getColor(avgLow, palIdx).replace(')', ',0.15)').replace('hsl', 'hsla'));
+  grd.addColorStop(1, 'rgba(2,2,6,0)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(cx - baseR, cy - baseR, baseR * 2, baseR * 2);
+}
+
+let spectroImg;
+function drawSpectrogram() {
+  analyser.getByteFrequencyData(freqData);
+
+  if (!spectroImg || spectroImg.width !== W || spectroImg.height !== H) {
+    spectroImg = ctx.createImageData(W, H);
+    // Fill with black
+    for (let i = 3; i < spectroImg.data.length; i += 4) spectroImg.data[i] = 255;
+    spectrogramX = 0;
+  }
+
+  // Write one column
+  const bins = Math.min(FREQ_BINS, H);
+  for (let i = 0; i < H; i++) {
+    const bin = Math.floor(i / H * bins);
+    const v = (freqData[bin] / 255) * gain;
+    const [r, g, b] = getColorRGB(v, palIdx);
+    const row = H - 1 - i;
+    const off = (row * W + spectrogramX) * 4;
+    spectroImg.data[off] = r;
+    spectroImg.data[off + 1] = g;
+    spectroImg.data[off + 2] = b;
+    spectroImg.data[off + 3] = 255;
+  }
+
+  ctx.putImageData(spectroImg, 0, 0);
+
+  // Cursor line
+  ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(spectrogramX, 0);
+  ctx.lineTo(spectrogramX, H);
+  ctx.stroke();
+
+  spectrogramX = (spectrogramX + 1) % W;
+}
+
+function drawParticles() {
+  analyser.getByteFrequencyData(freqData);
+
+  ctx.fillStyle = `rgba(2,2,6,${fadeAlpha * 0.8})`;
+  ctx.fillRect(0, 0, W, H);
+
+  // Spawn particles from bass energy
+  const bassEnergy = (freqData[0] + freqData[1] + freqData[2]) / (3 * 255) * gain;
+  const midEnergy = (freqData[20] + freqData[30] + freqData[40]) / (3 * 255) * gain;
+  const hiEnergy = (freqData[60] + freqData[80] + freqData[100]) / (3 * 255) * gain;
+
+  if (bassEnergy > 0.2) {
+    for (let i = 0; i < bassEnergy * 8 | 0; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const spd = 1 + bassEnergy * 4;
+      particles.push({
+        x: W / 2, y: H / 2,
+        vx: Math.cos(a) * spd * (0.5 + Math.random()),
+        vy: Math.sin(a) * spd * (0.5 + Math.random()),
+        life: 1, decay: 0.008 + Math.random() * 0.015,
+        size: 1 + bassEnergy * 4,
+        hue: palIdx === 3 ? Math.random() * 360 : 0,
+        energy: bassEnergy,
+      });
+    }
+  }
+
+  // Side emitters for mids
+  if (midEnergy > 0.15) {
+    for (let i = 0; i < midEnergy * 4 | 0; i++) {
+      particles.push({
+        x: Math.random() < 0.5 ? 0 : W, y: Math.random() * H,
+        vx: (Math.random() - 0.5) * 3, vy: (Math.random() - 0.5) * 2,
+        life: 1, decay: 0.012 + Math.random() * 0.01,
+        size: 1 + midEnergy * 2, hue: 0, energy: midEnergy,
+      });
+    }
+  }
+
+  // Update and draw
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.02; // slight gravity
+    p.life -= p.decay;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+
+    const t = p.energy * p.life;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * p.life, 0, Math.PI * 2);
+    if (palIdx === 3) {
+      ctx.fillStyle = `hsla(${p.hue},80%,55%,${p.life * 0.8})`;
+    } else {
+      ctx.fillStyle = getColor(t, palIdx).replace(')', `,${p.life * 0.7})`).replace('hsl', 'hsla');
+    }
+    ctx.fill();
+  }
+
+  // Cap particles
+  if (particles.length > 2000) particles.splice(0, particles.length - 2000);
+}
+
+function drawMirrorBars() {
+  analyser.getByteFrequencyData(freqData);
+  const bars = Math.min(128, FREQ_BINS);
+  const barW = W / bars;
+
+  ctx.fillStyle = `rgba(2,2,6,${fadeAlpha})`;
+  ctx.fillRect(0, 0, W, H);
+
+  const midY = H / 2;
+  for (let i = 0; i < bars; i++) {
+    const v = (freqData[i] / 255) * gain;
+    const h = Math.min(midY, v * midY);
+    const t = i / bars;
+    ctx.fillStyle = getColor(v, palIdx);
+    // Top half (mirrored up)
+    ctx.fillRect(i * barW, midY - h, barW - 1, h);
+    // Bottom half (mirrored down)
+    ctx.fillRect(i * barW, midY, barW - 1, h);
+  }
+
+  // Center line
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(W, midY); ctx.stroke();
+}
+
+const VIS_FNS = [drawBars, drawWaveform, drawCircular, drawSpectrogram, drawParticles, drawMirrorBars];
+
+// ── Main loop ────────────────────────────────────────────────────
+function loop() {
+  if (analyser) {
+    VIS_FNS[visMode]();
+  }
+  requestAnimationFrame(loop);
+}
+
+// ── Controls ─────────────────────────────────────────────────────
+document.getElementById('btnStart').addEventListener('click', () => {
+  document.getElementById('startOverlay').classList.add('hidden');
+  const src = document.getElementById('selSource').value;
+  initAudio(src);
+  requestAnimationFrame(loop);
+});
+
+document.getElementById('selSource').addEventListener('change', e => {
+  if (audioCtx) {
+    stopSynth();
+    initAudio(e.target.value);
+  }
+});
+
+document.getElementById('selVis').addEventListener('change', e => {
+  visMode = parseInt(e.target.value);
+  spectrogramX = 0;
+  spectroImg = null;
+  particles = [];
+  ctx.fillStyle = '#020206'; ctx.fillRect(0, 0, W, H);
+});
+
+document.getElementById('selPal').addEventListener('change', e => {
+  palIdx = parseInt(e.target.value);
+  if (visMode === 3) { spectroImg = null; spectrogramX = 0; }
+});
+
+document.getElementById('rngGain').addEventListener('input', e => { gain = parseFloat(e.target.value); });
+document.getElementById('rngSmooth').addEventListener('input', e => {
+  if (analyser) analyser.smoothingTimeConstant = parseFloat(e.target.value);
+});
+document.getElementById('rngFade').addEventListener('input', e => { fadeAlpha = parseFloat(e.target.value); });
+
+document.getElementById('btnSynthPlay').addEventListener('click', () => {
+  if (!audioCtx) return;
+  if (synthPlaying) stopSynth();
+  else startSynth();
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key >= '1' && e.key <= '6') {
+    visMode = parseInt(e.key) - 1;
+    document.getElementById('selVis').value = visMode;
+    spectrogramX = 0; spectroImg = null; particles = [];
+    ctx.fillStyle = '#020206'; ctx.fillRect(0, 0, W, H);
+  }
+});
+</script>
+</body>
+</html>
