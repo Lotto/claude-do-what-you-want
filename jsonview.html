@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JSON Formatter</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+  label { color: #505068; font-size: 11px; }
+
+  #main { display: flex; flex: 1; overflow: hidden; }
+  #inputPane { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #141428; min-width: 0; }
+  #outputPane { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .pane-label { font-size: 9px; color: #303050; letter-spacing: 0.15em; text-transform: uppercase; padding: 4px 12px; background: #06060c; border-bottom: 1px solid #101020; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
+
+  #jsonInput {
+    flex: 1; background: #0a0a12; border: none; color: #c8c8e0; font: 13px/1.5 'Courier New', monospace;
+    padding: 12px 16px; outline: none; resize: none; tab-size: 2; white-space: pre; overflow: auto;
+  }
+  #jsonInput.error { border-right: 3px solid #802020; }
+
+  #errorBar { padding: 0; background: #12080a; color: #ff5050; font-size: 11px; overflow: hidden; max-height: 0; transition: max-height 0.2s, padding 0.2s; flex-shrink: 0; }
+  #errorBar.show { max-height: 40px; padding: 6px 12px; }
+
+  #treeView { flex: 1; overflow: auto; padding: 12px 16px; background: #0a0a12; font-size: 12px; line-height: 1.6; }
+  #formattedView { flex: 1; overflow: auto; padding: 12px 16px; background: #0a0a12; font-size: 12px; line-height: 1.5; display: none; white-space: pre; }
+
+  /* Tree nodes */
+  .tree-node { padding-left: 20px; position: relative; }
+  .tree-node.collapsed > .tree-children { display: none; }
+  .tree-node.collapsed > .tree-line > .tree-toggle::after { content: '+'; }
+  .tree-line { display: flex; align-items: baseline; cursor: default; padding: 1px 0; border-radius: 2px; }
+  .tree-line:hover { background: #10102a; }
+  .tree-toggle { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; color: #404060; cursor: pointer; flex-shrink: 0; margin-right: 2px; user-select: none; }
+  .tree-toggle::after { content: '\2212'; }
+  .tree-toggle.leaf::after { content: ''; }
+  .tree-key { color: #7090c0; margin-right: 4px; }
+  .tree-colon { color: #404060; margin-right: 6px; }
+  .tree-string { color: #80c080; }
+  .tree-number { color: #d0a060; }
+  .tree-boolean { color: #c080c0; }
+  .tree-null { color: #606080; font-style: italic; }
+  .tree-bracket { color: #505070; font-size: 11px; }
+  .tree-count { color: #404060; font-size: 10px; margin-left: 4px; }
+  .tree-children { }
+  .tree-comma { color: #303050; }
+
+  /* Formatted JSON */
+  .fmt-key { color: #7090c0; }
+  .fmt-string { color: #80c080; }
+  .fmt-number { color: #d0a060; }
+  .fmt-boolean { color: #c080c0; }
+  .fmt-null { color: #606080; }
+  .fmt-bracket { color: #505070; }
+  .fmt-punct { color: #303050; }
+
+  /* Path bar */
+  #pathBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #404060; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 22px; }
+  #pathBar b { color: #6080a0; font-weight: normal; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; }
+  .stat b { color: #505078; font-weight: normal; }
+
+  /* Search */
+  #searchRow { display: none; padding: 4px 12px; background: #08081a; border-bottom: 1px solid #101020; flex-shrink: 0; }
+  #searchRow.show { display: flex; align-items: center; gap: 6px; }
+  #searchInput { background: #0a0a14; border: 1px solid #1a1a30; color: #c0c0e0; font: 11px 'Courier New', monospace; padding: 3px 8px; outline: none; flex: 1; border-radius: 3px; }
+  .search-highlight { background: #504020; border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>JSON Formatter</h1>
+  <div class="sep"></div>
+  <button onclick="formatJSON()">Format (Ctrl+Enter)</button>
+  <button onclick="minifyJSON()">Minify</button>
+  <button onclick="sortKeys()">Sort Keys</button>
+  <div class="sep"></div>
+  <label>Indent:
+    <select id="selIndent" onchange="formatJSON()">
+      <option value="2" selected>2 spaces</option>
+      <option value="4">4 spaces</option>
+      <option value="tab">Tab</option>
+    </select>
+  </label>
+  <div class="sep"></div>
+  <button id="btnTree" class="active" onclick="setView('tree')">Tree</button>
+  <button id="btnFormatted" onclick="setView('formatted')">Formatted</button>
+  <div class="sep"></div>
+  <button onclick="toggleSearch()">Search (Ctrl+F)</button>
+  <button onclick="expandAll()">Expand All</button>
+  <button onclick="collapseAll()">Collapse All</button>
+  <div class="sep"></div>
+  <button onclick="copyOutput()">Copy</button>
+  <button onclick="loadSample()">Sample</button>
+</div>
+
+<div id="main">
+  <div id="inputPane">
+    <div class="pane-label">
+      <span>Input JSON</span>
+      <span style="color:#303050" id="inputSize"></span>
+    </div>
+    <textarea id="jsonInput" spellcheck="false" placeholder="Paste JSON here...">{
+  "name": "JSON Formatter",
+  "version": "1.0.0",
+  "description": "A powerful JSON viewer and formatter",
+  "features": [
+    "Tree view with collapsible nodes",
+    "Syntax-highlighted formatting",
+    "Path navigation",
+    "Search and filter",
+    "Sort keys alphabetically"
+  ],
+  "config": {
+    "theme": "dark",
+    "indent": 2,
+    "maxDepth": null,
+    "sortKeys": false
+  },
+  "stats": {
+    "totalKeys": 12,
+    "maxNesting": 2,
+    "types": {
+      "string": 8,
+      "number": 2,
+      "boolean": 1,
+      "null": 1,
+      "array": 1,
+      "object": 3
+    }
+  },
+  "active": true,
+  "lastUpdated": "2026-03-23T12:00:00Z",
+  "tags": ["json", "formatter", "viewer", "tool"],
+  "metadata": null
+}</textarea>
+    <div id="errorBar"></div>
+  </div>
+  <div id="outputPane">
+    <div class="pane-label">
+      <span>Output</span>
+      <span style="color:#303050" id="outputInfo"></span>
+    </div>
+    <div id="searchRow">
+      <input type="text" id="searchInput" placeholder="Search keys or values..." oninput="doSearch()">
+      <span id="searchCount" style="color:#505070;font-size:10px"></span>
+      <button onclick="toggleSearch()" style="padding:2px 6px">&times;</button>
+    </div>
+    <div id="treeView"></div>
+    <div id="formattedView"></div>
+    <div id="pathBar">Path: <b id="pathText">$</b></div>
+  </div>
+</div>
+
+<div id="statusBar">
+  <span class="stat">Size: <b id="statSize">0</b></span>
+  <span class="stat">Keys: <b id="statKeys">0</b></span>
+  <span class="stat">Depth: <b id="statDepth">0</b></span>
+  <span class="stat">Type: <b id="statType">—</b></span>
+</div>
+
+<script>
+'use strict';
+
+const jsonInput = document.getElementById('jsonInput');
+const treeView = document.getElementById('treeView');
+const formattedView = document.getElementById('formattedView');
+const errorBar = document.getElementById('errorBar');
+const pathText = document.getElementById('pathText');
+
+let parsed = null;
+let currentView = 'tree';
+let searchTerm = '';
+
+// ── Parse & validate ────────────────────────────────────────────
+function parse() {
+  const text = jsonInput.value.trim();
+  document.getElementById('inputSize').textContent = formatBytes(text.length);
+
+  if (!text) {
+    parsed = null;
+    errorBar.textContent = '';
+    errorBar.className = '';
+    jsonInput.classList.remove('error');
+    treeView.innerHTML = '';
+    formattedView.innerHTML = '';
+    updateStats(null);
+    return false;
+  }
+
+  try {
+    parsed = JSON.parse(text);
+    errorBar.textContent = '';
+    errorBar.className = '';
+    jsonInput.classList.remove('error');
+    return true;
+  } catch (e) {
+    parsed = null;
+    const msg = e.message;
+    errorBar.textContent = msg;
+    errorBar.className = 'show';
+    jsonInput.classList.add('error');
+    treeView.innerHTML = '';
+    formattedView.innerHTML = '';
+    updateStats(null);
+    return false;
+  }
+}
+
+function formatBytes(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+  return (b / 1048576).toFixed(1) + ' MB';
+}
+
+// ── Stats ───────────────────────────────────────────────────────
+function updateStats(val) {
+  if (val === null) {
+    document.getElementById('statSize').textContent = '0';
+    document.getElementById('statKeys').textContent = '0';
+    document.getElementById('statDepth').textContent = '0';
+    document.getElementById('statType').textContent = '—';
+    document.getElementById('outputInfo').textContent = '';
+    return;
+  }
+  let keys = 0, maxDepth = 0;
+  function walk(v, depth) {
+    if (depth > maxDepth) maxDepth = depth;
+    if (v && typeof v === 'object') {
+      if (Array.isArray(v)) {
+        v.forEach(item => walk(item, depth + 1));
+      } else {
+        const k = Object.keys(v);
+        keys += k.length;
+        k.forEach(key => walk(v[key], depth + 1));
+      }
+    }
+  }
+  walk(val, 0);
+
+  const rootType = Array.isArray(val) ? 'array' : typeof val;
+  document.getElementById('statSize').textContent = formatBytes(jsonInput.value.length);
+  document.getElementById('statKeys').textContent = keys;
+  document.getElementById('statDepth').textContent = maxDepth;
+  document.getElementById('statType').textContent = rootType;
+
+  const items = Array.isArray(val) ? val.length + ' items' : typeof val === 'object' && val ? Object.keys(val).length + ' keys' : '';
+  document.getElementById('outputInfo').textContent = items;
+}
+
+// ── Tree view ───────────────────────────────────────────────────
+function buildTree(val, key, path, isLast) {
+  const node = document.createElement('div');
+  node.className = 'tree-node';
+  node.dataset.path = path;
+
+  const line = document.createElement('div');
+  line.className = 'tree-line';
+
+  const toggle = document.createElement('span');
+  toggle.className = 'tree-toggle';
+
+  const isObj = val !== null && typeof val === 'object';
+  const isArr = Array.isArray(val);
+
+  if (!isObj) toggle.className += ' leaf';
+
+  line.appendChild(toggle);
+
+  // Key
+  if (key !== null) {
+    const keySpan = document.createElement('span');
+    keySpan.className = 'tree-key';
+    keySpan.textContent = `"${key}"`;
+    line.appendChild(keySpan);
+    const colon = document.createElement('span');
+    colon.className = 'tree-colon';
+    colon.textContent = ':';
+    line.appendChild(colon);
+  }
+
+  if (isObj) {
+    const bracket = document.createElement('span');
+    bracket.className = 'tree-bracket';
+    const entries = isArr ? val.length : Object.keys(val).length;
+    bracket.textContent = isArr ? '[' : '{';
+    line.appendChild(bracket);
+
+    const count = document.createElement('span');
+    count.className = 'tree-count';
+    count.textContent = `${entries} ${isArr ? 'item' : 'key'}${entries !== 1 ? 's' : ''}`;
+    line.appendChild(count);
+
+    node.appendChild(line);
+
+    const children = document.createElement('div');
+    children.className = 'tree-children';
+
+    if (isArr) {
+      val.forEach((item, i) => {
+        children.appendChild(buildTree(item, null, `${path}[${i}]`, i === val.length - 1));
+      });
+    } else {
+      const keys = Object.keys(val);
+      keys.forEach((k, i) => {
+        children.appendChild(buildTree(val[k], k, `${path}.${k}`, i === keys.length - 1));
+      });
+    }
+    node.appendChild(children);
+
+    // Closing bracket
+    const closeLine = document.createElement('div');
+    closeLine.className = 'tree-line';
+    closeLine.style.paddingLeft = '16px';
+    const closeBracket = document.createElement('span');
+    closeBracket.className = 'tree-bracket';
+    closeBracket.textContent = isArr ? ']' : '}';
+    if (!isLast) {
+      const comma = document.createElement('span');
+      comma.className = 'tree-comma';
+      comma.textContent = ',';
+      closeBracket.appendChild(comma);
+    }
+    closeLine.appendChild(closeBracket);
+    node.appendChild(closeLine);
+
+    // Toggle click
+    toggle.addEventListener('click', e => {
+      e.stopPropagation();
+      node.classList.toggle('collapsed');
+    });
+  } else {
+    // Leaf value
+    const valSpan = document.createElement('span');
+    if (typeof val === 'string') {
+      valSpan.className = 'tree-string';
+      valSpan.textContent = `"${val}"`;
+    } else if (typeof val === 'number') {
+      valSpan.className = 'tree-number';
+      valSpan.textContent = val;
+    } else if (typeof val === 'boolean') {
+      valSpan.className = 'tree-boolean';
+      valSpan.textContent = val;
+    } else {
+      valSpan.className = 'tree-null';
+      valSpan.textContent = 'null';
+    }
+    if (!isLast) valSpan.textContent += ',';
+    line.appendChild(valSpan);
+    node.appendChild(line);
+  }
+
+  // Path on hover
+  line.addEventListener('mouseenter', () => {
+    pathText.textContent = path;
+  });
+  line.addEventListener('click', () => {
+    navigator.clipboard.writeText(path);
+  });
+
+  return node;
+}
+
+function renderTree() {
+  treeView.innerHTML = '';
+  if (parsed === null) return;
+  treeView.appendChild(buildTree(parsed, null, '$', true));
+}
+
+// ── Formatted view ──────────────────────────────────────────────
+function renderFormatted() {
+  if (parsed === null) { formattedView.innerHTML = ''; return; }
+  const indent = getIndent();
+  const json = JSON.stringify(parsed, null, indent);
+  formattedView.innerHTML = syntaxHighlight(json);
+}
+
+function syntaxHighlight(json) {
+  return json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"([^"\\]|\\.)*"\s*:/g, m => `<span class="fmt-key">${m.slice(0, -1)}</span><span class="fmt-punct">:</span>`)
+    .replace(/"([^"\\]|\\.)*"/g, '<span class="fmt-string">$&</span>')
+    .replace(/\b(-?\d+\.?\d*([eE][+-]?\d+)?)\b/g, '<span class="fmt-number">$&</span>')
+    .replace(/\b(true|false)\b/g, '<span class="fmt-boolean">$&</span>')
+    .replace(/\bnull\b/g, '<span class="fmt-null">null</span>')
+    .replace(/[[\]{}]/g, '<span class="fmt-bracket">$&</span>')
+    .replace(/,/g, '<span class="fmt-punct">,</span>');
+}
+
+function getIndent() {
+  const v = document.getElementById('selIndent').value;
+  return v === 'tab' ? '\t' : parseInt(v);
+}
+
+// ── Actions ─────────────────────────────────────────────────────
+function formatJSON() {
+  if (!parse()) return;
+  const indent = getIndent();
+  jsonInput.value = JSON.stringify(parsed, null, indent);
+  render();
+}
+
+function minifyJSON() {
+  if (!parse()) return;
+  jsonInput.value = JSON.stringify(parsed);
+  render();
+}
+
+function sortKeys() {
+  if (!parse()) return;
+  function sortObj(val) {
+    if (Array.isArray(val)) return val.map(sortObj);
+    if (val && typeof val === 'object') {
+      const sorted = {};
+      Object.keys(val).sort().forEach(k => { sorted[k] = sortObj(val[k]); });
+      return sorted;
+    }
+    return val;
+  }
+  parsed = sortObj(parsed);
+  const indent = getIndent();
+  jsonInput.value = JSON.stringify(parsed, null, indent);
+  render();
+}
+
+function setView(v) {
+  currentView = v;
+  document.getElementById('btnTree').classList.toggle('active', v === 'tree');
+  document.getElementById('btnFormatted').classList.toggle('active', v === 'formatted');
+  treeView.style.display = v === 'tree' ? '' : 'none';
+  formattedView.style.display = v === 'formatted' ? '' : 'none';
+  render();
+}
+
+function expandAll() {
+  treeView.querySelectorAll('.tree-node.collapsed').forEach(n => n.classList.remove('collapsed'));
+}
+
+function collapseAll() {
+  treeView.querySelectorAll('.tree-node').forEach(n => {
+    if (n.querySelector('.tree-children')) n.classList.add('collapsed');
+  });
+}
+
+function copyOutput() {
+  const indent = getIndent();
+  const text = parsed !== null ? JSON.stringify(parsed, null, indent) : '';
+  navigator.clipboard.writeText(text);
+}
+
+// ── Search ──────────────────────────────────────────────────────
+function toggleSearch() {
+  const row = document.getElementById('searchRow');
+  const showing = row.classList.toggle('show');
+  if (showing) {
+    document.getElementById('searchInput').focus();
+  } else {
+    searchTerm = '';
+    document.getElementById('searchInput').value = '';
+    render();
+  }
+}
+
+function doSearch() {
+  searchTerm = document.getElementById('searchInput').value.toLowerCase();
+  if (currentView === 'tree') highlightTree();
+  document.getElementById('searchCount').textContent = searchTerm ? '' : '';
+}
+
+function highlightTree() {
+  let count = 0;
+  treeView.querySelectorAll('.tree-line').forEach(line => {
+    const text = line.textContent.toLowerCase();
+    if (searchTerm && text.includes(searchTerm)) {
+      line.style.background = '#1a2040';
+      count++;
+      // Expand parents
+      let p = line.parentElement;
+      while (p) {
+        if (p.classList && p.classList.contains('collapsed')) p.classList.remove('collapsed');
+        p = p.parentElement;
+      }
+    } else {
+      line.style.background = '';
+    }
+  });
+  document.getElementById('searchCount').textContent = searchTerm ? `${count} found` : '';
+}
+
+// ── Sample data ─────────────────────────────────────────────────
+function loadSample() {
+  jsonInput.value = JSON.stringify({
+    "company": "Acme Corp",
+    "founded": 2015,
+    "active": true,
+    "ceo": null,
+    "departments": [
+      {
+        "name": "Engineering",
+        "headcount": 42,
+        "teams": ["Frontend", "Backend", "DevOps", "QA"],
+        "budget": 2500000
+      },
+      {
+        "name": "Design",
+        "headcount": 12,
+        "teams": ["UX", "Visual", "Research"],
+        "budget": 800000
+      },
+      {
+        "name": "Marketing",
+        "headcount": 8,
+        "teams": ["Content", "Growth"],
+        "budget": 600000,
+        "campaigns": {
+          "q1": { "name": "Spring Launch", "spend": 150000, "roi": 3.2 },
+          "q2": { "name": "Summer Blast", "spend": 200000, "roi": 2.8 }
+        }
+      }
+    ],
+    "locations": ["San Francisco", "London", "Tokyo"],
+    "metadata": {
+      "lastAudit": "2026-01-15",
+      "version": "3.1.0",
+      "tags": ["enterprise", "saas", "b2b"],
+      "settings": {
+        "theme": "dark",
+        "notifications": true,
+        "language": "en",
+        "timezone": "UTC-8"
+      }
+    }
+  }, null, 2);
+  render();
+}
+
+// ── Render ──────────────────────────────────────────────────────
+let renderTimer;
+function render() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => {
+    if (!parse()) return;
+    updateStats(parsed);
+    if (currentView === 'tree') renderTree();
+    else renderFormatted();
+    if (searchTerm) highlightTree();
+  }, 60);
+}
+
+// ── Events ──────────────────────────────────────────────────────
+jsonInput.addEventListener('input', render);
+
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    formatJSON();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f' && !e.shiftKey) {
+    e.preventDefault();
+    const row = document.getElementById('searchRow');
+    if (!row.classList.contains('show')) toggleSearch();
+    else document.getElementById('searchInput').focus();
+  }
+});
+
+// Tab in textarea
+jsonInput.addEventListener('keydown', e => {
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const start = jsonInput.selectionStart;
+    const indent = getIndent() === '\t' ? '\t' : ' '.repeat(typeof getIndent() === 'number' ? getIndent() : 2);
+    jsonInput.setRangeText(indent, start, start, 'end');
+  }
+});
+
+// ── Init ────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>

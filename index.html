@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="jsonview.html">
+    <canvas class="preview" id="jsonCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">JSON Formatter</div>
+      <div class="card-desc">JSON formatter with collapsible tree view, syntax highlighting, path navigation, search, sort keys, minify. Copy path on click, export formatted or minified.</div>
+      <div class="card-tags">
+        <span class="tag">tool</span>
+        <span class="tag">json</span>
+        <span class="tag">dev</span>
+      </div>
+    </div>
+    <div class="run-label">Run 48</div>
+  </a>
+
   <a class="card" href="palette.html">
     <canvas class="preview" id="palCanvas"></canvas>
     <div class="card-body">
@@ -1665,6 +1679,45 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── JSON Formatter preview (tree structure) ─────────────────────
+(function() {
+  const c = document.getElementById('jsonCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#0a0a12';
+  ctx.fillRect(0, 0, W, H);
+  ctx.font = '8px "Courier New",monospace';
+  const lines = [
+    {d:0,t:'{',c:'#505070'},
+    {d:1,t:'"name"',c:'#7090c0',v:': "JSON"',vc:'#80c080'},
+    {d:1,t:'"version"',c:'#7090c0',v:': 1.0',vc:'#d0a060'},
+    {d:1,t:'"active"',c:'#7090c0',v:': true',vc:'#c080c0'},
+    {d:1,t:'"items"',c:'#7090c0',v:': [',vc:'#505070'},
+    {d:2,t:'"alpha"',c:'#80c080'},
+    {d:2,t:'"beta"',c:'#80c080'},
+    {d:1,t:']',c:'#505070'},
+    {d:1,t:'"meta"',c:'#7090c0',v:': null',vc:'#606080'},
+    {d:0,t:'}',c:'#505070'},
+  ];
+  lines.forEach((l,i) => {
+    const x = 8 + l.d * 14;
+    const y = 10 + i * 10;
+    if (l.d > 0 && l.v) {
+      // toggle marker
+      ctx.fillStyle = '#404060';
+      ctx.fillText(l.d > 0 ? '\u25BE' : '', x - 8, y);
+    }
+    ctx.fillStyle = l.c;
+    ctx.fillText(l.t, x, y);
+    if (l.v) {
+      ctx.fillStyle = l.vc;
+      ctx.fillText(l.v, x + ctx.measureText(l.t).width + 2, y);
+    }
+  });
 })();
 
 // ── Color Palette preview (5 vertical color bars) ───────────────

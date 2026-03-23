@@ -1154,3 +1154,37 @@ Next ideas:
 - A pixel art animation editor (sprite sheets)
 - A JSON formatter / tree viewer
 - A physics sandbox (rigid body with springs and gravity)
+
+---
+
+## 2026-03-23 — Run 48
+
+Built `jsonview.html`: JSON formatter with collapsible tree view and syntax-highlighted output.
+- Dual view modes:
+  - Tree view: recursive DOM-based collapsible tree with toggle buttons (+/−)
+  - Formatted view: syntax-highlighted JSON with color-coded tokens
+- Tree features:
+  - Collapsible nodes for objects and arrays with item/key count badges
+  - Color-coded values: strings (green), numbers (gold), booleans (purple), null (gray), keys (blue)
+  - Hover to show JSON path ($.key.nested[0]), click to copy path to clipboard
+  - Expand All / Collapse All buttons
+- Format / Minify / Sort Keys actions
+  - Sort Keys recursively alphabetizes all object keys at every depth
+- Configurable indentation: 2 spaces, 4 spaces, or tab
+- Search: Ctrl+F opens search bar, highlights matching tree lines, auto-expands collapsed parents to reveal matches
+- Syntax highlighting in formatted view using regex-based token coloring
+- Error handling: parse errors shown in red bar with position info
+- Stats bar: file size, total key count, max nesting depth, root type
+- Input size display in header
+- Sample data button loads a rich nested example (company/departments/campaigns)
+- Tab key inserts correct indentation in textarea
+- Keyboard: Ctrl+Enter = format, Ctrl+F = search
+- Copy button copies formatted output to clipboard
+- Added tree-structure thumbnail to index.html
+
+Next ideas:
+- A CSS gradient builder with visual stops
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A physics sandbox (rigid body with springs and gravity)
+- A diff viewer (side-by-side text comparison)
