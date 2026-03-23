@@ -1022,3 +1022,34 @@ Next ideas:
 - A regex visualizer / tester
 - A Perlin noise terrain generator (3D with elevation shading)
 - A Conway's Game of Life pattern library
+
+---
+
+## 2026-03-23 — Run 44
+
+Built `towerdefense.html`: classic tower defense game with procedural path and wave-based enemies.
+- Procedural winding path generation: alternating horizontal + vertical segments with random offsets, ensuring a long winding route across the canvas
+- 4 tower types with distinct mechanics:
+  - Arrow ($10): fast fire rate, single target, moderate damage
+  - Cannon ($25): slow fire rate, splash damage in radius, high damage
+  - Frost ($20): slows enemies by 50% for 2 seconds, moderate damage
+  - Laser ($40): instant beam attack, highest DPS, long range
+- Wave-based enemy spawning with 5 enemy types:
+  - Normal, Fast (2× speed, low HP), Tank (slow, 3× HP), Swarm (small, many), Boss (huge HP, slow, high reward)
+  - Enemy HP and count scale with wave number
+- Projectile physics: arrows travel toward targets, cannons explode on impact with splash radius
+- Gold economy: start with $100, earn from kills + wave completion bonus, sell towers at 60% cost
+- Lives system: enemies reaching the end cost 1 life, game over at 0
+- Placement preview: hover shows tower range circle, click to place on valid (non-path, non-occupied) tiles
+- 3 game speed settings (1×/2×/3×)
+- Tower selection panel with cost display and hotkeys (1-4)
+- Wave counter, gold display, lives display in HUD
+- Start wave button with auto-start option
+- Added path-with-towers thumbnail to index.html
+
+Next ideas:
+- A reaction-diffusion GPU explorer
+- A regex visualizer / tester
+- A Perlin noise terrain generator (3D with elevation shading)
+- A Conway's Game of Life pattern library
+- A music sequencer / drum machine
