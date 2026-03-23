@@ -960,3 +960,35 @@ Next ideas:
 - A Perlin noise terrain generator
 - A tower defense game
 - A regex visualizer / tester
+
+---
+
+## 2026-03-23 — Run 42
+
+Built `wallpaper.html`: procedural noise wallpaper generator.
+- Custom gradient noise implementation: permutation table seeded via LCG, 8 gradient vectors, smoothstep interpolation
+- fBm (fractional Brownian motion): configurable octaves (1–8) with amplitude halving and frequency doubling
+- 8 pattern modes:
+  - Perlin Clouds: standard fBm with time offset for animation
+  - Turbulence: absolute value of noise for billowy effect
+  - Ridged: `(1 - |noise|)²` for sharp ridgelines
+  - Marble: sine wave distorted by fBm for vein patterns
+  - Wood: fractional part of scaled fBm for concentric ring look
+  - Voronoi Cells: nearest-neighbor distance field from jittered grid points
+  - Domain Warp: feeds fBm output back as coordinate offset (recursive distortion)
+  - Fractal Terrain: quantized fBm into discrete height levels
+- 8 color palettes: Sunset, Ocean, Forest, Neon, Ember, Frost, Mono, Vaporwave
+  - Each palette is 5-stop gradient with linear interpolation
+- Half-resolution rendering (2× step) for interactive speed; full-res on export
+- Animate mode: slowly evolves time parameter for flowing noise
+- Export: renders at full canvas resolution and downloads as PNG with seed in filename
+- Controls: scale (0.5–15), octaves, contrast (gamma curve), scroll=scale
+- Keyboard: space=new seed, a=animate, e=export
+- Added sunset noise thumbnail to index.html
+
+Next ideas:
+- A reaction-diffusion GPU explorer
+- A tower defense game
+- A regex visualizer / tester
+- A Perlin noise terrain generator (3D with elevation shading)
+- A Spirograph / harmonograph drawing tool

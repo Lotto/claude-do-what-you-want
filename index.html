@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="wallpaper.html">
+    <canvas class="preview" id="wallCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Wallpaper Generator</div>
+      <div class="card-desc">Procedural noise wallpaper generator. 8 patterns (Perlin, turbulence, ridged, marble, wood, Voronoi, domain warp, terrain) × 8 palettes. Animate, export full-res PNG, adjustable scale/octaves/contrast.</div>
+      <div class="card-tags">
+        <span class="tag">generative</span>
+        <span class="tag">noise</span>
+        <span class="tag">canvas</span>
+      </div>
+    </div>
+    <div class="run-label">Run 42</div>
+  </a>
+
   <a class="card" href="turing.html">
     <canvas class="preview" id="turingCanvas"></canvas>
     <div class="card-body">
@@ -1581,6 +1595,29 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Wallpaper preview (gradient noise) ────────────────────────────
+(function() {
+  const c = document.getElementById('wallCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+  // Fake gradient noise with sunset palette
+  const pal = [[15,5,30],[80,20,60],[200,60,40],[255,150,50],[255,220,120]];
+  function lerp3(a,b,t){return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];}
+  function sample(t){t=Math.max(0,Math.min(1,t));const n=pal.length-1,i=Math.min(Math.floor(t*n),n-1);return lerp3(pal[i],pal[i+1],t*n-i);}
+  for(let y=0;y<H;y++) for(let x=0;x<W;x++){
+    const nx=x/W*4,ny=y/H*4;
+    const v=(Math.sin(nx*2.1+ny*1.7)*0.3+Math.sin(nx*0.8-ny*2.3)*0.3+Math.sin((nx+ny)*1.5)*0.2+0.5);
+    const [r,g,b]=sample(Math.max(0,Math.min(1,v)));
+    const off=(y*W+x)*4;
+    d[off]=r|0;d[off+1]=g|0;d[off+2]=b|0;d[off+3]=255;
+  }
+  ctx.putImageData(img,0,0);
 })();
 
 // ── Turing Machine preview (tape cells) ───────────────────────────

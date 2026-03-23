@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wallpaper Generator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #020206; color: #a0a0b0; font: 11px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  #top { padding: 7px 14px; background: #06060a; border-bottom: 1px solid #10101c; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex-shrink: 0; }
+  h1 { font-size: 12px; color: #b0b0c8; letter-spacing: 0.2em; text-transform: uppercase; }
+  canvas { display: block; flex: 1; cursor: crosshair; }
+  button { background: #0c0c16; border: 1px solid #222236; color: #7070a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; }
+  button:hover { background: #12122a; color: #a0a0c8; }
+  select { background: #0c0c16; border: 1px solid #222236; color: #7070a0; font: 11px 'Courier New', monospace; padding: 2px 5px; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  input[type=range] { width: 65px; accent-color: #4060c0; }
+  .sep { width: 1px; height: 18px; background: #141422; margin: 0 1px; }
+  #info { position: absolute; bottom: 8px; left: 12px; font-size: 10px; color: #1a1a30; pointer-events: none; }
+  #seedLabel { font-size: 10px; color: #404060; }
+</style>
+</head>
+<body>
+<div id="top">
+  <h1>Wallpaper</h1>
+  <div class="sep"></div>
+  <select id="selPattern">
+    <option value="0">Perlin Clouds</option>
+    <option value="1">Turbulence</option>
+    <option value="2">Ridged</option>
+    <option value="3">Marble</option>
+    <option value="4">Wood</option>
+    <option value="5">Voronoi Cells</option>
+    <option value="6">Domain Warp</option>
+    <option value="7">Fractal Terrain</option>
+  </select>
+  <select id="selPal">
+    <option value="0">Sunset</option>
+    <option value="1">Ocean</option>
+    <option value="2">Forest</option>
+    <option value="3">Neon</option>
+    <option value="4">Ember</option>
+    <option value="5">Frost</option>
+    <option value="6">Mono</option>
+    <option value="7">Vaporwave</option>
+  </select>
+  <div class="sep"></div>
+  <label>Scale <input type="range" id="rngScale" min="1" max="10" step="0.5" value="4"></label>
+  <label>Octaves <input type="range" id="rngOct" min="1" max="8" step="1" value="5"></label>
+  <label>Contrast <input type="range" id="rngContrast" min="0.5" max="3" step="0.1" value="1"></label>
+  <div class="sep"></div>
+  <button id="btnGenerate">Generate (Space)</button>
+  <button id="btnAnimate">Animate</button>
+  <button id="btnExport">Export PNG</button>
+  <span id="seedLabel"></span>
+</div>
+<canvas id="c"></canvas>
+<div id="info">space=new seed · click=regenerate at point · scroll=scale · 8 patterns × 8 palettes</div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+let W, H;
+
+function resize() {
+  canvas.width = W = window.innerWidth;
+  canvas.height = H = window.innerHeight - canvas.getBoundingClientRect().top;
+}
+resize();
+window.addEventListener('resize', () => { resize(); generate(); });
+
+// ── Simplex-like noise (2D) ──────────────────────────────────────
+// Permutation table
+let perm = new Uint8Array(512);
+let seed = Date.now() & 0xFFFF;
+
+function initPerm(s) {
+  seed = s;
+  const p = new Uint8Array(256);
+  for (let i = 0; i < 256; i++) p[i] = i;
+  // Fisher-Yates with seed
+  for (let i = 255; i > 0; i--) {
+    seed = (seed * 16807 + 13) & 0x7FFFFFFF;
+    const j = seed % (i + 1);
+    const tmp = p[i]; p[i] = p[j]; p[j] = tmp;
+  }
+  for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+}
+
+// Gradient vectors
+const GRAD = [[1,1],[-1,1],[1,-1],[-1,-1],[1,0],[-1,0],[0,1],[0,-1]];
+
+function noise2D(x, y) {
+  // Value noise with smooth interpolation
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  // Smoothstep
+  const u = xf * xf * (3 - 2 * xf);
+  const v = yf * yf * (3 - 2 * yf);
+
+  const a = perm[(perm[xi & 255] + (yi & 255)) & 511];
+  const b = perm[(perm[(xi + 1) & 255] + (yi & 255)) & 511];
+  const c = perm[(perm[xi & 255] + ((yi + 1) & 255)) & 511];
+  const d = perm[(perm[(xi + 1) & 255] + ((yi + 1) & 255)) & 511];
+
+  const g = GRAD[a & 7], h = GRAD[b & 7], k = GRAD[c & 7], l = GRAD[d & 7];
+  const va = g[0] * xf + g[1] * yf;
+  const vb = h[0] * (xf - 1) + h[1] * yf;
+  const vc = k[0] * xf + k[1] * (yf - 1);
+  const vd = l[0] * (xf - 1) + l[1] * (yf - 1);
+
+  const i1 = va + u * (vb - va);
+  const i2 = vc + u * (vd - vc);
+  return i1 + v * (i2 - i1);
+}
+
+// fBm
+function fbm(x, y, octaves) {
+  let val = 0, amp = 1, freq = 1, max = 0;
+  for (let i = 0; i < octaves; i++) {
+    val += noise2D(x * freq, y * freq) * amp;
+    max += amp;
+    amp *= 0.5;
+    freq *= 2.0;
+  }
+  return val / max;
+}
+
+// ── Pattern functions ────────────────────────────────────────────
+let patternIdx = 0, palIdx = 0, scale = 4, octaves = 5, contrast = 1;
+let animating = false, animTime = 0, animRAF;
+
+function getPattern(px, py, t) {
+  const x = px * scale, y = py * scale;
+  switch (patternIdx) {
+    case 0: // Perlin Clouds
+      return fbm(x + t, y + t * 0.7, octaves) * 0.5 + 0.5;
+    case 1: { // Turbulence
+      let v = 0, amp = 1, freq = 1, max = 0;
+      for (let i = 0; i < octaves; i++) {
+        v += Math.abs(noise2D((x + t) * freq, (y + t * 0.5) * freq)) * amp;
+        max += amp; amp *= 0.5; freq *= 2;
+      }
+      return v / max;
+    }
+    case 2: { // Ridged
+      let v = 0, amp = 1, freq = 1, max = 0;
+      for (let i = 0; i < octaves; i++) {
+        const n = 1 - Math.abs(noise2D((x + t) * freq, y * freq));
+        v += n * n * amp;
+        max += amp; amp *= 0.5; freq *= 2;
+      }
+      return v / max;
+    }
+    case 3: { // Marble
+      const n = fbm(x, y + t * 0.5, octaves);
+      return (Math.sin((x * 2 + n * 10) * 3.14159) + 1) * 0.5;
+    }
+    case 4: { // Wood
+      const n = fbm(x * 0.5, y * 0.5 + t * 0.3, octaves) * 10;
+      return (n - Math.floor(n));
+    }
+    case 5: { // Voronoi Cells
+      const cx = x * 2 + t, cy = y * 2;
+      const ix = Math.floor(cx), iy = Math.floor(cy);
+      let minD = 10;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = ix + dx, ny = iy + dy;
+        const px2 = nx + (perm[(perm[Math.abs(nx) & 255] + Math.abs(ny)) & 511] / 255);
+        const py2 = ny + (perm[(perm[Math.abs(ny) & 255] + Math.abs(nx)) & 511] / 255);
+        const d = Math.hypot(cx - px2, cy - py2);
+        if (d < minD) minD = d;
+      }
+      return Math.min(1, minD * 1.2);
+    }
+    case 6: { // Domain Warp
+      const wx = fbm(x + t, y, octaves) * 2;
+      const wy = fbm(x, y + t * 0.7, octaves) * 2;
+      return fbm(x + wx, y + wy, octaves) * 0.5 + 0.5;
+    }
+    case 7: { // Fractal Terrain
+      const h = fbm(x + t * 0.3, y, octaves) * 0.5 + 0.5;
+      // Stepped terrain look
+      const levels = 8;
+      return Math.floor(h * levels) / levels;
+    }
+    default: return 0.5;
+  }
+}
+
+// ── Palettes ─────────────────────────────────────────────────────
+function lerp3(a, b, t) { return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t]; }
+
+const PALETTES = [
+  // Sunset
+  [[15,5,30],[80,20,60],[200,60,40],[255,150,50],[255,220,120]],
+  // Ocean
+  [[5,10,30],[10,30,80],[20,80,140],[40,160,200],[120,220,240]],
+  // Forest
+  [[10,15,8],[20,50,15],[40,90,30],[80,140,50],[160,200,80]],
+  // Neon
+  [[5,0,15],[60,0,120],[200,0,200],[255,50,150],[255,150,255]],
+  // Ember
+  [[10,2,0],[60,10,0],[160,40,5],[220,100,10],[255,200,50]],
+  // Frost
+  [[5,8,20],[20,40,80],[60,100,160],[140,180,220],[220,235,255]],
+  // Mono
+  [[8,8,12],[40,40,50],[90,90,100],[160,160,170],[230,230,235]],
+  // Vaporwave
+  [[10,5,25],[80,20,100],[200,50,150],[100,200,255],[255,180,220]],
+];
+
+function samplePalette(t, pal) {
+  t = Math.max(0, Math.min(1, t));
+  const colors = PALETTES[pal];
+  const n = colors.length - 1;
+  const idx = t * n;
+  const i = Math.min(Math.floor(idx), n - 1);
+  const f = idx - i;
+  const c = lerp3(colors[i], colors[i + 1], f);
+  return c;
+}
+
+// ── Generate ─────────────────────────────────────────────────────
+let currentSeed;
+
+function generate(t) {
+  t = t || 0;
+  const STEP = 2; // render at half res for speed
+  const sw = Math.ceil(W / STEP), sh = Math.ceil(H / STEP);
+  const img = ctx.createImageData(sw, sh);
+  const d = img.data;
+
+  for (let py = 0; py < sh; py++) {
+    for (let px = 0; px < sw; px++) {
+      const nx = px / sw;
+      const ny = py / sh;
+      let v = getPattern(nx, ny, t);
+      // Apply contrast
+      v = Math.pow(Math.max(0, Math.min(1, v)), 1 / contrast);
+      const [r, g, b] = samplePalette(v, palIdx);
+      const off = (py * sw + px) * 4;
+      d[off] = r | 0; d[off + 1] = g | 0; d[off + 2] = b | 0; d[off + 3] = 255;
+    }
+  }
+
+  ctx.putImageData(img, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(canvas, 0, 0, sw, sh, 0, 0, W, H);
+
+  document.getElementById('seedLabel').textContent = `seed: ${currentSeed}`;
+}
+
+function newSeed() {
+  currentSeed = (Math.random() * 99999 | 0);
+  initPerm(currentSeed);
+  generate(animTime);
+}
+
+// ── Animation ────────────────────────────────────────────────────
+function animLoop() {
+  if (!animating) return;
+  animTime += 0.003;
+  generate(animTime);
+  animRAF = requestAnimationFrame(animLoop);
+}
+
+function toggleAnimate() {
+  animating = !animating;
+  document.getElementById('btnAnimate').textContent = animating ? 'Stop' : 'Animate';
+  if (animating) animLoop();
+  else cancelAnimationFrame(animRAF);
+}
+
+// ── Controls ─────────────────────────────────────────────────────
+document.getElementById('selPattern').addEventListener('change', e => {
+  patternIdx = parseInt(e.target.value);
+  if (!animating) generate(animTime);
+});
+document.getElementById('selPal').addEventListener('change', e => {
+  palIdx = parseInt(e.target.value);
+  if (!animating) generate(animTime);
+});
+document.getElementById('rngScale').addEventListener('input', e => {
+  scale = parseFloat(e.target.value);
+  if (!animating) generate(animTime);
+});
+document.getElementById('rngOct').addEventListener('input', e => {
+  octaves = parseInt(e.target.value);
+  if (!animating) generate(animTime);
+});
+document.getElementById('rngContrast').addEventListener('input', e => {
+  contrast = parseFloat(e.target.value);
+  if (!animating) generate(animTime);
+});
+document.getElementById('btnGenerate').addEventListener('click', newSeed);
+document.getElementById('btnAnimate').addEventListener('click', toggleAnimate);
+document.getElementById('btnExport').addEventListener('click', () => {
+  // Re-render at full res
+  const img = ctx.createImageData(W, H);
+  const d = img.data;
+  for (let py = 0; py < H; py++) {
+    for (let px = 0; px < W; px++) {
+      const nx = px / W, ny = py / H;
+      let v = getPattern(nx, ny, animTime);
+      v = Math.pow(Math.max(0, Math.min(1, v)), 1 / contrast);
+      const [r, g, b] = samplePalette(v, palIdx);
+      const off = (py * W + px) * 4;
+      d[off] = r | 0; d[off + 1] = g | 0; d[off + 2] = b | 0; d[off + 3] = 255;
+    }
+  }
+  const exp = document.createElement('canvas');
+  exp.width = W; exp.height = H;
+  exp.getContext('2d').putImageData(img, 0, 0);
+  const a = document.createElement('a');
+  a.download = `wallpaper-${currentSeed}.png`;
+  a.href = exp.toDataURL('image/png');
+  a.click();
+});
+
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  scale = Math.max(0.5, Math.min(15, scale + (e.deltaY > 0 ? -0.5 : 0.5)));
+  document.getElementById('rngScale').value = scale;
+  if (!animating) generate(animTime);
+}, { passive: false });
+
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+  if (e.key === ' ') { e.preventDefault(); newSeed(); }
+  if (e.key === 'a') toggleAnimate();
+  if (e.key === 'e') document.getElementById('btnExport').click();
+});
+
+// ── Init ─────────────────────────────────────────────────────────
+newSeed();
+</script>
+</body>
+</html>
