@@ -1188,3 +1188,38 @@ Next ideas:
 - A pixel art animation editor (sprite sheets)
 - A physics sandbox (rigid body with springs and gravity)
 - A diff viewer (side-by-side text comparison)
+
+---
+
+## 2026-03-23 — Run 49
+
+Built `gradient.html`: CSS gradient builder with draggable color stops and live preview.
+- 3 gradient types: linear (with angle), radial (circle), conic (from angle)
+- Repeating gradient toggle for all types
+- Interactive stop bar:
+  - Draggable stop handles with arrow marker + color swatch + position label
+  - Click track to add new stop at that position
+  - Selected stop highlighted with blue arrow
+- Per-stop editing:
+  - Color picker, opacity slider (0–100%), position input (0–100%)
+  - Arrow keys to nudge position (±1, Shift+Arrow ±5)
+  - Delete/Backspace to remove selected stop (minimum 2)
+- Actions: Add Stop (inserts at midpoint), Remove, Reverse, Distribute (evenly space)
+- 12 gradient presets rendered as clickable mini-swatches in sidebar
+- Random gradient: 2–4 stops with random HSL colors and angle
+- Full-size preview with checkerboard background (shows alpha transparency)
+- "GRADIENT" text overlay on preview with shadow for readability
+- CSS output textarea with copy button — generates complete `background:` property
+  - Supports `linear-gradient`, `radial-gradient`, `conic-gradient` and repeating variants
+  - RGBA color stops with position percentages
+- Angle slider (0–360°) for linear and conic types
+- Stop list in sidebar showing all stops with color swatch, hex, position, opacity
+- Keyboard: Space = random, Delete = remove stop, Arrow keys = nudge position
+- Added gradient-bar thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A pixel art animation editor (sprite sheets)
+- A physics sandbox (rigid body with springs and gravity)
+- A diff viewer (side-by-side text comparison)
+- A binary/hex/decimal converter calculator

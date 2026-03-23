@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CSS Gradient Builder</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+  label { color: #505068; font-size: 11px; display: flex; align-items: center; gap: 4px; }
+  input[type="range"] { width: 70px; accent-color: #4060a0; }
+  input[type="number"] { width: 50px; background: #0c0c18; border: 1px solid #1a1a30; color: #8080b0; font: 11px 'Courier New', monospace; padding: 2px 4px; border-radius: 3px; text-align: center; }
+
+  #main { display: flex; flex: 1; overflow: hidden; }
+  #previewArea { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #sidebar { width: 280px; flex-shrink: 0; border-left: 1px solid #141428; display: flex; flex-direction: column; overflow-y: auto; background: #0a0a12; }
+
+  #gradientPreview {
+    flex: 1; margin: 16px; border-radius: 12px; border: 1px solid #1a1a30; position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #gradientPreview .checkerboard {
+    position: absolute; inset: 0; background-image:
+      linear-gradient(45deg, #151520 25%, transparent 25%),
+      linear-gradient(-45deg, #151520 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #151520 75%),
+      linear-gradient(-45deg, transparent 75%, #151520 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+    opacity: 0.3;
+  }
+  #gradientPreview .gradient-layer { position: absolute; inset: 0; border-radius: 12px; }
+  #previewText { position: relative; z-index: 1; font-size: 28px; font-weight: bold; color: #fff; text-shadow: 0 2px 8px rgba(0,0,0,0.5); letter-spacing: 0.1em; pointer-events: none; }
+
+  /* Stop editor bar */
+  #stopBar { height: 50px; margin: 0 16px; flex-shrink: 0; position: relative; }
+  #stopTrack {
+    position: absolute; top: 8px; left: 0; right: 0; height: 24px; border-radius: 6px; border: 1px solid #1a1a30;
+    cursor: crosshair; overflow: hidden;
+  }
+  #stopTrackGrad { position: absolute; inset: 0; border-radius: 5px; }
+  .stop-handle {
+    position: absolute; top: 0; width: 14px; height: 34px; transform: translateX(-7px);
+    cursor: grab; z-index: 2; display: flex; flex-direction: column; align-items: center;
+  }
+  .stop-handle.selected .stop-arrow { border-bottom-color: #80b0ff; }
+  .stop-arrow { width: 0; height: 0; border-left: 7px solid transparent; border-right: 7px solid transparent; border-bottom: 8px solid #606080; }
+  .stop-swatch { width: 12px; height: 12px; border: 2px solid #888; border-radius: 2px; margin-top: -1px; }
+  .stop-handle:hover .stop-arrow { border-bottom-color: #9090c0; }
+  .stop-pos { font-size: 8px; color: #505070; margin-top: 2px; }
+
+  .section { padding: 10px 14px; border-bottom: 1px solid #101020; }
+  .section-title { font-size: 9px; color: #404060; text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 8px; }
+
+  .stop-editor { display: flex; flex-direction: column; gap: 6px; }
+  .stop-row { display: flex; align-items: center; gap: 8px; }
+  .stop-color-pick { width: 30px; height: 22px; border: 1px solid #1a1a30; background: #0c0c18; cursor: pointer; border-radius: 3px; }
+
+  #cssOutput { width: 100%; background: #08080e; border: 1px solid #141428; color: #a0a0c0; font: 10px 'Courier New', monospace; padding: 8px; border-radius: 3px; resize: none; height: 100px; outline: none; word-break: break-all; }
+
+  #presetList { display: flex; flex-wrap: wrap; gap: 4px; }
+  .preset-btn { width: 36px; height: 20px; border: 1px solid #1a1a30; border-radius: 3px; cursor: pointer; }
+  .preset-btn:hover { border-color: #4060a0; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Gradient Builder</h1>
+  <div class="sep"></div>
+  <label>Type:
+    <select id="selType" onchange="update()">
+      <option value="linear">Linear</option>
+      <option value="radial">Radial</option>
+      <option value="conic">Conic</option>
+    </select>
+  </label>
+  <label>Angle: <input type="range" id="angleSlider" min="0" max="360" value="90" oninput="update()"> <span id="angleVal">90</span>°</label>
+  <label>Repeat: <input type="checkbox" id="chkRepeat" onchange="update()"></label>
+  <div class="sep"></div>
+  <button onclick="addStop()">+ Add Stop</button>
+  <button onclick="removeStop()">- Remove Stop</button>
+  <button onclick="reverseStops()">Reverse</button>
+  <button onclick="distributeStops()">Distribute</button>
+  <div class="sep"></div>
+  <button onclick="randomGradient()">Random</button>
+  <button onclick="copyCSS()">Copy CSS</button>
+</div>
+
+<div id="main">
+  <div id="previewArea">
+    <div id="gradientPreview">
+      <div class="checkerboard"></div>
+      <div class="gradient-layer" id="gradLayer"></div>
+      <div id="previewText">GRADIENT</div>
+    </div>
+    <div id="stopBar">
+      <div id="stopTrack">
+        <div id="stopTrackGrad"></div>
+      </div>
+    </div>
+  </div>
+
+  <div id="sidebar">
+    <div class="section">
+      <div class="section-title">Selected Stop</div>
+      <div class="stop-editor" id="stopEditor">
+        <div class="stop-row">
+          <label>Color: <input type="color" id="stopColor" class="stop-color-pick" onchange="updateStopColor(this.value)"></label>
+          <label>Opacity: <input type="range" id="stopAlpha" min="0" max="100" value="100" oninput="updateStopAlpha(this.value)"> <span id="alphaVal">100</span>%</label>
+        </div>
+        <div class="stop-row">
+          <label>Position: <input type="number" id="stopPos" min="0" max="100" value="0" onchange="updateStopPos(this.value)">%</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">All Stops</div>
+      <div id="stopList"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">Presets</div>
+      <div id="presetList"></div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">CSS Output</div>
+      <textarea id="cssOutput" readonly></textarea>
+      <button onclick="copyCSS()" style="margin-top:4px;width:100%">Copy to Clipboard</button>
+    </div>
+  </div>
+</div>
+
+<div id="statusBar">
+  <span>Click track to add stops | Drag to reposition | Del to remove selected | Arrow keys to fine-tune</span>
+</div>
+
+<script>
+'use strict';
+
+// ── State ────────────────────────────────────────────────────────
+let stops = [
+  { color: '#ff4080', alpha: 1, pos: 0 },
+  { color: '#8040ff', alpha: 1, pos: 50 },
+  { color: '#40c0ff', alpha: 1, pos: 100 },
+];
+let selectedIdx = 0;
+let dragging = -1;
+
+const PRESETS = [
+  [{ color: '#ff6b6b', alpha: 1, pos: 0 }, { color: '#feca57', alpha: 1, pos: 100 }],
+  [{ color: '#a18cd1', alpha: 1, pos: 0 }, { color: '#fbc2eb', alpha: 1, pos: 100 }],
+  [{ color: '#667eea', alpha: 1, pos: 0 }, { color: '#764ba2', alpha: 1, pos: 100 }],
+  [{ color: '#f093fb', alpha: 1, pos: 0 }, { color: '#f5576c', alpha: 1, pos: 50 }, { color: '#4facfe', alpha: 1, pos: 100 }],
+  [{ color: '#43e97b', alpha: 1, pos: 0 }, { color: '#38f9d7', alpha: 1, pos: 100 }],
+  [{ color: '#fa709a', alpha: 1, pos: 0 }, { color: '#fee140', alpha: 1, pos: 100 }],
+  [{ color: '#0c3483', alpha: 1, pos: 0 }, { color: '#a2b6df', alpha: 1, pos: 50 }, { color: '#6b8cce', alpha: 1, pos: 100 }],
+  [{ color: '#ff0844', alpha: 1, pos: 0 }, { color: '#ffb199', alpha: 1, pos: 100 }],
+  [{ color: '#1a1a2e', alpha: 1, pos: 0 }, { color: '#16213e', alpha: 1, pos: 33 }, { color: '#0f3460', alpha: 1, pos: 66 }, { color: '#e94560', alpha: 1, pos: 100 }],
+  [{ color: '#000000', alpha: 1, pos: 0 }, { color: '#ffffff', alpha: 1, pos: 100 }],
+  [{ color: '#fc5c7d', alpha: 1, pos: 0 }, { color: '#6a82fb', alpha: 1, pos: 100 }],
+  [{ color: '#11998e', alpha: 1, pos: 0 }, { color: '#38ef7d', alpha: 1, pos: 100 }],
+];
+
+// ── Helpers ─────────────────────────────────────────────────────
+function hex2rgba(hex, a) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function buildGradientString() {
+  const type = document.getElementById('selType').value;
+  const angle = document.getElementById('angleSlider').value;
+  const repeat = document.getElementById('chkRepeat').checked;
+
+  const sorted = [...stops].sort((a, b) => a.pos - b.pos);
+  const colorStops = sorted.map(s => `${hex2rgba(s.color, s.alpha)} ${s.pos}%`).join(', ');
+
+  let fn;
+  if (type === 'linear') {
+    fn = repeat ? 'repeating-linear-gradient' : 'linear-gradient';
+    return `${fn}(${angle}deg, ${colorStops})`;
+  } else if (type === 'radial') {
+    fn = repeat ? 'repeating-radial-gradient' : 'radial-gradient';
+    return `${fn}(circle, ${colorStops})`;
+  } else {
+    fn = repeat ? 'repeating-conic-gradient' : 'conic-gradient';
+    return `${fn}(from ${angle}deg, ${colorStops})`;
+  }
+}
+
+// ── Update everything ───────────────────────────────────────────
+function update() {
+  const grad = buildGradientString();
+
+  // Preview
+  document.getElementById('gradLayer').style.background = grad;
+
+  // Track gradient (always linear for the bar)
+  const sorted = [...stops].sort((a, b) => a.pos - b.pos);
+  const trackStops = sorted.map(s => `${hex2rgba(s.color, s.alpha)} ${s.pos}%`).join(', ');
+  document.getElementById('stopTrackGrad').style.background = `linear-gradient(90deg, ${trackStops})`;
+
+  // Angle display
+  document.getElementById('angleVal').textContent = document.getElementById('angleSlider').value;
+
+  // CSS output
+  document.getElementById('cssOutput').value = `background: ${grad};`;
+
+  // Render stop handles
+  renderHandles();
+  renderStopList();
+  updateEditor();
+}
+
+function renderHandles() {
+  const track = document.getElementById('stopTrack');
+  // Remove old handles
+  track.querySelectorAll('.stop-handle').forEach(h => h.remove());
+
+  stops.forEach((s, i) => {
+    const handle = document.createElement('div');
+    handle.className = 'stop-handle' + (i === selectedIdx ? ' selected' : '');
+    handle.style.left = `${s.pos}%`;
+    handle.style.top = '-4px';
+    handle.innerHTML = `
+      <div class="stop-arrow"></div>
+      <div class="stop-swatch" style="background:${hex2rgba(s.color, s.alpha)}"></div>
+      <div class="stop-pos">${Math.round(s.pos)}%</div>`;
+
+    handle.addEventListener('mousedown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      selectedIdx = i;
+      dragging = i;
+      update();
+    });
+
+    track.appendChild(handle);
+  });
+}
+
+function renderStopList() {
+  const list = document.getElementById('stopList');
+  list.innerHTML = '';
+  stops.forEach((s, i) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;' + (i === selectedIdx ? 'background:#10102a;border-radius:3px;padding:3px 4px;' : '');
+    row.innerHTML = `
+      <div style="width:16px;height:16px;border-radius:2px;background:${hex2rgba(s.color, s.alpha)};border:1px solid #1a1a30;flex-shrink:0"></div>
+      <span style="color:#7090c0;font-size:10px;flex:1">${s.color} @ ${Math.round(s.pos)}%</span>
+      <span style="color:#505070;font-size:9px">${Math.round(s.alpha * 100)}%</span>`;
+    row.addEventListener('click', () => { selectedIdx = i; update(); });
+    list.appendChild(row);
+  });
+}
+
+function updateEditor() {
+  if (selectedIdx < 0 || selectedIdx >= stops.length) return;
+  const s = stops[selectedIdx];
+  document.getElementById('stopColor').value = s.color;
+  document.getElementById('stopAlpha').value = Math.round(s.alpha * 100);
+  document.getElementById('alphaVal').textContent = Math.round(s.alpha * 100);
+  document.getElementById('stopPos').value = Math.round(s.pos);
+}
+
+// ── Stop editing ────────────────────────────────────────────────
+function updateStopColor(val) {
+  if (selectedIdx >= 0 && selectedIdx < stops.length) {
+    stops[selectedIdx].color = val;
+    update();
+  }
+}
+
+function updateStopAlpha(val) {
+  if (selectedIdx >= 0 && selectedIdx < stops.length) {
+    stops[selectedIdx].alpha = val / 100;
+    document.getElementById('alphaVal').textContent = val;
+    update();
+  }
+}
+
+function updateStopPos(val) {
+  if (selectedIdx >= 0 && selectedIdx < stops.length) {
+    stops[selectedIdx].pos = Math.max(0, Math.min(100, parseFloat(val)));
+    update();
+  }
+}
+
+// ── Actions ─────────────────────────────────────────────────────
+function addStop() {
+  // Add at midpoint between selected and next, or at 50%
+  let pos = 50;
+  if (stops.length >= 2) {
+    const sorted = [...stops].sort((a, b) => a.pos - b.pos);
+    const idx = sorted.findIndex(s => s === stops[selectedIdx]);
+    if (idx < sorted.length - 1) {
+      pos = (sorted[idx].pos + sorted[idx + 1].pos) / 2;
+    } else if (idx > 0) {
+      pos = (sorted[idx - 1].pos + sorted[idx].pos) / 2;
+    }
+  }
+  const prevColor = stops[selectedIdx] ? stops[selectedIdx].color : '#808080';
+  stops.push({ color: prevColor, alpha: 1, pos: Math.round(pos) });
+  selectedIdx = stops.length - 1;
+  update();
+}
+
+function removeStop() {
+  if (stops.length <= 2) return;
+  stops.splice(selectedIdx, 1);
+  selectedIdx = Math.min(selectedIdx, stops.length - 1);
+  update();
+}
+
+function reverseStops() {
+  stops.forEach(s => s.pos = 100 - s.pos);
+  update();
+}
+
+function distributeStops() {
+  stops.sort((a, b) => a.pos - b.pos);
+  stops.forEach((s, i) => { s.pos = (i / (stops.length - 1)) * 100; });
+  update();
+}
+
+function randomGradient() {
+  const count = 2 + Math.floor(Math.random() * 3);
+  stops = [];
+  for (let i = 0; i < count; i++) {
+    const h = Math.random() * 360;
+    const s = 50 + Math.random() * 40;
+    const l = 30 + Math.random() * 40;
+    // HSL to hex
+    const rgb = hsl2rgb(h, s, l);
+    const hex = '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('');
+    stops.push({ color: hex, alpha: 1, pos: (i / (count - 1)) * 100 });
+  }
+  document.getElementById('angleSlider').value = Math.floor(Math.random() * 360);
+  selectedIdx = 0;
+  update();
+}
+
+function hsl2rgb(h, s, l) {
+  s /= 100; l /= 100;
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+  const m = l - c / 2;
+  let r, g, b;
+  if (h < 60) { r = c; g = x; b = 0; }
+  else if (h < 120) { r = x; g = c; b = 0; }
+  else if (h < 180) { r = 0; g = c; b = x; }
+  else if (h < 240) { r = 0; g = x; b = c; }
+  else if (h < 300) { r = x; g = 0; b = c; }
+  else { r = c; g = 0; b = x; }
+  return [Math.round((r + m) * 255), Math.round((g + m) * 255), Math.round((b + m) * 255)];
+}
+
+function copyCSS() {
+  navigator.clipboard.writeText(document.getElementById('cssOutput').value);
+}
+
+// ── Presets ──────────────────────────────────────────────────────
+function renderPresets() {
+  const list = document.getElementById('presetList');
+  PRESETS.forEach((p, i) => {
+    const btn = document.createElement('div');
+    btn.className = 'preset-btn';
+    const gradStr = p.map(s => `${s.color} ${s.pos}%`).join(', ');
+    btn.style.background = `linear-gradient(90deg, ${gradStr})`;
+    btn.addEventListener('click', () => {
+      stops = p.map(s => ({ ...s }));
+      selectedIdx = 0;
+      update();
+    });
+    list.appendChild(btn);
+  });
+}
+
+// ── Drag handling ───────────────────────────────────────────────
+const stopTrack = document.getElementById('stopTrack');
+
+stopTrack.addEventListener('mousedown', e => {
+  if (e.target === stopTrack || e.target.id === 'stopTrackGrad') {
+    // Add new stop at click position
+    const rect = stopTrack.getBoundingClientRect();
+    const pos = ((e.clientX - rect.left) / rect.width) * 100;
+    // Interpolate color from neighbors
+    const sorted = [...stops].sort((a, b) => a.pos - b.pos);
+    let color = '#808080';
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (pos >= sorted[i].pos && pos <= sorted[i + 1].pos) {
+        color = sorted[i].color;
+        break;
+      }
+    }
+    stops.push({ color, alpha: 1, pos: Math.round(pos) });
+    selectedIdx = stops.length - 1;
+    dragging = selectedIdx;
+    update();
+  }
+});
+
+document.addEventListener('mousemove', e => {
+  if (dragging < 0) return;
+  const rect = stopTrack.getBoundingClientRect();
+  let pos = ((e.clientX - rect.left) / rect.width) * 100;
+  pos = Math.max(0, Math.min(100, pos));
+  stops[dragging].pos = Math.round(pos);
+  update();
+});
+
+document.addEventListener('mouseup', () => {
+  dragging = -1;
+});
+
+// ── Keyboard ────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    e.preventDefault();
+    removeStop();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    if (selectedIdx >= 0) {
+      stops[selectedIdx].pos = Math.max(0, stops[selectedIdx].pos - (e.shiftKey ? 5 : 1));
+      update();
+    }
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    if (selectedIdx >= 0) {
+      stops[selectedIdx].pos = Math.min(100, stops[selectedIdx].pos + (e.shiftKey ? 5 : 1));
+      update();
+    }
+  } else if (e.key === ' ') {
+    e.preventDefault();
+    randomGradient();
+  }
+});
+
+// ── Init ────────────────────────────────────────────────────────
+renderPresets();
+update();
+</script>
+</body>
+</html>

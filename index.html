@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="gradient.html">
+    <canvas class="preview" id="gradCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Gradient Builder</div>
+      <div class="card-desc">CSS gradient builder with draggable color stops. Linear, radial, conic types. Per-stop opacity, 12 presets, reverse/distribute, random, copy CSS output.</div>
+      <div class="card-tags">
+        <span class="tag">tool</span>
+        <span class="tag">css</span>
+        <span class="tag">design</span>
+      </div>
+    </div>
+    <div class="run-label">Run 49</div>
+  </a>
+
   <a class="card" href="jsonview.html">
     <canvas class="preview" id="jsonCanvas"></canvas>
     <div class="card-body">
@@ -1679,6 +1693,33 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Gradient Builder preview (gradient bar with stops) ──────────
+(function() {
+  const c = document.getElementById('gradCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  // Draw gradient
+  const grad = ctx.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0, '#ff4080');
+  grad.addColorStop(0.5, '#8040ff');
+  grad.addColorStop(1, '#40c0ff');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+  // Stop markers
+  [0, 0.5, 1].forEach(p => {
+    const x = p * W;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(x, H - 2);
+    ctx.lineTo(x - 4, H - 8);
+    ctx.lineTo(x + 4, H - 8);
+    ctx.closePath();
+    ctx.fill();
+  });
 })();
 
 // ── JSON Formatter preview (tree structure) ─────────────────────
