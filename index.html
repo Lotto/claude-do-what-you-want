@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="markdown.html">
+    <canvas class="preview" id="mdCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Markdown Editor</div>
+      <div class="card-desc">Real-time markdown editor with live preview. Custom parser handles headings, lists, tables, code blocks, task lists, blockquotes. 4 themes, toolbar, sync scroll, export to HTML/MD.</div>
+      <div class="card-tags">
+        <span class="tag">tool</span>
+        <span class="tag">editor</span>
+        <span class="tag">markdown</span>
+      </div>
+    </div>
+    <div class="run-label">Run 46</div>
+  </a>
+
   <a class="card" href="regex.html">
     <canvas class="preview" id="regexCanvas"></canvas>
     <div class="card-body">
@@ -1637,6 +1651,56 @@
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
+})();
+
+// ── Markdown Editor preview (split pane with text) ──────────────
+(function() {
+  const c = document.getElementById('mdCanvas');
+  if (!c) return;
+  const ctx = c.getContext('2d');
+  c.width = c.offsetWidth; c.height = c.offsetHeight;
+  const W = c.width, H = c.height;
+  ctx.fillStyle = '#0a0a12';
+  ctx.fillRect(0, 0, W, H);
+  // Divider
+  ctx.fillStyle = '#141428';
+  ctx.fillRect(W/2-0.5, 0, 1, H);
+  // Left side: "code" lines
+  ctx.font = '7px "Courier New",monospace';
+  const lines = ['# Hello World','','Some **bold** text','- item one','- item two','','```js','let x = 42;','```'];
+  lines.forEach((l,i) => {
+    const y = 12 + i * 10;
+    if (l.startsWith('#')) { ctx.fillStyle = '#6080c0'; }
+    else if (l.startsWith('-')) { ctx.fillStyle = '#60a080'; }
+    else if (l.startsWith('```') || l === 'let x = 42;') { ctx.fillStyle = '#a080c0'; }
+    else { ctx.fillStyle = '#505068'; }
+    ctx.fillText(l, 6, y);
+  });
+  // Right side: rendered preview
+  ctx.fillStyle = '#0c0c14';
+  ctx.fillRect(W/2+1, 0, W/2, H);
+  // Heading
+  ctx.font = 'bold 10px sans-serif';
+  ctx.fillStyle = '#c0c0e0';
+  ctx.fillText('Hello World', W/2+8, 14);
+  ctx.fillStyle = '#1a1a30';
+  ctx.fillRect(W/2+8, 17, W/2-16, 1);
+  // Paragraph
+  ctx.font = '7px sans-serif';
+  ctx.fillStyle = '#808098';
+  ctx.fillText('Some bold text', W/2+8, 30);
+  // Bullets
+  ctx.fillStyle = '#808098';
+  ctx.fillText('\u2022 item one', W/2+8, 44);
+  ctx.fillText('\u2022 item two', W/2+8, 54);
+  // Code block
+  ctx.fillStyle = '#0a0a18';
+  ctx.fillRect(W/2+6, 62, W/2-12, 14);
+  ctx.strokeStyle = '#1a1a30';
+  ctx.strokeRect(W/2+6, 62, W/2-12, 14);
+  ctx.font = '6px "Courier New",monospace';
+  ctx.fillStyle = '#a0c0e0';
+  ctx.fillText('let x = 42;', W/2+10, 72);
 })();
 
 // ── Regex Visualizer preview (railroad nodes) ───────────────────

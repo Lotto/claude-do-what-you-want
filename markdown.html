@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Markdown Editor</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #c0c0d0; font-family: 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #toolbar { display: flex; align-items: center; gap: 4px; padding: 6px 10px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; margin-right: 10px; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 4px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 8px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+
+  #main { display: flex; flex: 1; overflow: hidden; }
+  #editor { flex: 1; display: flex; flex-direction: column; border-right: 1px solid #141428; min-width: 0; }
+  #preview { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+
+  .pane-label { font-size: 9px; color: #303050; letter-spacing: 0.15em; text-transform: uppercase; padding: 4px 12px; background: #06060c; border-bottom: 1px solid #101020; flex-shrink: 0; }
+
+  #markdownInput {
+    flex: 1; background: #0a0a12; border: none; color: #c8c8e0; font: 13px/1.6 'Courier New', monospace;
+    padding: 16px 20px; outline: none; resize: none; tab-size: 4; white-space: pre-wrap; overflow-y: auto;
+  }
+  #markdownInput::selection { background: #2040a0; }
+
+  #previewContent {
+    flex: 1; overflow-y: auto; padding: 20px 24px; background: #0c0c14; font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.7; color: #c0c0d8;
+  }
+
+  /* Preview markdown styles */
+  #previewContent h1 { font-size: 1.8em; font-weight: 600; color: #e0e0f0; border-bottom: 1px solid #1a1a30; padding-bottom: 8px; margin: 24px 0 12px; }
+  #previewContent h2 { font-size: 1.4em; font-weight: 600; color: #d0d0e8; border-bottom: 1px solid #141428; padding-bottom: 6px; margin: 20px 0 10px; }
+  #previewContent h3 { font-size: 1.15em; font-weight: 600; color: #c0c0d8; margin: 16px 0 8px; }
+  #previewContent h4 { font-size: 1em; font-weight: 600; color: #b0b0c8; margin: 14px 0 6px; }
+  #previewContent h5, #previewContent h6 { font-size: 0.9em; font-weight: 600; color: #a0a0b8; margin: 12px 0 6px; }
+  #previewContent p { margin: 0 0 12px; }
+  #previewContent a { color: #6090e0; text-decoration: none; }
+  #previewContent a:hover { text-decoration: underline; }
+  #previewContent strong { color: #e0e0f0; }
+  #previewContent em { font-style: italic; color: #b0b0d0; }
+  #previewContent code {
+    background: #141428; color: #c0a0e0; padding: 2px 5px; border-radius: 3px; font-family: 'Courier New', monospace; font-size: 0.9em;
+  }
+  #previewContent pre {
+    background: #0a0a18; border: 1px solid #1a1a30; border-radius: 6px; padding: 14px 16px; margin: 12px 0; overflow-x: auto;
+  }
+  #previewContent pre code { background: none; padding: 0; color: #a0c0e0; font-size: 12px; }
+  #previewContent blockquote {
+    border-left: 3px solid #3050a0; margin: 12px 0; padding: 8px 16px; color: #8888a8; background: #0a0a18;
+  }
+  #previewContent ul, #previewContent ol { margin: 8px 0 12px 24px; }
+  #previewContent li { margin: 4px 0; }
+  #previewContent li input[type="checkbox"] { margin-right: 6px; }
+  #previewContent hr { border: none; border-top: 1px solid #1a1a30; margin: 20px 0; }
+  #previewContent table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  #previewContent th, #previewContent td { border: 1px solid #1a1a30; padding: 8px 12px; text-align: left; }
+  #previewContent th { background: #0e0e1c; color: #a0a0c0; font-weight: 600; }
+  #previewContent td { background: #0a0a14; }
+  #previewContent img { max-width: 100%; border-radius: 4px; }
+  #previewContent .task-done { text-decoration: line-through; color: #606080; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; }
+  .stat b { color: #505078; font-weight: normal; }
+
+  /* Sync scroll indicator */
+  .sync-indicator { width: 6px; height: 6px; border-radius: 50%; display: inline-block; margin-left: 4px; }
+  .sync-on { background: #3080a0; }
+  .sync-off { background: #404060; }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <h1>Markdown Editor</h1>
+  <div class="sep"></div>
+  <button onclick="insertMd('**','**')" title="Bold (Ctrl+B)"><b>B</b></button>
+  <button onclick="insertMd('*','*')" title="Italic (Ctrl+I)"><i>I</i></button>
+  <button onclick="insertMd('~~','~~')" title="Strikethrough"><s>S</s></button>
+  <button onclick="insertMd('`','`')" title="Inline code">code</button>
+  <div class="sep"></div>
+  <button onclick="insertLine('# ')" title="Heading 1">H1</button>
+  <button onclick="insertLine('## ')" title="Heading 2">H2</button>
+  <button onclick="insertLine('### ')" title="Heading 3">H3</button>
+  <div class="sep"></div>
+  <button onclick="insertLine('- ')" title="Unordered list">ul</button>
+  <button onclick="insertLine('1. ')" title="Ordered list">ol</button>
+  <button onclick="insertLine('- [ ] ')" title="Task list">task</button>
+  <button onclick="insertLine('> ')" title="Blockquote">quote</button>
+  <div class="sep"></div>
+  <button onclick="insertBlock('```\n','\n```')" title="Code block">{ }</button>
+  <button onclick="insertLine('---')" title="Horizontal rule">hr</button>
+  <button onclick="insertMd('[','](url)')" title="Link">link</button>
+  <button onclick="insertMd('![alt](',')')" title="Image">img</button>
+  <button onclick="insertTable()" title="Table">table</button>
+  <div class="sep"></div>
+  <button id="btnSync" class="active" onclick="toggleSync()">Sync Scroll</button>
+  <button id="btnWrap" class="active" onclick="toggleWrap()">Wrap</button>
+  <div class="sep"></div>
+  <select id="selTheme" onchange="setTheme(this.value)">
+    <option value="dark">Dark</option>
+    <option value="midnight">Midnight</option>
+    <option value="sepia">Sepia</option>
+    <option value="light">Light</option>
+  </select>
+  <div class="sep"></div>
+  <button onclick="exportHTML()" title="Export as HTML">Export HTML</button>
+  <button onclick="exportMd()" title="Download .md">Download .md</button>
+</div>
+
+<div id="main">
+  <div id="editor">
+    <div class="pane-label">Markdown</div>
+    <textarea id="markdownInput" spellcheck="false">
+# Welcome to Markdown Editor
+
+A **real-time** markdown editor with live preview. Start typing on the left and see the rendered output on the right.
+
+## Features
+
+- **Bold**, *italic*, ~~strikethrough~~, and `inline code`
+- Headings (H1 through H6)
+- Ordered and unordered lists
+- Task lists with checkboxes
+- Code blocks with syntax display
+- Blockquotes, horizontal rules
+- Tables, links, and images
+- Toolbar buttons and keyboard shortcuts
+- Synchronized scrolling
+- 4 color themes
+- Export to HTML or download as .md
+
+## Code Example
+
+```javascript
+function fibonacci(n) {
+  if (n <= 1) return n;
+  return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+console.log(fibonacci(10)); // 55
+```
+
+## Blockquote
+
+> "The only way to do great work is to love what you do."
+> — Steve Jobs
+
+## Task List
+
+- [x] Build the editor
+- [x] Add live preview
+- [x] Toolbar with formatting buttons
+- [ ] Add more features
+- [ ] Share with the world
+
+## Table
+
+| Feature       | Status    | Priority |
+|---------------|-----------|----------|
+| Live preview  | Done      | High     |
+| Sync scroll   | Done      | Medium   |
+| Themes        | Done      | Low      |
+| Export        | Done      | Medium   |
+
+## Links
+
+Visit [GitHub](https://github.com) for more projects.
+
+---
+
+*Start editing to see the magic happen!*
+</textarea>
+  </div>
+  <div id="preview">
+    <div class="pane-label">Preview</div>
+    <div id="previewContent"></div>
+  </div>
+</div>
+
+<div id="statusBar">
+  <span>Lines: <b id="statLines">0</b></span>
+  <span>Words: <b id="statWords">0</b></span>
+  <span>Chars: <b id="statChars">0</b></span>
+  <span>Cursor: <b id="statCursor">1:1</b></span>
+</div>
+
+<script>
+'use strict';
+
+const input = document.getElementById('markdownInput');
+const preview = document.getElementById('previewContent');
+let syncScroll = true;
+let wordWrap = true;
+
+// ── Markdown parser ─────────────────────────────────────────────
+function parseMd(src) {
+  // Normalize line endings
+  src = src.replace(/\r\n/g, '\n');
+
+  // Escape HTML
+  function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // Inline formatting
+  function inline(line) {
+    // Code spans first (protect from other formatting)
+    let pieces = [];
+    let re = /`([^`]+)`/g;
+    let last = 0, m;
+    while ((m = re.exec(line)) !== null) {
+      pieces.push(inlineFormat(line.slice(last, m.index)));
+      pieces.push('<code>' + esc(m[1]) + '</code>');
+      last = m.index + m[0].length;
+    }
+    pieces.push(inlineFormat(line.slice(last)));
+    return pieces.join('');
+  }
+
+  function inlineFormat(s) {
+    // Images
+    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+    // Links
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+    // Bold+italic
+    s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    // Bold
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    // Italic
+    s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    s = s.replace(/_(.+?)_/g, '<em>$1</em>');
+    // Strikethrough
+    s = s.replace(/~~(.+?)~~/g, '<del>$1</del>');
+    return s;
+  }
+
+  const lines = src.split('\n');
+  let html = '';
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Blank line
+    if (line.trim() === '') { i++; continue; }
+
+    // Code block
+    if (line.trimStart().startsWith('```')) {
+      const lang = line.trim().slice(3).trim();
+      let code = '';
+      i++;
+      while (i < lines.length && !lines[i].trimStart().startsWith('```')) {
+        code += esc(lines[i]) + '\n';
+        i++;
+      }
+      i++; // skip closing ```
+      html += `<pre><code${lang ? ` class="lang-${lang}"` : ''}>${code}</code></pre>`;
+      continue;
+    }
+
+    // Heading
+    const hMatch = line.match(/^(#{1,6})\s+(.+)/);
+    if (hMatch) {
+      const level = hMatch[1].length;
+      html += `<h${level}>${inline(hMatch[2])}</h${level}>`;
+      i++; continue;
+    }
+
+    // Horizontal rule
+    if (/^(\*{3,}|-{3,}|_{3,})\s*$/.test(line.trim())) {
+      html += '<hr>';
+      i++; continue;
+    }
+
+    // Table
+    if (i + 1 < lines.length && /^\|/.test(line) && /^\|[\s:-]+\|/.test(lines[i + 1])) {
+      const headers = line.split('|').filter(c => c.trim() !== '').map(c => c.trim());
+      i += 2; // skip header + separator
+      let rows = '';
+      while (i < lines.length && /^\|/.test(lines[i])) {
+        const cells = lines[i].split('|').filter(c => c.trim() !== '').map(c => c.trim());
+        rows += '<tr>' + cells.map(c => `<td>${inline(c)}</td>`).join('') + '</tr>';
+        i++;
+      }
+      html += '<table><thead><tr>' + headers.map(h => `<th>${inline(h)}</th>`).join('') + '</tr></thead><tbody>' + rows + '</tbody></table>';
+      continue;
+    }
+
+    // Blockquote
+    if (line.startsWith('>')) {
+      let quoteLines = [];
+      while (i < lines.length && (lines[i].startsWith('>') || (lines[i].trim() !== '' && quoteLines.length > 0 && !lines[i].startsWith('#')))) {
+        quoteLines.push(lines[i].replace(/^>\s?/, ''));
+        i++;
+      }
+      html += '<blockquote>' + parseMd(quoteLines.join('\n')) + '</blockquote>';
+      continue;
+    }
+
+    // Unordered list
+    if (/^\s*[-*+]\s/.test(line)) {
+      html += '<ul>';
+      while (i < lines.length && /^\s*[-*+]\s/.test(lines[i])) {
+        const content = lines[i].replace(/^\s*[-*+]\s/, '');
+        // Task list
+        const taskMatch = content.match(/^\[([ xX])\]\s*(.*)/);
+        if (taskMatch) {
+          const checked = taskMatch[1] !== ' ';
+          html += `<li><input type="checkbox" disabled ${checked ? 'checked' : ''}><span class="${checked ? 'task-done' : ''}">${inline(taskMatch[2])}</span></li>`;
+        } else {
+          html += `<li>${inline(content)}</li>`;
+        }
+        i++;
+      }
+      html += '</ul>';
+      continue;
+    }
+
+    // Ordered list
+    if (/^\s*\d+\.\s/.test(line)) {
+      html += '<ol>';
+      while (i < lines.length && /^\s*\d+\.\s/.test(lines[i])) {
+        const content = lines[i].replace(/^\s*\d+\.\s/, '');
+        html += `<li>${inline(content)}</li>`;
+        i++;
+      }
+      html += '</ol>';
+      continue;
+    }
+
+    // Paragraph
+    let para = [];
+    while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,6}\s|```|>|\s*[-*+]\s|\s*\d+\.\s|(\*{3,}|-{3,}|_{3,})\s*$|\|)/.test(lines[i])) {
+      para.push(lines[i]);
+      i++;
+    }
+    if (para.length > 0) {
+      html += `<p>${inline(para.join('<br>'))}</p>`;
+    }
+  }
+
+  return html;
+}
+
+// ── Render ──────────────────────────────────────────────────────
+let renderTimer;
+function render() {
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(() => {
+    preview.innerHTML = parseMd(input.value);
+    updateStats();
+  }, 50);
+}
+
+function updateStats() {
+  const text = input.value;
+  const lines = text.split('\n').length;
+  const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+  document.getElementById('statLines').textContent = lines;
+  document.getElementById('statWords').textContent = words;
+  document.getElementById('statChars').textContent = text.length;
+}
+
+function updateCursor() {
+  const pos = input.selectionStart;
+  const before = input.value.slice(0, pos);
+  const line = before.split('\n').length;
+  const col = pos - before.lastIndexOf('\n');
+  document.getElementById('statCursor').textContent = `${line}:${col}`;
+}
+
+// ── Toolbar actions ─────────────────────────────────────────────
+function insertMd(before, after) {
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  const sel = input.value.slice(start, end);
+  const text = before + (sel || 'text') + after;
+  input.setRangeText(text, start, end, 'select');
+  input.focus();
+  render();
+}
+
+function insertLine(prefix) {
+  const start = input.selectionStart;
+  const lineStart = input.value.lastIndexOf('\n', start - 1) + 1;
+  input.setRangeText(prefix, lineStart, lineStart, 'end');
+  input.focus();
+  render();
+}
+
+function insertBlock(before, after) {
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  const sel = input.value.slice(start, end) || 'code here';
+  input.setRangeText('\n' + before + sel + after + '\n', start, end, 'end');
+  input.focus();
+  render();
+}
+
+function insertTable() {
+  const t = '\n| Column 1 | Column 2 | Column 3 |\n|----------|----------|----------|\n| Cell 1   | Cell 2   | Cell 3   |\n| Cell 4   | Cell 5   | Cell 6   |\n';
+  const pos = input.selectionStart;
+  input.setRangeText(t, pos, pos, 'end');
+  input.focus();
+  render();
+}
+
+// ── Sync scroll ─────────────────────────────────────────────────
+function toggleSync() {
+  syncScroll = !syncScroll;
+  document.getElementById('btnSync').classList.toggle('active', syncScroll);
+}
+
+input.addEventListener('scroll', () => {
+  if (!syncScroll) return;
+  const pct = input.scrollTop / (input.scrollHeight - input.clientHeight || 1);
+  preview.scrollTop = pct * (preview.scrollHeight - preview.clientHeight);
+});
+
+// ── Word wrap ───────────────────────────────────────────────────
+function toggleWrap() {
+  wordWrap = !wordWrap;
+  document.getElementById('btnWrap').classList.toggle('active', wordWrap);
+  input.style.whiteSpace = wordWrap ? 'pre-wrap' : 'pre';
+  input.style.overflowX = wordWrap ? 'hidden' : 'auto';
+}
+
+// ── Themes ──────────────────────────────────────────────────────
+const THEMES = {
+  dark: { bg: '#080810', edBg: '#0a0a12', pvBg: '#0c0c14', text: '#c0c0d8', border: '#141428' },
+  midnight: { bg: '#040812', edBg: '#060a16', pvBg: '#080c18', text: '#90b0d0', border: '#0c1828' },
+  sepia: { bg: '#1a1610', edBg: '#1e1a14', pvBg: '#201c16', text: '#c8b8a0', border: '#2a2418' },
+  light: { bg: '#f0f0f4', edBg: '#fafafe', pvBg: '#ffffff', text: '#303040', border: '#d0d0e0' },
+};
+
+function setTheme(name) {
+  const t = THEMES[name];
+  document.body.style.background = t.bg;
+  input.style.background = t.edBg;
+  input.style.color = t.text;
+  preview.style.background = t.pvBg;
+  preview.style.color = t.text;
+}
+
+// ── Keyboard shortcuts ──────────────────────────────────────────
+input.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+    e.preventDefault(); insertMd('**', '**');
+  } else if ((e.ctrlKey || e.metaKey) && e.key === 'i') {
+    e.preventDefault(); insertMd('*', '*');
+  } else if (e.key === 'Tab') {
+    e.preventDefault();
+    const start = input.selectionStart;
+    input.setRangeText('  ', start, start, 'end');
+    render();
+  }
+});
+
+// ── Export ───────────────────────────────────────────────────────
+function exportHTML() {
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="UTF-8"><title>Exported Markdown</title>
+<style>body{font-family:sans-serif;max-width:800px;margin:40px auto;padding:0 20px;line-height:1.7;color:#333}
+code{background:#f0f0f0;padding:2px 4px;border-radius:3px}pre{background:#f5f5f5;padding:16px;border-radius:6px;overflow-x:auto}
+pre code{background:none}blockquote{border-left:3px solid #ccc;padding:8px 16px;color:#666;margin:12px 0}
+table{border-collapse:collapse;width:100%}th,td{border:1px solid #ddd;padding:8px 12px}th{background:#f5f5f5}
+img{max-width:100%}hr{border:none;border-top:1px solid #ddd;margin:20px 0}</style>
+</head><body>${parseMd(input.value)}</body></html>`;
+  const blob = new Blob([html], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'document.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function exportMd() {
+  const blob = new Blob([input.value], { type: 'text/markdown' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'document.md';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── Events ──────────────────────────────────────────────────────
+input.addEventListener('input', render);
+input.addEventListener('click', updateCursor);
+input.addEventListener('keyup', updateCursor);
+
+// ── Init ────────────────────────────────────────────────────────
+render();
+updateCursor();
+</script>
+</body>
+</html>

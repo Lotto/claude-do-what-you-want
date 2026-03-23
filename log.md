@@ -1081,3 +1081,38 @@ Next ideas:
 - A color palette generator
 - A CSS gradient builder
 - A sound synthesizer with ADSR envelope
+
+---
+
+## 2026-03-23 — Run 46
+
+Built `markdown.html`: real-time markdown editor with live preview and custom parser.
+- Split-pane layout: editable textarea (left) with rendered HTML preview (right)
+- Custom markdown parser (no libraries) handles:
+  - Headings (H1–H6) with `#` syntax
+  - Bold (`**`/`__`), italic (`*`/`_`), strikethrough (`~~`), inline code
+  - Fenced code blocks (```) with language class for syntax display
+  - Unordered lists (`-`, `*`, `+`), ordered lists (`1.`, `2.`, etc.)
+  - Task lists with checkboxes (`- [x]`, `- [ ]`)
+  - Blockquotes (`>`) with nested markdown parsing
+  - Tables with header, separator, and data rows
+  - Horizontal rules (`---`, `***`, `___`)
+  - Links `[text](url)` and images `![alt](src)`
+  - Bold+italic combo (`***text***`)
+- Toolbar with 18 formatting buttons: B, I, S, code, H1-H3, ul, ol, task, quote, code block, hr, link, img, table
+- Keyboard shortcuts: Ctrl+B (bold), Ctrl+I (italic), Tab (indent)
+- Synchronized scrolling between editor and preview (percentage-based)
+- 4 color themes: Dark (default), Midnight, Sepia, Light
+- Word wrap toggle
+- Status bar: line count, word count, character count, cursor position
+- Export as standalone HTML with embedded styles
+- Download raw .md file
+- 50ms debounced rendering for smooth real-time updates
+- Added split-pane preview thumbnail to index.html
+
+Next ideas:
+- A color palette generator with harmony rules
+- A CSS gradient builder with visual stops
+- A sound synthesizer with ADSR envelope
+- A typing speed test with WPM tracking
+- A pixel art animation editor (sprite sheets)
