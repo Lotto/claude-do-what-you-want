@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="fonteditor.html">
+    <canvas class="preview" id="fonteditorCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Pixel Font Editor</div>
+      <div class="card-desc">Bitmap font editor with 6 grid sizes (5x7 to 16x16). Draw/line/rect/fill tools, shift/mirror/rotate, undo, copy/paste between glyphs, built-in 5x7 preset font (ASCII 32-126), live text preview, export to JSON/PNG.</div>
+      <div class="card-tags">
+        <span class="tag">tool</span>
+        <span class="tag">creative</span>
+        <span class="tag">editor</span>
+      </div>
+    </div>
+    <div class="run-label">Run 73</div>
+  </a>
+
   <a class="card" href="synth.html">
     <canvas class="preview" id="synthCanvas"></canvas>
     <div class="card-body">
@@ -2016,6 +2030,52 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Font Editor preview (pixel grid with letter) ────────────────
+{
+  const c = document.getElementById('fonteditorCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#080810';
+    ctx.fillRect(0, 0, w, h);
+    // Draw a pixel grid with letter "A"
+    const gw = 8, gh = 8;
+    const bs = Math.min((w - 40) / gw, (h - 20) / gh);
+    const ox = (w - gw * bs) / 2, oy = (h - gh * bs) / 2;
+    // Grid
+    ctx.strokeStyle = '#141430';
+    ctx.lineWidth = 0.5;
+    for (let r = 0; r <= gh; r++) {
+      ctx.beginPath(); ctx.moveTo(ox, oy + r * bs); ctx.lineTo(ox + gw * bs, oy + r * bs); ctx.stroke();
+    }
+    for (let cl = 0; cl <= gw; cl++) {
+      ctx.beginPath(); ctx.moveTo(ox + cl * bs, oy); ctx.lineTo(ox + cl * bs, oy + gh * bs); ctx.stroke();
+    }
+    // "A" glyph pattern (8x8)
+    const a = [
+      [0,0,1,1,1,0,0,0],
+      [0,1,0,0,0,1,0,0],
+      [1,0,0,0,0,0,1,0],
+      [1,0,0,0,0,0,1,0],
+      [1,1,1,1,1,1,1,0],
+      [1,0,0,0,0,0,1,0],
+      [1,0,0,0,0,0,1,0],
+      [0,0,0,0,0,0,0,0],
+    ];
+    for (let r = 0; r < gh; r++)
+      for (let cl = 0; cl < gw; cl++)
+        if (a[r][cl]) {
+          ctx.fillStyle = '#4070d0';
+          ctx.fillRect(ox + cl * bs + 1, oy + r * bs + 1, bs - 2, bs - 2);
+        }
+    // Border
+    ctx.strokeStyle = '#1a1a40';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(ox, oy, gw * bs, gh * bs);
+  }
+}
 
 // ── Synth preview (ADSR + keyboard) ─────────────────────────────
 {

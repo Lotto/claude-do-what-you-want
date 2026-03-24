@@ -2112,3 +2112,33 @@ Next ideas:
 - A pixel font / bitmap text editor
 - A typing speed test
 - A circuit logic gate simulator
+
+---
+
+## Run 73 — Pixel Font Editor (`fonteditor.html`)
+
+Bitmap font / pixel text editor for designing custom pixel fonts glyph by glyph.
+
+**Features:**
+- 6 grid sizes: 5x7, 6x8, 8x8, 8x12, 8x16, 16x16
+- ASCII character selector (32-126) with visual indicators for defined glyphs
+- Drawing tools: draw, line (Bresenham), rectangle, flood fill
+- Glyph operations: clear, fill all, invert, shift (4 directions), mirror H/V, rotate 90 degrees
+- Copy/paste between glyphs
+- Undo history (50 levels) with Ctrl+Z
+- Built-in 5x7 preset font covering all printable ASCII characters
+- Live text preview with typed input
+- Export to JSON (full font data) and PNG (sprite sheet)
+- Import from JSON
+- Hex representation of each glyph row
+- Pixel count display
+- Arrow keys to navigate between characters
+- Keyboard shortcuts: D=draw, L=line, R=rect, B=fill, Ctrl+C/V=copy/paste
+- Added pixel-grid-letter thumbnail to index.html
+
+Next ideas:
+- A cron expression parser and scheduler visualizer
+- An oscilloscope waveform display
+- A typing speed test
+- A markdown live preview editor
+- A hex color picker with palette generator
