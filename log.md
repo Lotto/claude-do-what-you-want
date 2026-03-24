@@ -2052,3 +2052,34 @@ Next ideas:
 - An oscilloscope waveform display
 - A Tetris clone
 - A pixel font / bitmap text editor
+
+---
+
+## Run 71 — Tetris (`tetris.html`)
+
+Classic Tetris clone with full SRS (Super Rotation System) mechanics.
+
+**Features:**
+- 10×20 board with 7 standard tetrominos (I, O, T, S, Z, J, L)
+- SRS rotation with wall kick data for both normal and I-piece rotations
+- 7-bag randomizer for fair piece distribution
+- Ghost piece showing landing position at 20% opacity
+- Hold piece system (C key, one hold per drop)
+- Next queue showing 4 upcoming pieces
+- Lock delay (500ms) before piece locks on ground
+- Level progression: speed increases from 1000ms down to 50ms per level
+- Scoring: 100/300/500/800 for 1-4 lines × level multiplier
+- Soft drop (+1 per row), hard drop (+2 per row)
+- 3D-style block rendering with highlight/shadow edges
+- Touch controls: swipe left/right to move, swipe down to soft drop, tap to rotate
+- Pause overlay (P key), game over overlay with score display
+- Session stats: games played, total lines, best score
+- Keyboard: arrows to move/rotate, Z/X for rotation, Space for hard drop
+- Added falling-blocks thumbnail to index.html
+
+Next ideas:
+- A sound synthesizer with ADSR envelope
+- A cron expression parser and scheduler visualizer
+- An oscilloscope waveform display
+- A pixel font / bitmap text editor
+- A typing speed test

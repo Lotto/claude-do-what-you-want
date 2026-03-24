@@ -501,6 +501,20 @@
     <div class="run-label">Run 27</div>
   </a>
 
+  <a class="card" href="tetris.html">
+    <canvas class="preview" id="tetrisCanvas"></canvas>
+    <div class="card-body">
+      <div class="card-title">Tetris</div>
+      <div class="card-desc">Classic Tetris with SRS rotation, wall kicks, ghost piece, hold queue, next preview (4 pieces), 7-bag randomizer, lock delay, level progression, scoring, soft/hard drop, touch controls, pause.</div>
+      <div class="card-tags">
+        <span class="tag">game</span>
+        <span class="tag">classic</span>
+        <span class="tag">arcade</span>
+      </div>
+    </div>
+    <div class="run-label">Run 71</div>
+  </a>
+
   <a class="card" href="minesweeper.html">
     <canvas class="preview" id="mineCanvas"></canvas>
     <div class="card-body">
@@ -1988,6 +2002,65 @@
   }
   requestAnimationFrame(loop);
 })();
+
+// ── Tetris preview (falling blocks) ─────────────────────────────
+{
+  const c = document.getElementById('tetrisCanvas');
+  if (c) {
+    const ctx = c.getContext('2d');
+    const w = c.width = c.offsetWidth;
+    const h = c.height = c.offsetHeight;
+    ctx.fillStyle = '#080810';
+    ctx.fillRect(0, 0, w, h);
+    const colors = ['#00f0f0','#f0f000','#a000f0','#00f000','#f00000','#0000f0','#f0a000'];
+    const shapes = [
+      [[1,1,1,1]],
+      [[1,1],[1,1]],
+      [[0,1,0],[1,1,1]],
+      [[0,1,1],[1,1,0]],
+      [[1,1,0],[0,1,1]],
+      [[1,0,0],[1,1,1]],
+      [[0,0,1],[1,1,1]]
+    ];
+    const cols = 10, rows = 20;
+    const bs = Math.min((w - 20) / cols, (h - 10) / rows);
+    const ox = (w - cols * bs) / 2, oy = (h - rows * bs) / 2;
+    // Draw grid
+    ctx.strokeStyle = '#0a0a1a';
+    ctx.lineWidth = 0.5;
+    for (let r = 0; r <= rows; r++) {
+      ctx.beginPath(); ctx.moveTo(ox, oy + r * bs); ctx.lineTo(ox + cols * bs, oy + r * bs); ctx.stroke();
+    }
+    for (let cl = 0; cl <= cols; cl++) {
+      ctx.beginPath(); ctx.moveTo(ox + cl * bs, oy); ctx.lineTo(ox + cl * bs, oy + rows * bs); ctx.stroke();
+    }
+    // Draw some placed blocks
+    const placed = [[18,0,0],[18,1,0],[18,2,0],[18,3,5],[18,4,5],[18,5,5],[18,6,5],[18,8,6],[18,9,6],
+      [19,0,0],[19,1,0],[19,2,3],[19,3,3],[19,4,5],[19,5,2],[19,6,2],[19,7,2],[19,8,6],[19,9,6],
+      [17,0,4],[17,1,4],[17,9,1]];
+    for (const [r, cl, ci] of placed) {
+      ctx.fillStyle = colors[ci];
+      ctx.fillRect(ox + cl * bs + 1, oy + r * bs + 1, bs - 2, bs - 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(ox + cl * bs + 1, oy + r * bs + 1, bs - 2, 2);
+    }
+    // Draw falling T piece
+    const piece = shapes[2], color = colors[2];
+    const pr = 5, pc = 4;
+    for (let r = 0; r < piece.length; r++)
+      for (let cl = 0; cl < piece[r].length; cl++)
+        if (piece[r][cl]) {
+          ctx.fillStyle = color;
+          ctx.fillRect(ox + (pc + cl) * bs + 1, oy + (pr + r) * bs + 1, bs - 2, bs - 2);
+          ctx.fillStyle = 'rgba(255,255,255,0.2)';
+          ctx.fillRect(ox + (pc + cl) * bs + 1, oy + (pr + r) * bs + 1, bs - 2, 2);
+        }
+    // Border
+    ctx.strokeStyle = '#1a1a40';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(ox, oy, cols * bs, rows * bs);
+  }
+}
 
 // ── Minesweeper preview (grid with numbers) ─────────────────────
 {
