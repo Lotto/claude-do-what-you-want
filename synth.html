@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Synth — ADSR Synthesizer</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #080810; color: #a0a0b8; font: 12px 'Courier New', monospace; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+  #top { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #0a0a14; border-bottom: 1px solid #141428; flex-shrink: 0; flex-wrap: wrap; }
+  h1 { font-size: 11px; color: #808098; letter-spacing: 0.2em; text-transform: uppercase; font-weight: normal; }
+  .sep { width: 1px; height: 18px; background: #1a1a30; margin: 0 2px; }
+  button { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; padding: 3px 10px; font: 11px 'Courier New', monospace; cursor: pointer; border-radius: 3px; }
+  button:hover { background: #14142a; color: #9090c0; }
+  button.active { background: #1a2a50; color: #80b0ff; border-color: #3060a0; }
+  select { background: #0c0c18; border: 1px solid #1a1a30; color: #6060a0; font: 11px 'Courier New', monospace; padding: 2px 6px; border-radius: 3px; }
+  label { color: #606080; font-size: 10px; text-transform: uppercase; }
+
+  #main { flex: 1; display: flex; gap: 12px; padding: 12px; overflow: hidden; }
+
+  .panel { background: #0a0a16; border: 1px solid #141430; border-radius: 6px; padding: 12px; }
+  .panel-title { font-size: 10px; color: #505070; text-transform: uppercase; letter-spacing: 0.15em; margin-bottom: 10px; border-bottom: 1px solid #141430; padding-bottom: 4px; }
+
+  #leftCol { display: flex; flex-direction: column; gap: 10px; width: 260px; flex-shrink: 0; overflow-y: auto; }
+  #rightCol { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+
+  /* ADSR visual */
+  #adsrCanvas { width: 100%; height: 100px; border-radius: 4px; background: #06060e; }
+
+  /* Waveform / spectrum */
+  #waveCanvas { width: 100%; height: 120px; border-radius: 4px; background: #06060e; }
+  #specCanvas { width: 100%; height: 100px; border-radius: 4px; background: #06060e; }
+
+  /* Sliders */
+  .slider-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .slider-row label { min-width: 55px; text-align: right; }
+  .slider-row input[type=range] { flex: 1; accent-color: #4060c0; height: 4px; }
+  .slider-row .val { min-width: 40px; color: #8080b0; font-size: 10px; }
+
+  /* Keyboard */
+  #keyboard { height: 120px; position: relative; background: #0a0a16; border: 1px solid #141430; border-radius: 6px; flex-shrink: 0; overflow: hidden; }
+  .white-key { position: absolute; bottom: 0; height: 100%; background: linear-gradient(to bottom, #e8e8f0, #d0d0dc); border: 1px solid #888; border-radius: 0 0 4px 4px; cursor: pointer; z-index: 1; }
+  .white-key:hover { background: linear-gradient(to bottom, #f0f0ff, #dddde8); }
+  .white-key.pressed { background: linear-gradient(to bottom, #b0c0ff, #90a0e0); }
+  .black-key { position: absolute; top: 0; height: 60%; background: linear-gradient(to bottom, #1a1a30, #101020); border: 1px solid #000; border-radius: 0 0 3px 3px; cursor: pointer; z-index: 2; }
+  .black-key:hover { background: linear-gradient(to bottom, #252540, #181830); }
+  .black-key.pressed { background: linear-gradient(to bottom, #3040a0, #202060); }
+  .key-label { position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%); font-size: 8px; color: #606; pointer-events: none; }
+
+  /* Filter */
+  .filter-group { display: flex; gap: 6px; margin-bottom: 8px; }
+  .filter-group button { font-size: 10px; padding: 2px 8px; }
+
+  /* Presets */
+  #presetSelect { width: 100%; }
+
+  #statusBar { padding: 4px 12px; background: #06060c; border-top: 1px solid #101020; font-size: 10px; color: #303050; display: flex; gap: 16px; flex-shrink: 0; }
+  .stat b { color: #505078; font-weight: normal; }
+</style>
+</head>
+<body>
+
+<div id="top">
+  <h1>Synth</h1>
+  <div class="sep"></div>
+  <label>Preset</label>
+  <select id="presetSelect" onchange="loadPreset(this.value)">
+    <option value="default">Default</option>
+    <option value="pad">Warm Pad</option>
+    <option value="bass">Deep Bass</option>
+    <option value="lead">Sharp Lead</option>
+    <option value="pluck">Pluck</option>
+    <option value="organ">Organ</option>
+    <option value="strings">Strings</option>
+    <option value="bell">Bell</option>
+  </select>
+  <div class="sep"></div>
+  <label>Octave</label>
+  <button onclick="changeOctave(-1)">-</button>
+  <span id="octaveVal" style="color:#8080b0;min-width:16px;text-align:center">4</span>
+  <button onclick="changeOctave(1)">+</button>
+  <div class="sep"></div>
+  <span style="color:#404060;font-size:11px">Keys: A-L (white) W-P (black) | Z/X octave</span>
+</div>
+
+<div id="main">
+  <div id="leftCol">
+    <div class="panel">
+      <div class="panel-title">Oscillator</div>
+      <div class="filter-group" id="oscTypeGroup">
+        <button class="active" onclick="setOscType('sine')">Sine</button>
+        <button onclick="setOscType('triangle')">Tri</button>
+        <button onclick="setOscType('sawtooth')">Saw</button>
+        <button onclick="setOscType('square')">Sq</button>
+      </div>
+      <div class="slider-row">
+        <label>Detune</label>
+        <input type="range" id="detune" min="-100" max="100" value="0" oninput="updateParam()">
+        <span class="val" id="detuneVal">0ct</span>
+      </div>
+      <div class="slider-row">
+        <label>Osc 2 Mix</label>
+        <input type="range" id="osc2mix" min="0" max="100" value="0" oninput="updateParam()">
+        <span class="val" id="osc2mixVal">0%</span>
+      </div>
+      <div class="slider-row">
+        <label>Osc 2 Type</label>
+        <select id="osc2type" onchange="updateParam()" style="flex:1">
+          <option value="sine">Sine</option>
+          <option value="triangle">Triangle</option>
+          <option value="sawtooth" selected>Sawtooth</option>
+          <option value="square">Square</option>
+        </select>
+        <span class="val"></span>
+      </div>
+      <div class="slider-row">
+        <label>Osc 2 Det</label>
+        <input type="range" id="osc2detune" min="-1200" max="1200" value="0" oninput="updateParam()">
+        <span class="val" id="osc2detuneVal">0ct</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">ADSR Envelope</div>
+      <canvas id="adsrCanvas"></canvas>
+      <div class="slider-row">
+        <label>Attack</label>
+        <input type="range" id="attack" min="1" max="3000" value="50" oninput="updateParam()">
+        <span class="val" id="attackVal">50ms</span>
+      </div>
+      <div class="slider-row">
+        <label>Decay</label>
+        <input type="range" id="decay" min="1" max="3000" value="150" oninput="updateParam()">
+        <span class="val" id="decayVal">150ms</span>
+      </div>
+      <div class="slider-row">
+        <label>Sustain</label>
+        <input type="range" id="sustain" min="0" max="100" value="70" oninput="updateParam()">
+        <span class="val" id="sustainVal">70%</span>
+      </div>
+      <div class="slider-row">
+        <label>Release</label>
+        <input type="range" id="release" min="1" max="5000" value="300" oninput="updateParam()">
+        <span class="val" id="releaseVal">300ms</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Filter</div>
+      <div class="filter-group" id="filterTypeGroup">
+        <button class="active" onclick="setFilterType('lowpass')">LP</button>
+        <button onclick="setFilterType('highpass')">HP</button>
+        <button onclick="setFilterType('bandpass')">BP</button>
+        <button onclick="setFilterType('notch')">Notch</button>
+      </div>
+      <div class="slider-row">
+        <label>Cutoff</label>
+        <input type="range" id="cutoff" min="20" max="20000" value="8000" oninput="updateParam()">
+        <span class="val" id="cutoffVal">8kHz</span>
+      </div>
+      <div class="slider-row">
+        <label>Resonance</label>
+        <input type="range" id="resonance" min="0" max="30" value="1" step="0.1" oninput="updateParam()">
+        <span class="val" id="resonanceVal">1.0</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Effects</div>
+      <div class="slider-row">
+        <label>Volume</label>
+        <input type="range" id="volume" min="0" max="100" value="60" oninput="updateParam()">
+        <span class="val" id="volumeVal">60%</span>
+      </div>
+      <div class="slider-row">
+        <label>Reverb</label>
+        <input type="range" id="reverb" min="0" max="100" value="20" oninput="updateParam()">
+        <span class="val" id="reverbVal">20%</span>
+      </div>
+      <div class="slider-row">
+        <label>Delay</label>
+        <input type="range" id="delay" min="0" max="100" value="0" oninput="updateParam()">
+        <span class="val" id="delayVal">0%</span>
+      </div>
+      <div class="slider-row">
+        <label>Del Time</label>
+        <input type="range" id="delayTime" min="50" max="1000" value="300" oninput="updateParam()">
+        <span class="val" id="delayTimeVal">300ms</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="rightCol">
+    <div class="panel" style="flex:0">
+      <div class="panel-title">Waveform</div>
+      <canvas id="waveCanvas"></canvas>
+    </div>
+    <div class="panel" style="flex:0">
+      <div class="panel-title">Spectrum</div>
+      <canvas id="specCanvas"></canvas>
+    </div>
+    <div id="keyboard"></div>
+  </div>
+</div>
+
+<div id="statusBar">
+  <span class="stat">Notes: <b id="statNotes">0</b></span>
+  <span class="stat">Polyphony: <b id="statPoly">0</b></span>
+  <span class="stat">Octave: <b id="statOctave">4</b></span>
+  <span class="stat">Latency: <b id="statLatency">—</b></span>
+</div>
+
+<script>
+'use strict';
+
+let audioCtx = null;
+let masterGain, filterNode, analyser, reverbGain, dryGain, delayNode, delayGain, delayFeedback;
+let convolver;
+let currentOctave = 4;
+let oscType = 'sine';
+let filterType = 'lowpass';
+let activeVoices = {};
+let noteCount = 0;
+
+const noteNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // Master chain: voices -> filter -> dry/reverb split -> master gain -> destination
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.6;
+  masterGain.connect(audioCtx.destination);
+
+  // Analyser
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+
+  // Filter
+  filterNode = audioCtx.createBiquadFilter();
+  filterNode.type = 'lowpass';
+  filterNode.frequency.value = 8000;
+  filterNode.Q.value = 1;
+
+  // Reverb
+  dryGain = audioCtx.createGain();
+  dryGain.gain.value = 0.8;
+  reverbGain = audioCtx.createGain();
+  reverbGain.gain.value = 0.2;
+  convolver = audioCtx.createConvolver();
+  createReverbIR();
+
+  // Delay
+  delayNode = audioCtx.createDelay(2);
+  delayNode.delayTime.value = 0.3;
+  delayGain = audioCtx.createGain();
+  delayGain.gain.value = 0;
+  delayFeedback = audioCtx.createGain();
+  delayFeedback.gain.value = 0.3;
+
+  // Routing
+  filterNode.connect(analyser);
+  analyser.connect(dryGain);
+  analyser.connect(reverbGain);
+  analyser.connect(delayNode);
+  dryGain.connect(masterGain);
+  reverbGain.connect(convolver);
+  convolver.connect(masterGain);
+  delayNode.connect(delayGain);
+  delayGain.connect(masterGain);
+  delayNode.connect(delayFeedback);
+  delayFeedback.connect(delayNode);
+
+  document.getElementById('statLatency').textContent =
+    Math.round(audioCtx.baseLatency * 1000) + 'ms';
+
+  startVisuals();
+}
+
+function createReverbIR() {
+  const rate = audioCtx.sampleRate;
+  const len = rate * 2;
+  const buf = audioCtx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < len; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (rate * 0.5));
+    }
+  }
+  convolver.buffer = buf;
+}
+
+function noteToFreq(note, octave) {
+  const midi = (octave + 1) * 12 + note;
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+function getParam(id) { return parseFloat(document.getElementById(id).value); }
+
+function noteOn(note, octave) {
+  initAudio();
+  const key = octave * 12 + note;
+  if (activeVoices[key]) return;
+
+  const freq = noteToFreq(note, octave);
+  const a = getParam('attack') / 1000;
+  const d = getParam('decay') / 1000;
+  const s = getParam('sustain') / 100;
+  const r = getParam('release') / 1000;
+  const now = audioCtx.currentTime;
+
+  // Oscillator 1
+  const osc1 = audioCtx.createOscillator();
+  osc1.type = oscType;
+  osc1.frequency.value = freq;
+  osc1.detune.value = getParam('detune');
+
+  // Oscillator 2
+  const osc2 = audioCtx.createOscillator();
+  osc2.type = document.getElementById('osc2type').value;
+  osc2.frequency.value = freq;
+  osc2.detune.value = getParam('osc2detune');
+
+  // Mix gains
+  const osc2mix = getParam('osc2mix') / 100;
+  const gain1 = audioCtx.createGain();
+  gain1.gain.value = 1 - osc2mix * 0.5;
+  const gain2 = audioCtx.createGain();
+  gain2.gain.value = osc2mix;
+
+  // Envelope gain
+  const envGain = audioCtx.createGain();
+  envGain.gain.setValueAtTime(0, now);
+  envGain.gain.linearRampToValueAtTime(1, now + a);
+  envGain.gain.linearRampToValueAtTime(s, now + a + d);
+
+  osc1.connect(gain1);
+  osc2.connect(gain2);
+  gain1.connect(envGain);
+  gain2.connect(envGain);
+  envGain.connect(filterNode);
+
+  osc1.start(now);
+  osc2.start(now);
+
+  activeVoices[key] = { osc1, osc2, gain1, gain2, envGain, startTime: now };
+  noteCount++;
+  updateStats();
+  highlightKey(note, octave, true);
+}
+
+function noteOff(note, octave) {
+  const key = octave * 12 + note;
+  const voice = activeVoices[key];
+  if (!voice) return;
+
+  const r = getParam('release') / 1000;
+  const now = audioCtx.currentTime;
+  const s = getParam('sustain') / 100;
+
+  voice.envGain.gain.cancelScheduledValues(now);
+  voice.envGain.gain.setValueAtTime(voice.envGain.gain.value, now);
+  voice.envGain.gain.linearRampToValueAtTime(0, now + r);
+
+  voice.osc1.stop(now + r + 0.05);
+  voice.osc2.stop(now + r + 0.05);
+
+  setTimeout(() => {
+    try {
+      voice.osc1.disconnect();
+      voice.osc2.disconnect();
+      voice.gain1.disconnect();
+      voice.gain2.disconnect();
+      voice.envGain.disconnect();
+    } catch(e) {}
+  }, (r + 0.1) * 1000);
+
+  delete activeVoices[key];
+  updateStats();
+  highlightKey(note, octave, false);
+}
+
+// ── Keyboard mapping ────────────────────────────────────────────
+const whiteKeyMap = { 'a':0, 's':2, 'd':4, 'f':5, 'g':7, 'h':9, 'j':11, 'k':12, 'l':14 };
+const blackKeyMap = { 'w':1, 'e':3, 't':6, 'y':8, 'u':10, 'o':13 };
+const keyboardDown = {};
+
+document.addEventListener('keydown', e => {
+  if (e.repeat || e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  const k = e.key.toLowerCase();
+  if (k === 'z') { changeOctave(-1); return; }
+  if (k === 'x') { changeOctave(1); return; }
+
+  let noteOffset = whiteKeyMap[k] !== undefined ? whiteKeyMap[k] : blackKeyMap[k];
+  if (noteOffset === undefined) return;
+  if (keyboardDown[k]) return;
+  keyboardDown[k] = true;
+
+  const oct = currentOctave + Math.floor(noteOffset / 12);
+  const note = noteOffset % 12;
+  noteOn(note, oct);
+});
+
+document.addEventListener('keyup', e => {
+  const k = e.key.toLowerCase();
+  keyboardDown[k] = false;
+
+  let noteOffset = whiteKeyMap[k] !== undefined ? whiteKeyMap[k] : blackKeyMap[k];
+  if (noteOffset === undefined) return;
+
+  const oct = currentOctave + Math.floor(noteOffset / 12);
+  const note = noteOffset % 12;
+  noteOff(note, oct);
+});
+
+// ── Piano keyboard rendering ────────────────────────────────────
+function buildKeyboard() {
+  const kb = document.getElementById('keyboard');
+  kb.innerHTML = '';
+  // 2 octaves of keys
+  const totalWhite = 15; // C to D (2 octaves + 1)
+  const whiteNotes = [0,2,4,5,7,9,11];
+  const blackNotes = [1,3,null,6,8,10,null];
+  const kbW = kb.offsetWidth || 600;
+  const ww = kbW / totalWhite;
+
+  let wi = 0;
+  for (let oct = 0; oct < 2; oct++) {
+    for (let i = 0; i < 7; i++) {
+      const note = whiteNotes[i];
+      const absOct = currentOctave + oct;
+      const el = document.createElement('div');
+      el.className = 'white-key';
+      el.style.left = wi * ww + 'px';
+      el.style.width = ww - 1 + 'px';
+      el.dataset.note = note;
+      el.dataset.octave = absOct;
+      if (note === 0) {
+        const lbl = document.createElement('span');
+        lbl.className = 'key-label';
+        lbl.textContent = 'C' + absOct;
+        lbl.style.color = '#888';
+        el.appendChild(lbl);
+      }
+      el.addEventListener('mousedown', () => { initAudio(); noteOn(note, absOct); el._held = true; });
+      el.addEventListener('mouseup', () => { noteOff(note, absOct); el._held = false; });
+      el.addEventListener('mouseleave', () => { if (el._held) { noteOff(note, absOct); el._held = false; } });
+      el.addEventListener('touchstart', ev => { ev.preventDefault(); initAudio(); noteOn(note, absOct); }, {passive:false});
+      el.addEventListener('touchend', ev => { ev.preventDefault(); noteOff(note, absOct); }, {passive:false});
+      kb.appendChild(el);
+      wi++;
+    }
+    // Black keys
+    wi -= 7;
+    for (let i = 0; i < 7; i++) {
+      if (blackNotes[i] !== null) {
+        const note = blackNotes[i];
+        const absOct = currentOctave + oct;
+        const el = document.createElement('div');
+        el.className = 'black-key';
+        const bx = (wi + i) * ww + ww * 0.65;
+        el.style.left = bx + 'px';
+        el.style.width = ww * 0.65 + 'px';
+        el.dataset.note = note;
+        el.dataset.octave = absOct;
+        el.addEventListener('mousedown', () => { initAudio(); noteOn(note, absOct); el._held = true; });
+        el.addEventListener('mouseup', () => { noteOff(note, absOct); el._held = false; });
+        el.addEventListener('mouseleave', () => { if (el._held) { noteOff(note, absOct); el._held = false; } });
+        el.addEventListener('touchstart', ev => { ev.preventDefault(); initAudio(); noteOn(note, absOct); }, {passive:false});
+        el.addEventListener('touchend', ev => { ev.preventDefault(); noteOff(note, absOct); }, {passive:false});
+        kb.appendChild(el);
+      }
+    }
+    wi += 7;
+  }
+  // Last white key (C of next octave)
+  const lastNote = 0, lastOct = currentOctave + 2;
+  const el = document.createElement('div');
+  el.className = 'white-key';
+  el.style.left = wi * ww + 'px';
+  el.style.width = ww - 1 + 'px';
+  el.dataset.note = lastNote;
+  el.dataset.octave = lastOct;
+  const lbl = document.createElement('span');
+  lbl.className = 'key-label';
+  lbl.textContent = 'C' + lastOct;
+  lbl.style.color = '#888';
+  el.appendChild(lbl);
+  el.addEventListener('mousedown', () => { initAudio(); noteOn(lastNote, lastOct); el._held = true; });
+  el.addEventListener('mouseup', () => { noteOff(lastNote, lastOct); el._held = false; });
+  el.addEventListener('mouseleave', () => { if (el._held) { noteOff(lastNote, lastOct); el._held = false; } });
+  el.addEventListener('touchstart', ev => { ev.preventDefault(); initAudio(); noteOn(lastNote, lastOct); }, {passive:false});
+  el.addEventListener('touchend', ev => { ev.preventDefault(); noteOff(lastNote, lastOct); }, {passive:false});
+  kb.appendChild(el);
+}
+
+function highlightKey(note, octave, on) {
+  const kb = document.getElementById('keyboard');
+  for (const el of kb.children) {
+    if (parseInt(el.dataset.note) === note && parseInt(el.dataset.octave) === octave) {
+      el.classList.toggle('pressed', on);
+    }
+  }
+}
+
+// ── Controls ────────────────────────────────────────────────────
+function changeOctave(d) {
+  currentOctave = Math.max(1, Math.min(7, currentOctave + d));
+  document.getElementById('octaveVal').textContent = currentOctave;
+  document.getElementById('statOctave').textContent = currentOctave;
+  // Release all
+  for (const key in activeVoices) {
+    const k = parseInt(key);
+    const oct = Math.floor(k / 12);
+    const note = k % 12;
+    noteOff(note, oct);
+  }
+  buildKeyboard();
+}
+
+function setOscType(type) {
+  oscType = type;
+  document.querySelectorAll('#oscTypeGroup button').forEach(b => b.classList.toggle('active', b.textContent.toLowerCase().startsWith(type.substring(0,2))));
+}
+
+function setFilterType(type) {
+  filterType = type;
+  if (filterNode) filterNode.type = type;
+  const labels = {lowpass:'LP',highpass:'HP',bandpass:'BP',notch:'Notch'};
+  document.querySelectorAll('#filterTypeGroup button').forEach(b => b.classList.toggle('active', b.textContent === labels[type]));
+}
+
+function updateParam() {
+  document.getElementById('attackVal').textContent = getParam('attack') + 'ms';
+  document.getElementById('decayVal').textContent = getParam('decay') + 'ms';
+  document.getElementById('sustainVal').textContent = getParam('sustain') + '%';
+  document.getElementById('releaseVal').textContent = getParam('release') + 'ms';
+  document.getElementById('detuneVal').textContent = getParam('detune') + 'ct';
+  document.getElementById('osc2mixVal').textContent = Math.round(getParam('osc2mix')) + '%';
+  document.getElementById('osc2detuneVal').textContent = getParam('osc2detune') + 'ct';
+
+  const cutoff = getParam('cutoff');
+  document.getElementById('cutoffVal').textContent = cutoff >= 1000 ? (cutoff/1000).toFixed(1)+'kHz' : cutoff+'Hz';
+  document.getElementById('resonanceVal').textContent = getParam('resonance').toFixed(1);
+
+  document.getElementById('volumeVal').textContent = Math.round(getParam('volume')) + '%';
+  document.getElementById('reverbVal').textContent = Math.round(getParam('reverb')) + '%';
+  document.getElementById('delayVal').textContent = Math.round(getParam('delay')) + '%';
+  document.getElementById('delayTimeVal').textContent = Math.round(getParam('delayTime')) + 'ms';
+
+  if (filterNode) {
+    filterNode.frequency.value = cutoff;
+    filterNode.Q.value = getParam('resonance');
+  }
+  if (masterGain) masterGain.gain.value = getParam('volume') / 100;
+  if (reverbGain) {
+    const rv = getParam('reverb') / 100;
+    reverbGain.gain.value = rv;
+    dryGain.gain.value = 1 - rv * 0.5;
+  }
+  if (delayGain) {
+    delayGain.gain.value = getParam('delay') / 100;
+    delayNode.delayTime.value = getParam('delayTime') / 1000;
+  }
+
+  drawADSR();
+}
+
+function updateStats() {
+  document.getElementById('statNotes').textContent = noteCount;
+  document.getElementById('statPoly').textContent = Object.keys(activeVoices).length;
+}
+
+// ── ADSR visualization ──────────────────────────────────────────
+function drawADSR() {
+  const c = document.getElementById('adsrCanvas');
+  const ctx = c.getContext('2d');
+  const w = c.width = c.offsetWidth;
+  const h = c.height = c.offsetHeight;
+  ctx.fillStyle = '#06060e';
+  ctx.fillRect(0, 0, w, h);
+
+  const a = getParam('attack') / 1000;
+  const d = getParam('decay') / 1000;
+  const s = getParam('sustain') / 100;
+  const r = getParam('release') / 1000;
+  const sustainTime = 0.3; // visual sustain duration
+  const total = a + d + sustainTime + r;
+  const pad = 10;
+
+  const sx = x => pad + x / total * (w - 2 * pad);
+  const sy = y => pad + (1 - y) * (h - 2 * pad);
+
+  // Grid lines
+  ctx.strokeStyle = '#101025';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad + i * (h - 2 * pad) / 4;
+    ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(w - pad, y); ctx.stroke();
+  }
+
+  // Labels
+  ctx.fillStyle = '#303050';
+  ctx.font = '8px Courier New';
+  ctx.textAlign = 'center';
+  ctx.fillText('A', sx(a / 2), h - 1);
+  ctx.fillText('D', sx(a + d / 2), h - 1);
+  ctx.fillText('S', sx(a + d + sustainTime / 2), h - 1);
+  ctx.fillText('R', sx(a + d + sustainTime + r / 2), h - 1);
+
+  // Envelope shape
+  ctx.beginPath();
+  ctx.moveTo(sx(0), sy(0));
+  ctx.lineTo(sx(a), sy(1));
+  ctx.lineTo(sx(a + d), sy(s));
+  ctx.lineTo(sx(a + d + sustainTime), sy(s));
+  ctx.lineTo(sx(a + d + sustainTime + r), sy(0));
+
+  // Fill
+  ctx.lineTo(sx(a + d + sustainTime + r), sy(0));
+  ctx.lineTo(sx(0), sy(0));
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(64, 96, 192, 0.15)';
+  ctx.fill();
+
+  // Stroke
+  ctx.beginPath();
+  ctx.moveTo(sx(0), sy(0));
+  ctx.lineTo(sx(a), sy(1));
+  ctx.lineTo(sx(a + d), sy(s));
+  ctx.lineTo(sx(a + d + sustainTime), sy(s));
+  ctx.lineTo(sx(a + d + sustainTime + r), sy(0));
+  ctx.strokeStyle = '#4060c0';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Dots
+  ctx.fillStyle = '#6090ff';
+  for (const [x, y] of [[0,0],[a,1],[a+d,s],[a+d+sustainTime,s],[a+d+sustainTime+r,0]]) {
+    ctx.beginPath(); ctx.arc(sx(x), sy(y), 3, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// ── Waveform / Spectrum visuals ─────────────────────────────────
+function startVisuals() {
+  const waveC = document.getElementById('waveCanvas');
+  const specC = document.getElementById('specCanvas');
+  const wCtx = waveC.getContext('2d');
+  const sCtx = specC.getContext('2d');
+  const timeBuf = new Uint8Array(analyser.fftSize);
+  const freqBuf = new Uint8Array(analyser.frequencyBinCount);
+
+  function draw() {
+    // Waveform
+    const ww = waveC.width = waveC.offsetWidth;
+    const wh = waveC.height = waveC.offsetHeight;
+    wCtx.fillStyle = '#06060e';
+    wCtx.fillRect(0, 0, ww, wh);
+
+    analyser.getByteTimeDomainData(timeBuf);
+    wCtx.strokeStyle = '#4080c0';
+    wCtx.lineWidth = 1.5;
+    wCtx.beginPath();
+    for (let i = 0; i < timeBuf.length; i++) {
+      const x = i / timeBuf.length * ww;
+      const y = timeBuf[i] / 255 * wh;
+      i === 0 ? wCtx.moveTo(x, y) : wCtx.lineTo(x, y);
+    }
+    wCtx.stroke();
+
+    // Center line
+    wCtx.strokeStyle = '#101025';
+    wCtx.lineWidth = 0.5;
+    wCtx.beginPath(); wCtx.moveTo(0, wh/2); wCtx.lineTo(ww, wh/2); wCtx.stroke();
+
+    // Spectrum
+    const sw = specC.width = specC.offsetWidth;
+    const sh = specC.height = specC.offsetHeight;
+    sCtx.fillStyle = '#06060e';
+    sCtx.fillRect(0, 0, sw, sh);
+
+    analyser.getByteFrequencyData(freqBuf);
+    const barCount = Math.min(freqBuf.length, sw);
+    const barW = sw / barCount;
+    for (let i = 0; i < barCount; i++) {
+      const val = freqBuf[i] / 255;
+      const barH = val * sh;
+      const hue = 220 + val * 40;
+      sCtx.fillStyle = `hsla(${hue}, 60%, ${30 + val * 40}%, 0.8)`;
+      sCtx.fillRect(i * barW, sh - barH, barW - 0.5, barH);
+    }
+
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+// ── Presets ──────────────────────────────────────────────────────
+const presets = {
+  default: { osc:'sine', attack:50, decay:150, sustain:70, release:300, cutoff:8000, resonance:1, detune:0, osc2mix:0, osc2type:'sawtooth', osc2detune:0, volume:60, reverb:20, delay:0, delayTime:300, filter:'lowpass' },
+  pad: { osc:'sawtooth', attack:800, decay:500, sustain:80, release:2000, cutoff:3000, resonance:2, detune:5, osc2mix:50, osc2type:'sawtooth', osc2detune:7, volume:50, reverb:60, delay:20, delayTime:400, filter:'lowpass' },
+  bass: { osc:'sawtooth', attack:10, decay:200, sustain:60, release:100, cutoff:800, resonance:5, detune:0, osc2mix:40, osc2type:'square', osc2detune:-1200, volume:70, reverb:10, delay:0, delayTime:300, filter:'lowpass' },
+  lead: { osc:'square', attack:10, decay:100, sustain:80, release:150, cutoff:5000, resonance:4, detune:0, osc2mix:30, osc2type:'sawtooth', osc2detune:5, volume:55, reverb:15, delay:30, delayTime:250, filter:'lowpass' },
+  pluck: { osc:'triangle', attack:5, decay:300, sustain:10, release:200, cutoff:6000, resonance:3, detune:0, osc2mix:0, osc2type:'sawtooth', osc2detune:0, volume:65, reverb:30, delay:15, delayTime:200, filter:'lowpass' },
+  organ: { osc:'sine', attack:30, decay:50, sustain:90, release:100, cutoff:12000, resonance:0.5, detune:0, osc2mix:60, osc2type:'sine', osc2detune:1200, volume:55, reverb:25, delay:0, delayTime:300, filter:'lowpass' },
+  strings: { osc:'sawtooth', attack:600, decay:300, sustain:85, release:1500, cutoff:4000, resonance:1.5, detune:3, osc2mix:50, osc2type:'sawtooth', osc2detune:-3, volume:50, reverb:50, delay:10, delayTime:350, filter:'lowpass' },
+  bell: { osc:'sine', attack:5, decay:1500, sustain:5, release:2000, cutoff:10000, resonance:1, detune:0, osc2mix:40, osc2type:'sine', osc2detune:700, volume:50, reverb:50, delay:25, delayTime:500, filter:'lowpass' },
+};
+
+function loadPreset(name) {
+  const p = presets[name];
+  if (!p) return;
+  setOscType(p.osc);
+  setFilterType(p.filter);
+  document.getElementById('attack').value = p.attack;
+  document.getElementById('decay').value = p.decay;
+  document.getElementById('sustain').value = p.sustain;
+  document.getElementById('release').value = p.release;
+  document.getElementById('cutoff').value = p.cutoff;
+  document.getElementById('resonance').value = p.resonance;
+  document.getElementById('detune').value = p.detune;
+  document.getElementById('osc2mix').value = p.osc2mix;
+  document.getElementById('osc2type').value = p.osc2type;
+  document.getElementById('osc2detune').value = p.osc2detune;
+  document.getElementById('volume').value = p.volume;
+  document.getElementById('reverb').value = p.reverb;
+  document.getElementById('delay').value = p.delay;
+  document.getElementById('delayTime').value = p.delayTime;
+  updateParam();
+}
+
+// Init
+buildKeyboard();
+updateParam();
+window.addEventListener('resize', buildKeyboard);
+</script>
+</body>
+</html>

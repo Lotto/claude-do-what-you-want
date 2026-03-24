@@ -2083,3 +2083,32 @@ Next ideas:
 - An oscilloscope waveform display
 - A pixel font / bitmap text editor
 - A typing speed test
+
+---
+
+## Run 72 — Synth (`synth.html`)
+
+ADSR synthesizer built with the Web Audio API. Dual oscillators, filter, effects, real-time visualization, and a playable piano keyboard.
+
+**Features:**
+- 2 oscillators: sine/triangle/sawtooth/square with detune and independent type/detune for osc 2
+- ADSR envelope: attack (1-3000ms), decay (1-3000ms), sustain (0-100%), release (1-5000ms)
+- Visual ADSR graph with labeled segments and dot markers
+- Filter: lowpass/highpass/bandpass/notch with cutoff (20-20kHz) and resonance (0-30)
+- Effects: reverb (convolution with generated IR), delay with feedback
+- 8 presets: Default, Warm Pad, Deep Bass, Sharp Lead, Pluck, Organ, Strings, Bell
+- 2-octave piano keyboard with mouse/touch interaction
+- Keyboard mapping: A-L for white keys, W-U/O for black keys, Z/X for octave shift
+- Polyphonic — multiple simultaneous voices
+- Real-time waveform oscilloscope display
+- Real-time frequency spectrum analyzer
+- Octave range: 1-7
+- Session stats: note count, active polyphony, current octave, audio latency
+- Added ADSR+keyboard thumbnail to index.html
+
+Next ideas:
+- A cron expression parser and scheduler visualizer
+- An oscilloscope waveform display
+- A pixel font / bitmap text editor
+- A typing speed test
+- A circuit logic gate simulator
